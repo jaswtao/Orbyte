@@ -13,6 +13,8 @@ Author: jaswtao · Date: 2026-10-20
 - [ ] 确认 RSA 审计豁免对应依赖未进入 Windows 实际构建；新漏洞和警告须重新评估，不盲目豁免。
 - [ ] 许可证声明可重复生成，包含第三方完整声明及 MPL 对应源码。
 - [ ] 源码提交中没有公司邮箱、密钥、证书或本机运行数据。
+- [ ] 发布标签存在且指向当前已审查提交；标签流程的完整 CI（含历史扫描与最低 Rust 检查）通过。
+- [ ] 默认构建目录和自定义 `CARGO_TARGET_DIR` 均能定位当前版本的新安装包，旧包不会被复用。
 - [ ] `pwsh scripts/prepare-release.ps1 -Tag v0.1.0`，校验安装包与 SHA256SUMS。
 
 ## 干净 Windows 安装验收
@@ -29,7 +31,7 @@ Author: jaswtao · Date: 2026-10-20
 
 ## 发布操作
 
-- [ ] 启用 GitHub private vulnerability reporting。
+- [ ] 仓库公开时启用 GitHub private vulnerability reporting，并验证 SECURITY.md 的私密反馈入口可用。
 - [ ] main 分支检查通过；限制发布凭据权限。
 - [ ] 截图仅展示公开示例数据。
 - [ ] 检查 Draft Release 附件、已知限制、未签名说明和校验文件。

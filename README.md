@@ -109,11 +109,13 @@ pnpm build
 
 安装版数据库与 Shell 集成脚本位于 `%APPDATA%\com.orbyte.desktop\`；截图缓存位于 `%LOCALAPPDATA%\com.orbyte.desktop\clipboard-images\`。开发版使用 com.orbyte.desktop.dev 标识和独立目录。窗口状态还可能保存在应用的本地配置目录。删除这些目录前先备份，不假设卸载会清除用户数据。
 
+终端诊断日志位于应用数据目录的 `logs/terminal.log`，记录会话状态及输出传输元数据，不记录终端正文、键盘输入或剪贴板。单文件达到 2 MiB 时轮转，最多保留三份。详情见 [终端恢复与诊断](doc/terminal-recovery.md)。
+
 Orbyte 本身未配置遥测或应用自动更新服务。Shell 命令、Git 与第三方 AI CLI 按各自行为访问网络；WebView2 引导安装可能下载微软运行时。导出内容和截图可能包含私人信息，请勿直接提交至 Issue。
 
 ## 发布与许可证
 
-从已提交、工作区干净的源码执行 `pwsh scripts/prepare-release.ps1 -Tag v0.1.0`，可生成安装包、源码归档、MPL 对应源码及 SHA-256 清单。GitHub 标签发布流程只创建草稿预发布版，完成原生验收后再人工公开。
+从已提交、工作区干净的源码创建指向当前提交的标签（如 `git tag v0.1.0`），再执行 `pwsh scripts/prepare-release.ps1 -Tag v0.1.0`，可生成安装包、源码归档、MPL 对应源码及 SHA-256 清单。脚本按 Cargo 实际构建目录查找当前版本的安装包，支持 `CARGO_TARGET_DIR`。GitHub 标签发布流程须先通过完整 CI（含历史泄密扫描及最低 Rust 版本检查），只创建草稿预发布版，完成原生验收后再人工公开。
 
 项目自有内容采用 [MIT](LICENSE)，版权声明为 **Copyright (c) 2026 jaswtao**；已有源码作者注释保留。
 

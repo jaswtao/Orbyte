@@ -12,7 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
   build:
+    needs: checks
     runs-on: windows-2022
     timeout-minutes: 60
     defaults:
@@ -34,15 +37,12 @@ jobs:
           version: 12.8.1
       - run: pnpm install --frozen-lockfile
       - run: rustup toolchain install 1.95.0 --profile minimal --no-self-update
-      - run: cargo install cargo-audit --version 0.22.2 --locked
       - name: Validate release
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           python scripts/check-release.py --tag $env:RELEASE_TAG
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $scanner = & ./scripts/install-gitleaks.ps1
-          ./scripts/release-check.ps1 -Gitleaks $scanner
       - name: Build release artifacts
         env:
           RELEASE_TAG: ${{ github.ref_name }}

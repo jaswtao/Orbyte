@@ -4,7 +4,7 @@ The latest published release is supported. Older preview builds may require an u
 
 请勿在公开 Issue 中提交漏洞利用细节、密钥、终端输出或私人项目文件。
 
-Use [GitHub private vulnerability reporting](https://github.com/jaswtao/Orbyte/security/advisories/new) to report a vulnerability. The maintainer must enable private reporting before the repository is made public. If the link is unavailable, do not post sensitive details publicly.
+Use [GitHub private vulnerability reporting](https://github.com/jaswtao/Orbyte/security/advisories/new) to report a vulnerability. When making the repository public, the maintainer must enable private reporting and verify that this link accepts reports. If the link is unavailable, do not post sensitive details publicly.
 
 Include the affected version, Windows version, reproduction steps, impact and a minimal sanitized example. No fixed response time is promised.
 

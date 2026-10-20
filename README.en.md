@@ -36,7 +36,7 @@ $scanner = & ./scripts/install-gitleaks.ps1
 pnpm build
 ```
 
-The unsigned NSIS installer is written to target/release/bundle/nsis/. To produce source archives, third-party MPL sources and checksums from a clean reviewed commit, run `./scripts/prepare-release.ps1 -Tag v0.1.0`.
+The unsigned NSIS installer is written to target/release/bundle/nsis/ by default. To produce source archives, third-party MPL sources and checksums from a clean reviewed commit, create a tag pointing to that commit (for example, `git tag v0.1.0`), then run `./scripts/prepare-release.ps1 -Tag v0.1.0`. Packaging resolves the actual Cargo target directory, including `CARGO_TARGET_DIR`, and requires a newly built installer for the requested version. Tag releases must pass the full CI workflow, including commit history scanning and the minimum Rust version check, before packaging a draft prerelease.
 
 ## Features and limitations
 
@@ -55,6 +55,8 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/. To produc
 The release stores its database and shell integration scripts under `%APPDATA%\com.orbyte.desktop\`; clipboard images are under `%LOCALAPPDATA%\com.orbyte.desktop\clipboard-images\`. Development uses the `com.orbyte.desktop.dev` identifier. Window state may also be stored in the app's local configuration directory. Back up data before deleting application directories; do not assume uninstall removes them.
 
 Orbyte itself has no configured telemetry or application update service. Shell commands, Git and third-party CLIs may access the network according to their own behavior. WebView2 installation may download Microsoft runtime components. Terminal exports and screenshots can contain sensitive data.
+
+Terminal diagnostics are stored in `logs/terminal.log` under the application data directory. Logs contain session state and output transport metadata, excluding terminal text, keyboard input and clipboard content. Files rotate at 2 MiB, keeping at most three files.
 
 ## License
 
