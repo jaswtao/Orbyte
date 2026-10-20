@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-terminal-configs"
+description = "Enables the list_terminal_configs command without any pre-configured scope."
+commands.allow = ["list_terminal_configs"]
+
+[[permission]]
+identifier = "deny-list-terminal-configs"
+description = "Denies the list_terminal_configs command without any pre-configured scope."
+commands.deny = ["list_terminal_configs"]

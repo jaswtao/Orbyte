@@ -1,0 +1,429 @@
+[
+  {
+    "id": "projectSearch",
+    "label": "项目搜索",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "KeyF",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "projectPrevious",
+    "label": "上一个项目（原始顺序）",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowLeft",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "projectNext",
+    "label": "下一个项目（原始顺序）",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowRight",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "projectUp",
+    "label": "上一个项目（侧栏顺序）",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowUp",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "projectDown",
+    "label": "下一个项目（侧栏顺序）",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowDown",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "sidebarNarrow",
+    "label": "侧栏变窄",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowLeft",
+        "ctrlKey": true,
+        "altKey": true,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "sidebarWiden",
+    "label": "侧栏变宽",
+    "scope": "project",
+    "defaults": [
+      {
+        "code": "ArrowRight",
+        "ctrlKey": true,
+        "altKey": true,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "newTerminal",
+    "label": "新建终端",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyT",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "closePane",
+    "label": "关闭当前窗格",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyW",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "closeTab",
+    "label": "关闭当前页签",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "F4",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "splitHorizontal",
+    "label": "左右分屏",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyH",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "splitVertical",
+    "label": "上下分屏",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyJ",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "quickOpen",
+    "label": "快速打开文件",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyP",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "previousTab",
+    "label": "上一个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Tab",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      },
+      {
+        "code": "ArrowLeft",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      },
+      {
+        "code": "PageUp",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "nextTab",
+    "label": "下一个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Tab",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": false
+      },
+      {
+        "code": "ArrowRight",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      },
+      {
+        "code": "PageDown",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab1",
+    "label": "打开第 1 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit1",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab2",
+    "label": "打开第 2 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit2",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab3",
+    "label": "打开第 3 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit3",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab4",
+    "label": "打开第 4 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit4",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab5",
+    "label": "打开第 5 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit5",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab6",
+    "label": "打开第 6 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit6",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab7",
+    "label": "打开第 7 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit7",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab8",
+    "label": "打开第 8 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit8",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "tab9",
+    "label": "打开第 9 个 Tab",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "Digit9",
+        "ctrlKey": false,
+        "altKey": true,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "terminalCopy",
+    "label": "复制选区",
+    "scope": "terminal",
+    "defaults": [
+      {
+        "code": "KeyC",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "terminalPaste",
+    "label": "仅粘贴文本",
+    "scope": "terminal",
+    "defaults": [
+      {
+        "code": "KeyV",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "terminalPasteAuto",
+    "label": "粘贴文本或截图路径",
+    "scope": "terminal",
+    "defaults": [
+      {
+        "code": "KeyV",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "editorSave",
+    "label": "保存文件",
+    "scope": "editor",
+    "defaults": [
+      {
+        "code": "KeyS",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": false
+      },
+      {
+        "code": "KeyS",
+        "ctrlKey": false,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": true
+      }
+    ]
+  }
+]

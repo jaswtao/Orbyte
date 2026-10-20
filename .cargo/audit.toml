@@ -1,0 +1,5 @@
+# Author: jaswtao · Date: 2026-10-14
+[advisories]
+# SQLx 的可选 MySQL 依赖进入锁文件；本项目仅启用 SQLite，Windows 依赖树不包含 rsa。
+# 无修复版本；若启用 MySQL/RSA，必须移除豁免并重新评估。依据及复查命令见 README。
+ignore = ["RUSTSEC-2023-0071"]

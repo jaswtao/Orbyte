@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-terminal"
+description = "Enables the start_terminal command without any pre-configured scope."
+commands.allow = ["start_terminal"]
+
+[[permission]]
+identifier = "deny-start-terminal"
+description = "Denies the start_terminal command without any pre-configured scope."
+commands.deny = ["start_terminal"]

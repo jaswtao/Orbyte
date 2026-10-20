@@ -1,0 +1,320 @@
+/* Author: jaswtao · Date: 2026-10-13 */
+.workspace-deck, .project-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 5px 6px;
+  scrollbar-width: thin;
+}
+
+.workspace-tab {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  height: 32px;
+}
+
+.workspace-tab.active {
+  background: var(--elevated);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 3px #00000008;
+}
+
+.workspace-tab button, .pane-heading button {
+  background: transparent;
+  color: inherit;
+  border: 0;
+  border-radius: 5px;
+}
+
+.workspace-tab button[role='tab'] {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.workspace-tab > button:last-child {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  margin-right: 3px;
+  font-size: 16px;
+}
+
+.workspace-tab button:hover, .pane-heading button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.workspace-tab-add {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: 7px;
+  width: 28px;
+  height: 28px;
+}
+
+.workspace-tab-add:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.tab-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  padding: 8px;
+}
+
+.split-pane, .split-child {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.split-pane.vertical {
+  flex-direction: column;
+}
+
+.split-handle {
+  flex: 0 0 6px;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  border-radius: 3px;
+}
+
+.vertical > .split-handle {
+  cursor: row-resize;
+}
+
+.split-handle:hover, .split-handle:focus-visible {
+  background: var(--selection);
+  outline: 1px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.terminal-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--content);
+}
+
+.terminal-pane.focused {
+  border-color: var(--accent);
+}
+
+.pane-heading {
+  min-height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pane-heading span {
+  flex: 1;
+  min-width: 0;
+  padding-left: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-heading button {
+  padding: 3px 6px;
+  flex-shrink: 0;
+}
+
+.terminal-mount {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--content);
+  padding: 8px;
+}
+
+.terminal-host {
+  height: 100%;
+  width: 100%;
+}
+
+.pane-status {
+  flex-shrink: 0;
+  min-height: 24px;
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--content);
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminal-notice {
+  font-size: 11px;
+  margin: 0;
+  padding: 6px 10px;
+  color: var(--warning);
+  background: var(--surface);
+}
+
+.terminal-notice button {
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin-left: 6px;
+}
+
+.workspace-message, .editor-pending {
+  padding: 24px;
+  color: var(--muted);
+}
+
+.workspace-message {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.workspace-message h2 {
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 4px 0 0;
+}
+
+.workspace-message p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.editor-mount {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.editor-pane .cm-editor {
+  height: 100%;
+}
+
+.pane-status select {
+  background: var(--content);
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+.file-tree {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 0;
+}
+
+.file-rows {
+  overflow: auto;
+  min-height: 0;
+}
+
+.file-rows button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  padding: 7px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-rows button:hover {
+  background: var(--hover);
+}
+
+.file-rows button.selected {
+  background: var(--selection);
+}
+
+.quick-results {
+  max-height: 45vh;
+  margin-top: 10px;
+}
+
+.search-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 12px;
+  color: var(--muted);
+}
+
+.search-empty p {
+  margin: 4px 0 0;
+  color: var(--text);
+}

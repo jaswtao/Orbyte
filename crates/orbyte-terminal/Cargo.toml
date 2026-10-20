@@ -1,0 +1,21 @@
+[package]
+name = "orbyte-terminal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+orbyte-platform.workspace = true
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+portable-pty.workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { workspace = true, features = ["Win32_UI_Input_KeyboardAndMouse"] }

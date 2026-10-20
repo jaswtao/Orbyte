@@ -1,0 +1,48 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/orbyte-git",
+    "crates/orbyte-files",
+    "crates/orbyte-core",
+    "crates/orbyte-storage",
+    "apps/desktop/src-tauri",
+    "crates/orbyte-platform",
+    "crates/orbyte-terminal",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["jaswtao"]
+rust-version = "1.90"
+license = "MIT"
+repository = "https://github.com/jaswtao/Orbyte"
+
+[workspace.dependencies]
+orbyte-git = { path = "crates/orbyte-git" }
+orbyte-files = { path = "crates/orbyte-files" }
+orbyte-core = { path = "crates/orbyte-core" }
+orbyte-storage = { path = "crates/orbyte-storage" }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+dunce = "1"
+orbyte-platform = { path = "crates/orbyte-platform" }
+orbyte-terminal = { path = "crates/orbyte-terminal" }
+
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+portable-pty = "0.9"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_UI_Accessibility",
+    "Win32_UI_WindowsAndMessaging",
+] }
+tauri = { version = "2", features = [] }
+tauri-build = { version = "2", features = [] }

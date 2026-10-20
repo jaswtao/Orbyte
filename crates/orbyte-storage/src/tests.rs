@@ -1,0 +1,325 @@
+//! 持久化、事务与约束回归测试。
+//! Author: jaswtao
+//! Date: 2026-10-12
+
+use super::*;
+use serde_json::json;
+
+fn input(path: &str, group_id: Option<&str>) -> ProjectInput {
+    ProjectInput {
+        name: "财务项目".into(),
+        path: path.into(),
+        group_id: group_id.map(str::to_owned),
+        favorite: true,
+    }
+}
+
+async fn memory() -> Database {
+    Database::open(Path::new(":memory:")).await.unwrap()
+}
+
+#[tokio::test]
+async fn launch_preset_migration_upgrades_existing_database() {
+    let directory = std::env::temp_dir().join(format!("orbyte-migration-{}", Uuid::new_v4()));
+    let migrations = directory.join("migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    std::fs::write(migrations.join("0001_initial.sql"), include_str!("../migrations/0001_initial.sql")).unwrap();
+    let path = directory.join("old.db");
+    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true)).await.unwrap();
+    sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
+    sqlx::raw_sql("INSERT INTO t_project(id,name,path) VALUES ('p','old','C:\\old'); INSERT INTO t_workspace(id,project_id) VALUES ('w','p'); INSERT INTO t_terminal_config(id,workspace_id,name,shell_type,cwd) VALUES ('t','w','CMD','cmd','');").execute(&pool).await.unwrap();
+    pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    assert_eq!(db.list_terminal_configs("w").await.unwrap()[0].launch_preset, None);
+    let config = db.create_terminal_config_with_preset("p", "w", "Codex", "powershell", "", Some("codex")).await.unwrap();
+    assert_eq!(db.terminal_config_with_path(&config.id).await.unwrap().0.launch_preset.as_deref(), Some("codex"));
+    assert!(db.create_terminal_config_with_preset("p", "w", "bad", "powershell", "", Some("arbitrary")).await.is_err());
+    assert!(sqlx::query("UPDATE t_terminal_config SET launch_preset = 'arbitrary' WHERE id = 't'").execute(&db.pool).await.is_err());
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn terminal_configs_validate_ownership_paths_and_follow_project_changes() {
+    let db = memory().await;
+    let id = db.create_project(input(r"C:\项目 A", None)).await.unwrap();
+    let other = db.create_project(input(r"C:\项目 B", None)).await.unwrap();
+    let projects = db.list_projects().await.unwrap();
+    let workspace = &projects.iter().find(|p| p.id == id).unwrap().workspace_id;
+    assert!(db
+        .create_terminal_config(&other, workspace, "CMD", "cmd", "")
+        .await
+        .is_err());
+    assert!(db
+        .create_terminal_config(&id, workspace, "CMD", "bash", "")
+        .await
+        .is_err());
+    assert!(db
+        .create_terminal_config(&id, workspace, "CMD", "cmd", "../escape")
+        .await
+        .is_err());
+    assert!(db
+        .list_terminal_configs(workspace)
+        .await
+        .unwrap()
+        .is_empty());
+    let config = db
+        .create_terminal_config(&id, workspace, "CMD", "cmd", "src/中文 空格")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.list_terminal_configs(workspace).await.unwrap(),
+        vec![config.clone()]
+    );
+    assert_eq!(
+        db.terminal_config_with_path(&config.id).await.unwrap().1,
+        r"C:\项目 A"
+    );
+    assert_eq!(
+        db.workspaces_of_configs(&[config.id.clone(), "missing".into()])
+            .await
+            .unwrap(),
+        vec![workspace.clone()]
+    );
+    assert!(db.workspaces_of_configs(&[]).await.unwrap().is_empty());
+    db.update_project(&id, input(r"C:\移动后的项目", None))
+        .await
+        .unwrap();
+    assert_eq!(
+        db.terminal_config_with_path(&config.id).await.unwrap().1,
+        r"C:\移动后的项目"
+    );
+    assert_eq!(
+        db.list_project_terminal_configs(&id).await.unwrap(),
+        vec![config.clone()]
+    );
+    assert!(db
+        .list_project_terminal_configs(&other)
+        .await
+        .unwrap()
+        .is_empty());
+    db.delete_terminal_config(&config.id).await.unwrap();
+    assert!(db.terminal_config_with_path(&config.id).await.is_err());
+    assert!(db.delete_terminal_config(&config.id).await.is_err());
+    assert_eq!(db.list_projects().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn terminal_configs_survive_database_reopen() {
+    let path = std::env::temp_dir().join(format!("orbyte-terminal-{}.db", Uuid::new_v4()));
+    let db = Database::open(&path).await.unwrap();
+    let id = db.create_project(input(r"C:\项目", None)).await.unwrap();
+    let workspace = db.list_projects().await.unwrap()[0].workspace_id.clone();
+    let config = db
+        .create_terminal_config(&id, &workspace, "PowerShell", "powershell", "")
+        .await
+        .unwrap();
+    db.pool.close().await;
+    let reopened = Database::open(&path).await.unwrap();
+    assert_eq!(
+        reopened.list_terminal_configs(&workspace).await.unwrap(),
+        vec![config]
+    );
+    db.delete_project(&id).await.unwrap_err(); // 已关闭的连接不可继续写入。
+    reopened.delete_project(&id).await.unwrap();
+    assert!(reopened
+        .list_terminal_configs(&workspace)
+        .await
+        .unwrap()
+        .is_empty());
+    reopened.pool.close().await;
+    std::fs::remove_file(path).unwrap();
+}
+
+#[tokio::test]
+async fn creates_default_workspace_rejects_duplicates_and_rolls_back_invalid_group() {
+    let db = memory().await;
+    let id = db.create_project(input(r"C:\项目 A", None)).await.unwrap();
+    let projects = db.list_projects().await.unwrap();
+    assert_eq!(projects[0].id, id);
+    assert!(!projects[0].workspace_id.is_empty());
+    assert!(db
+        .create_project(input(r"c:\项目 a", None))
+        .await
+        .unwrap_err()
+        .contains("重复"));
+    assert!(db
+        .create_project(input(r"C:\项目 B", Some("missing")))
+        .await
+        .is_err());
+    assert_eq!(db.list_projects().await.unwrap().len(), 1);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t_workspace")
+        .fetch_one(&db.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn deleting_active_project_cascades_and_recovers_selection() {
+    let db = memory().await;
+    let a = db.create_project(input(r"C:\A", None)).await.unwrap();
+    let b = db.create_project(input(r"C:\B", None)).await.unwrap();
+    let workspace = db.list_projects().await.unwrap()[0].workspace_id.clone();
+    sqlx::query("INSERT INTO t_terminal_config(id, workspace_id, name, shell_type) VALUES ('terminal', ?, 'CMD', 'cmd')").bind(&workspace).execute(&db.pool).await.unwrap();
+    sqlx::query("INSERT INTO t_workspace_layout(id, workspace_id, schema_version, layout_json) VALUES ('layout', ?, 1, '{}')").bind(&workspace).execute(&db.pool).await.unwrap();
+    db.set_setting("active_project_id", json!(a)).await.unwrap();
+    db.delete_project(&a).await.unwrap();
+    let orphan_count: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM t_terminal_config) + (SELECT COUNT(*) FROM t_workspace_layout)").fetch_one(&db.pool).await.unwrap();
+    assert_eq!(orphan_count, 0);
+    assert_eq!(
+        db.get_settings().await.unwrap()["active_project_id"],
+        json!(b)
+    );
+    db.delete_project(&b).await.unwrap();
+    assert!(db.get_settings().await.unwrap()["active_project_id"].is_null());
+    assert!(db
+        .set_setting("active_project_id", json!("missing"))
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn group_restrictions_and_atomic_cross_group_sorting() {
+    let db = memory().await;
+    let g1 = db.create_group("财务").await.unwrap();
+    let g2 = db.create_group("开发").await.unwrap();
+    let a = db.create_project(input(r"C:\A", Some(&g1))).await.unwrap();
+    let b = db.create_project(input(r"C:\B", None)).await.unwrap();
+    assert!(db.delete_group(&g1).await.is_err());
+    assert!(db
+        .reorder_projects(vec![(a.clone(), None), (a.clone(), None)])
+        .await
+        .is_err());
+    assert!(db.reorder_projects(vec![(a.clone(), None)]).await.is_err());
+    assert!(db
+        .reorder_projects(vec![(b.clone(), Some("missing".into())), (a.clone(), None)])
+        .await
+        .is_err());
+    assert_eq!(
+        db.list_projects().await.unwrap()[0].group_id,
+        Some(g1.clone())
+    );
+    db.reorder_projects(vec![
+        (b.clone(), Some(g2.clone())),
+        (a.clone(), Some(g2.clone())),
+    ])
+    .await
+    .unwrap();
+    let ordered = db.list_projects().await.unwrap();
+    assert_eq!(ordered[0].id, b);
+    assert_eq!(ordered[1].id, a);
+    assert!(ordered.iter().all(|p| p.group_id == Some(g2.clone())));
+    db.update_group(&g2, "产品").await.unwrap();
+    db.reorder_groups(vec![g2.clone(), g1.clone()])
+        .await
+        .unwrap();
+    assert_eq!(db.list_groups().await.unwrap()[0].name, "产品");
+    db.delete_group(&g1).await.unwrap();
+}
+
+#[tokio::test]
+async fn settings_batch_is_atomic_and_preserves_active_project_validation() {
+    use std::collections::BTreeMap;
+    let db = memory().await;
+    let before = db.get_settings().await.unwrap();
+    assert_eq!(before["shortcuts"], json!({}));
+    assert!(db.set_settings(BTreeMap::from([
+        ("theme".into(), json!("light")),
+        ("shortcuts".into(), json!({"unknown": []})),
+    ])).await.is_err());
+    assert_eq!(db.get_settings().await.unwrap(), before);
+    assert!(db.set_settings(BTreeMap::from([
+        ("theme".into(), json!("light")),
+        ("font_size".into(), json!(0)),
+    ])).await.is_err());
+    assert_eq!(db.get_settings().await.unwrap(), before);
+    assert!(db.set_settings(BTreeMap::from([
+        ("theme".into(), json!("light")),
+        ("active_project_id".into(), json!("missing")),
+    ])).await.is_err());
+    assert_eq!(db.get_settings().await.unwrap(), before);
+    db.set_settings(BTreeMap::from([
+        ("theme".into(), json!("light")),
+        ("font_size".into(), json!(20)),
+        ("scrollback".into(), json!(1000)),
+    ])).await.unwrap();
+    let after = db.get_settings().await.unwrap();
+    assert_eq!(after["theme"], json!("light"));
+    assert_eq!(after["font_size"], json!(20));
+    assert_eq!(after["scrollback"], json!(1000));
+    assert_eq!(after["active_project_id"], before["active_project_id"]);
+}
+
+#[tokio::test]
+async fn settings_and_projects_survive_reopening() {
+    let path = std::env::temp_dir().join(format!("orbyte-test-{}.db", Uuid::new_v4()));
+    let db = Database::open(&path).await.unwrap();
+    assert_eq!(db.get_settings().await.unwrap()["confirm_close_terminal"], json!(true));
+    db.set_setting("confirm_close_terminal", json!(false)).await.unwrap();
+    let group = db.create_group("财务项目").await.unwrap();
+    let a = db
+        .create_project(input(r"C:\财务 A", Some(&group)))
+        .await
+        .unwrap();
+    let b = db
+        .create_project(input(r"C:\财务 B", Some(&group)))
+        .await
+        .unwrap();
+    db.update_project(
+        &a,
+        ProjectInput {
+            name: "财务项目 A".into(),
+            favorite: false,
+            ..input(r"C:\财务 A", Some(&group))
+        },
+    )
+    .await
+    .unwrap();
+    db.reorder_projects(vec![
+        (b.clone(), Some(group.clone())),
+        (a.clone(), Some(group.clone())),
+    ])
+    .await
+    .unwrap();
+    db.set_setting("active_project_id", json!(b)).await.unwrap();
+    db.set_setting("font_size", json!(18)).await.unwrap();
+    db.set_setting("theme", json!("light")).await.unwrap();
+    let shortcuts = json!({"newTerminal": [], "terminalPasteAuto": [{"code":"KeyY","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false}]});
+    db.set_setting("shortcuts", shortcuts.clone()).await.unwrap();
+    db.pool.close().await;
+    let reopened = Database::open(&path).await.unwrap();
+    assert_eq!(reopened.list_groups().await.unwrap()[0].name, "财务项目");
+    let projects = reopened.list_projects().await.unwrap();
+    assert_eq!(projects[0].id, b);
+    assert_eq!(projects[1].name, "财务项目 A");
+    assert!(!projects[1].favorite);
+    let settings = reopened.get_settings().await.unwrap();
+    assert_eq!(settings["active_project_id"], json!(b));
+    assert_eq!(settings["font_size"], json!(18));
+    assert_eq!(settings["confirm_close_terminal"], json!(false));
+    assert_eq!(settings["theme"], json!("light"));
+    assert_eq!(settings["shortcuts"], shortcuts);
+    reopened.set_setting("shortcuts", json!({})).await.unwrap();
+    assert_eq!(reopened.get_settings().await.unwrap()["shortcuts"], json!({}));
+    reopened.pool.close().await;
+    std::fs::remove_file(path).unwrap();
+}
+
+#[tokio::test]
+async fn invalid_settings_and_stale_active_project() {
+    let db = memory().await;
+    assert!(db.set_setting("unknown", json!("x")).await.is_err());
+    assert!(db.set_setting("font_size", json!("18")).await.is_err());
+    let id = db.create_project(input(r"C:\A", None)).await.unwrap();
+    sqlx::query(
+        "INSERT INTO t_app_setting(key, value_json) VALUES ('active_project_id', '\"missing\"')",
+    )
+    .execute(&db.pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        db.get_settings().await.unwrap()["active_project_id"],
+        json!(id)
+    );
+}

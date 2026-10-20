@@ -1,0 +1,105 @@
+{
+  "cargo/alloc-stdlib@0.3.0": {
+    "files": [
+      "doc/third-party/cargo_alloc-stdlib-0.3.0/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE"
+    ],
+    "note": ""
+  },
+  "cargo/defmt-parser@1.0.0": {
+    "files": [
+      "doc/third-party/cargo_defmt-parser-1.0.0/LICENSE-1.txt",
+      "doc/third-party/cargo_defmt-parser-1.0.0/LICENSE-2.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT",
+      "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE"
+    ],
+    "note": ""
+  },
+  "cargo/selectors@0.38.0": {
+    "files": [
+      "doc/third-party/cargo_selectors-0.38.0/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://www.mozilla.org/media/MPL/2.0/index.txt"
+    ],
+    "note": "The crate lib.rs declares MPL-2.0; canonical license text is included because the published crate omits a standalone license file."
+  },
+  "cargo/tauri-plugin@2.7.1": {
+    "files": [
+      "doc/third-party/cargo_tauri-plugin-2.7.1/LICENSE-1.txt",
+      "doc/third-party/cargo_tauri-plugin-2.7.1/LICENSE-2.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT",
+      "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0"
+    ],
+    "note": ""
+  },
+  "cargo/webview2-com@0.39.1": {
+    "files": [
+      "doc/third-party/cargo_webview2-com-0.39.1/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+    ],
+    "note": ""
+  },
+  "cargo/webview2-com-macros@0.8.1": {
+    "files": [
+      "doc/third-party/cargo_webview2-com-macros-0.8.1/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE"
+    ],
+    "note": ""
+  },
+  "cargo/webview2-com-sys@0.39.1": {
+    "files": [
+      "doc/third-party/cargo_webview2-com-sys-0.39.1/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+    ],
+    "note": ""
+  },
+  "npm/css-render@0.15.14": {
+    "files": [
+      "doc/third-party/npm_css-render-0.15.14/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+    ],
+    "note": ""
+  },
+  "npm/@css-render/plugin-bem@0.15.14": {
+    "files": [
+      "doc/third-party/npm_-css-render_plugin-bem-0.15.14/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+    ],
+    "note": ""
+  },
+  "npm/@css-render/vue3-ssr@0.15.14": {
+    "files": [
+      "doc/third-party/npm_-css-render_vue3-ssr-0.15.14/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+    ],
+    "note": ""
+  },
+  "npm/vdirs@0.1.8": {
+    "files": [
+      "doc/third-party/npm_vdirs-0.1.8/LICENSE-MIT.txt"
+    ],
+    "sources": [
+      "https://registry.npmjs.org/vdirs/0.1.8"
+    ],
+    "note": "The published package declares MIT and author 07akioni but omits a standalone license. Standard MIT terms are reproduced with the published author attribution; no copyright year was supplied."
+  }
+}

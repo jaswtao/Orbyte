@@ -1,0 +1,25 @@
+{
+  "name": "orbyte",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter orbyte-desktop tauri:dev",
+    "build": "pnpm run licenses:generate && pnpm --filter orbyte-desktop tauri build -- --locked",
+    "licenses:generate": "python scripts/generate-licenses.py"
+  },
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "jaswtao",
+  "repository": {
+    "url": "https://github.com/jaswtao/Orbyte.git",
+    "type": "git"
+  },
+  "homepage": "https://github.com/jaswtao/Orbyte#readme",
+  "bugs": {
+    "url": "https://github.com/jaswtao/Orbyte/issues"
+  },
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": "24.15.x",
+    "pnpm": "12.8.1"
+  }
+}

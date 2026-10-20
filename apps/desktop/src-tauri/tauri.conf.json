@@ -1,0 +1,51 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Orbyte",
+  "version": "0.1.0",
+  "identifier": "com.orbyte.desktop",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Orbyte",
+        "visible": false,
+        "decorations": false,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 500,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "license": "MIT",
+    "licenseFile": "../../../LICENSE",
+    "publisher": "jaswtao",
+    "homepage": "https://github.com/jaswtao/Orbyte",
+    "resources": {
+      "../../../THIRD_PARTY_LICENSES.json": "licenses/THIRD_PARTY_LICENSES.json",
+      "../../../LICENSE": "licenses/LICENSE",
+      "../../../THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt"
+    }
+  }
+}

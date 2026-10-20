@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-terminals-have-running-tasks"
+description = "Enables the terminals_have_running_tasks command without any pre-configured scope."
+commands.allow = ["terminals_have_running_tasks"]
+
+[[permission]]
+identifier = "deny-terminals-have-running-tasks"
+description = "Denies the terminals_have_running_tasks command without any pre-configured scope."
+commands.deny = ["terminals_have_running_tasks"]

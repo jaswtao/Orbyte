@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-terminal-output"
+description = "Enables the export_terminal_output command without any pre-configured scope."
+commands.allow = ["export_terminal_output"]
+
+[[permission]]
+identifier = "deny-export-terminal-output"
+description = "Denies the export_terminal_output command without any pre-configured scope."
+commands.deny = ["export_terminal_output"]

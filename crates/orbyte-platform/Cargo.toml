@@ -1,0 +1,18 @@
+[package]
+name = "orbyte-platform"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+orbyte-core.workspace = true
+dunce.workspace = true
+serde.workspace = true
+log.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

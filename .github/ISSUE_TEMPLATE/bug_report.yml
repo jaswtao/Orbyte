@@ -1,0 +1,22 @@
+name: Bug report / 缺陷反馈
+description: Report a reproducible problem without private project data.
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Orbyte version / 版本
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Windows version and shell / 系统与 Shell
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps, expected and actual behavior / 复现步骤与结果
+      description: Remove personal paths, tokens and private terminal output.
+    validations:
+      required: true

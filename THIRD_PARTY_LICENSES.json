@@ -1,0 +1,2821 @@
+[
+  {
+    "ecosystem": "cargo",
+    "name": "adler2",
+    "version": "2.0.1",
+    "license": "0BSD OR MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/adler2/2.0.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "aho-corasick",
+    "version": "1.1.5",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/aho-corasick/1.1.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "alloc-no-stdlib",
+    "version": "3.0.0",
+    "license": "BSD-3-Clause",
+    "source": "https://crates.io/crates/alloc-no-stdlib/3.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "alloc-stdlib",
+    "version": "0.3.0",
+    "license": "BSD-3-Clause",
+    "source": "https://crates.io/crates/alloc-stdlib/0.3.0",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "allocator-api2",
+    "version": "0.2.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/allocator-api2/0.2.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "anyhow",
+    "version": "1.0.104",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/anyhow/1.0.104"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "atoi",
+    "version": "2.0.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/atoi/2.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "autocfg",
+    "version": "1.5.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/autocfg/1.5.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "base64",
+    "version": "0.22.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/base64/0.22.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "base64",
+    "version": "0.23.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/base64/0.23.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bit-set",
+    "version": "0.8.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/bit-set/0.8.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bit-vec",
+    "version": "0.8.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/bit-vec/0.8.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bitflags",
+    "version": "1.3.2",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/bitflags/1.3.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bitflags",
+    "version": "2.13.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/bitflags/2.13.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "block-buffer",
+    "version": "0.10.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/block-buffer/0.10.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "brotli",
+    "version": "9.0.0",
+    "license": "BSD-3-Clause AND MIT",
+    "source": "https://crates.io/crates/brotli/9.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "brotli-decompressor",
+    "version": "6.0.1",
+    "license": "BSD-3-Clause/MIT",
+    "source": "https://crates.io/crates/brotli-decompressor/6.0.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bstr",
+    "version": "1.13.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/bstr/1.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "byteorder",
+    "version": "1.5.0",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/byteorder/1.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "bytes",
+    "version": "1.12.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/bytes/1.12.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "camino",
+    "version": "1.2.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/camino/1.2.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cargo-platform",
+    "version": "0.1.9",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/cargo-platform/0.1.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cargo_metadata",
+    "version": "0.19.2",
+    "license": "MIT",
+    "source": "https://crates.io/crates/cargo_metadata/0.19.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cargo_toml",
+    "version": "1.0.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/cargo_toml/1.0.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cc",
+    "version": "1.6.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/cc/1.6.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cfb",
+    "version": "0.14.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/cfb/0.14.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cfg-if",
+    "version": "1.0.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/cfg-if/1.0.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cfg_aliases",
+    "version": "0.1.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/cfg_aliases/0.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cookie",
+    "version": "0.18.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/cookie/0.18.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "core_detect",
+    "version": "1.0.0",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/core_detect/1.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cpufeatures",
+    "version": "0.2.17",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/cpufeatures/0.2.17"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crc",
+    "version": "3.4.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crc/3.4.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crc-catalog",
+    "version": "2.5.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crc-catalog/2.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crc32fast",
+    "version": "1.5.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crc32fast/1.5.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crossbeam-channel",
+    "version": "0.5.17",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crossbeam-channel/0.5.17"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crossbeam-deque",
+    "version": "0.8.8",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crossbeam-deque/0.8.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crossbeam-epoch",
+    "version": "0.9.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crossbeam-epoch/0.9.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crossbeam-queue",
+    "version": "0.3.14",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crossbeam-queue/0.3.14"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crossbeam-utils",
+    "version": "0.8.23",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crossbeam-utils/0.8.23"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "crypto-common",
+    "version": "0.1.7",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/crypto-common/0.1.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cssparser",
+    "version": "0.37.0",
+    "license": "MPL-2.0",
+    "source": "https://crates.io/crates/cssparser/0.37.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "cssparser-macros",
+    "version": "0.7.1",
+    "license": "MPL-2.0",
+    "source": "https://crates.io/crates/cssparser-macros/0.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ctor",
+    "version": "1.0.13",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/ctor/1.0.13"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "darling",
+    "version": "0.24.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/darling/0.24.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "darling_core",
+    "version": "0.24.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/darling_core/0.24.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "darling_macro",
+    "version": "0.24.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/darling_macro/0.24.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "deranged",
+    "version": "0.5.8",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/deranged/0.5.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "derive_more",
+    "version": "2.1.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/derive_more/2.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "derive_more-impl",
+    "version": "2.1.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/derive_more-impl/2.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "digest",
+    "version": "0.10.7",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/digest/0.10.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dirs",
+    "version": "7.0.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/dirs/7.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dirs-sys",
+    "version": "0.5.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/dirs-sys/0.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "displaydoc",
+    "version": "0.2.7",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/displaydoc/0.2.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dom_query",
+    "version": "0.28.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/dom_query/0.28.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dotenvy",
+    "version": "0.15.7",
+    "license": "MIT",
+    "source": "https://crates.io/crates/dotenvy/0.15.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "downcast-rs",
+    "version": "1.2.1",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/downcast-rs/1.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dpi",
+    "version": "0.1.2",
+    "license": "Apache-2.0 AND MIT",
+    "source": "https://crates.io/crates/dpi/0.1.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dtoa",
+    "version": "1.0.11",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/dtoa/1.0.11"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dtoa-short",
+    "version": "0.3.5",
+    "license": "MPL-2.0",
+    "source": "https://crates.io/crates/dtoa-short/0.3.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dunce",
+    "version": "1.0.5",
+    "license": "CC0-1.0 OR MIT-0 OR Apache-2.0",
+    "source": "https://crates.io/crates/dunce/1.0.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "dyn-clone",
+    "version": "1.0.20",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/dyn-clone/1.0.20"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "either",
+    "version": "1.19.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/either/1.19.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "embed-resource",
+    "version": "3.0.12",
+    "license": "MIT",
+    "source": "https://crates.io/crates/embed-resource/3.0.12"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "encoding_rs",
+    "version": "0.8.42",
+    "license": "(Apache-2.0 OR MIT) AND BSD-3-Clause",
+    "source": "https://crates.io/crates/encoding_rs/0.8.42"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "equivalent",
+    "version": "1.0.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/equivalent/1.0.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "erased-serde",
+    "version": "0.4.10",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/erased-serde/0.4.10"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "event-listener",
+    "version": "5.4.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/event-listener/5.4.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "fastrand",
+    "version": "2.5.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/fastrand/2.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "fdeflate",
+    "version": "0.3.7",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/fdeflate/0.3.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "filedescriptor",
+    "version": "0.8.3",
+    "license": "MIT",
+    "source": "https://crates.io/crates/filedescriptor/0.8.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "find-msvc-tools",
+    "version": "0.1.14",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/find-msvc-tools/0.1.14"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "flate2",
+    "version": "1.1.10",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/flate2/1.1.10"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "flume",
+    "version": "0.11.1",
+    "license": "Apache-2.0/MIT",
+    "source": "https://crates.io/crates/flume/0.11.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "fnv",
+    "version": "1.0.7",
+    "license": "Apache-2.0 / MIT",
+    "source": "https://crates.io/crates/fnv/1.0.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "foldhash",
+    "version": "0.1.5",
+    "license": "Zlib",
+    "source": "https://crates.io/crates/foldhash/0.1.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "foldhash",
+    "version": "0.2.0",
+    "license": "Zlib",
+    "source": "https://crates.io/crates/foldhash/0.2.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "form_urlencoded",
+    "version": "1.2.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/form_urlencoded/1.2.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-channel",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-channel/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-core",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-core/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-executor",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-executor/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-intrusive",
+    "version": "0.5.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-intrusive/0.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-io",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-io/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-sink",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-sink/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-task",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-task/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "futures-util",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/futures-util/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "generic-array",
+    "version": "0.14.7",
+    "license": "MIT",
+    "source": "https://crates.io/crates/generic-array/0.14.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "getrandom",
+    "version": "0.3.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/getrandom/0.3.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "getrandom",
+    "version": "0.4.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/getrandom/0.4.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "glob",
+    "version": "0.3.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/glob/0.3.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "globset",
+    "version": "0.4.20",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/globset/0.4.20"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hashbrown",
+    "version": "0.12.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/hashbrown/0.12.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hashbrown",
+    "version": "0.15.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/hashbrown/0.15.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hashbrown",
+    "version": "0.17.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/hashbrown/0.17.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hashlink",
+    "version": "0.10.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/hashlink/0.10.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "heck",
+    "version": "0.5.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/heck/0.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "hex",
+    "version": "0.4.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/hex/0.4.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "html5ever",
+    "version": "0.39.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/html5ever/0.39.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "http",
+    "version": "1.5.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/http/1.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ico",
+    "version": "0.5.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/ico/0.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_collections",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_collections/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_locale_core",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_locale_core/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_normalizer",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_normalizer/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_normalizer_data",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_normalizer_data/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_properties",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_properties/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_properties_data",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_properties_data/2.3.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "icu_provider",
+    "version": "2.3.1",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/icu_provider/2.3.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ident_case",
+    "version": "1.0.1",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/ident_case/1.0.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "idna",
+    "version": "1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/idna/1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "idna_adapter",
+    "version": "1.2.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/idna_adapter/1.2.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ignore",
+    "version": "0.4.33",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/ignore/0.4.33"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "indexmap",
+    "version": "1.9.3",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/indexmap/1.9.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "indexmap",
+    "version": "2.14.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/indexmap/2.14.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "infer",
+    "version": "0.22.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/infer/0.22.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "itoa",
+    "version": "1.0.18",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/itoa/1.0.18"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "json-patch",
+    "version": "4.2.0",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/json-patch/4.2.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "jsonptr",
+    "version": "0.7.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/jsonptr/0.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "keyboard-types",
+    "version": "0.8.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/keyboard-types/0.8.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "lazy_static",
+    "version": "1.5.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/lazy_static/1.5.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "libc",
+    "version": "0.2.190",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/libc/0.2.190"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "libsqlite3-sys",
+    "version": "0.30.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/libsqlite3-sys/0.30.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "litemap",
+    "version": "0.8.3",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/litemap/0.8.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "lock_api",
+    "version": "0.4.14",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/lock_api/0.4.14"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "log",
+    "version": "0.4.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/log/0.4.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "markup5ever",
+    "version": "0.39.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/markup5ever/0.39.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "memchr",
+    "version": "2.8.3",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/memchr/2.8.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "mime",
+    "version": "0.3.17",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/mime/0.3.17"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "miniz_oxide",
+    "version": "0.8.9",
+    "license": "MIT OR Zlib OR Apache-2.0",
+    "source": "https://crates.io/crates/miniz_oxide/0.8.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "miniz_oxide",
+    "version": "0.9.1",
+    "license": "MIT OR Zlib OR Apache-2.0",
+    "source": "https://crates.io/crates/miniz_oxide/0.9.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "mio",
+    "version": "1.2.4",
+    "license": "MIT",
+    "source": "https://crates.io/crates/mio/1.2.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "muda",
+    "version": "0.20.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/muda/0.20.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "multiversion_no_op",
+    "version": "1.0.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/multiversion_no_op/1.0.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "new_debug_unreachable",
+    "version": "1.0.6",
+    "license": "MIT",
+    "source": "https://crates.io/crates/new_debug_unreachable/1.0.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "nix",
+    "version": "0.28.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/nix/0.28.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "notify",
+    "version": "8.2.0",
+    "license": "CC0-1.0",
+    "source": "https://crates.io/crates/notify/8.2.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "notify-rust",
+    "version": "4.18.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/notify-rust/4.18.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "notify-types",
+    "version": "2.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/notify-types/2.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "num-conv",
+    "version": "0.2.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/num-conv/0.2.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "num-traits",
+    "version": "0.2.19",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/num-traits/0.2.19"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "once_cell",
+    "version": "1.21.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/once_cell/1.21.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "option-ext",
+    "version": "0.2.0",
+    "license": "MPL-2.0",
+    "source": "https://crates.io/crates/option-ext/0.2.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "parking",
+    "version": "2.2.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/parking/2.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "parking_lot",
+    "version": "0.12.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/parking_lot/0.12.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "parking_lot_core",
+    "version": "0.9.12",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/parking_lot_core/0.9.12"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "percent-encoding",
+    "version": "2.3.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/percent-encoding/2.3.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "phf",
+    "version": "0.13.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/phf/0.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "phf_codegen",
+    "version": "0.13.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/phf_codegen/0.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "phf_generator",
+    "version": "0.13.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/phf_generator/0.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "phf_macros",
+    "version": "0.13.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/phf_macros/0.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "phf_shared",
+    "version": "0.13.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/phf_shared/0.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "pin-project-lite",
+    "version": "0.2.17",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/pin-project-lite/0.2.17"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "pkg-config",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/pkg-config/0.3.34"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "plist",
+    "version": "1.10.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/plist/1.10.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "png",
+    "version": "0.17.16",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/png/0.17.16"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "png",
+    "version": "0.18.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/png/0.18.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "portable-pty",
+    "version": "0.9.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/portable-pty/0.9.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "potential_utf",
+    "version": "0.1.6",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/potential_utf/0.1.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "powerfmt",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/powerfmt/0.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ppv-lite86",
+    "version": "0.2.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/ppv-lite86/0.2.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "precomputed-hash",
+    "version": "0.1.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/precomputed-hash/0.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "proc-macro2",
+    "version": "1.0.107",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/proc-macro2/1.0.107"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "quick-xml",
+    "version": "0.42.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/quick-xml/0.42.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "quote",
+    "version": "1.0.47",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/quote/1.0.47"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rand",
+    "version": "0.9.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/rand/0.9.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rand_chacha",
+    "version": "0.9.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/rand_chacha/0.9.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rand_core",
+    "version": "0.9.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/rand_core/0.9.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "raw-window-handle",
+    "version": "0.6.2",
+    "license": "MIT OR Apache-2.0 OR Zlib",
+    "source": "https://crates.io/crates/raw-window-handle/0.6.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "regex",
+    "version": "1.13.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/regex/1.13.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "regex-automata",
+    "version": "0.4.18",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/regex-automata/0.4.18"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "regex-syntax",
+    "version": "0.8.11",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/regex-syntax/0.8.11"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rfd",
+    "version": "0.16.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/rfd/0.16.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rustc-hash",
+    "version": "2.1.3",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/rustc-hash/2.1.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rustc_version",
+    "version": "0.4.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/rustc_version/0.4.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "rustversion",
+    "version": "1.0.23",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/rustversion/1.0.23"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "ryu",
+    "version": "1.0.23",
+    "license": "Apache-2.0 OR BSL-1.0",
+    "source": "https://crates.io/crates/ryu/1.0.23"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "same-file",
+    "version": "1.0.6",
+    "license": "Unlicense/MIT",
+    "source": "https://crates.io/crates/same-file/1.0.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "schemars",
+    "version": "0.8.22",
+    "license": "MIT",
+    "source": "https://crates.io/crates/schemars/0.8.22"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "schemars_derive",
+    "version": "0.8.22",
+    "license": "MIT",
+    "source": "https://crates.io/crates/schemars_derive/0.8.22"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "scopeguard",
+    "version": "1.2.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/scopeguard/1.2.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "selectors",
+    "version": "0.38.0",
+    "license": "MPL-2.0",
+    "source": "https://crates.io/crates/selectors/0.38.0",
+    "licenseSupplement": {
+      "sources": [
+        "https://www.mozilla.org/media/MPL/2.0/index.txt"
+      ],
+      "note": "The crate lib.rs declares MPL-2.0; canonical license text is included because the published crate omits a standalone license file."
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "semver",
+    "version": "1.0.28",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/semver/1.0.28"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde/1.0.229"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde-untagged",
+    "version": "0.1.9",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde-untagged/0.1.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_core",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_core/1.0.229"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_derive",
+    "version": "1.0.229",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_derive/1.0.229"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_derive_internals",
+    "version": "0.29.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_derive_internals/0.29.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_json",
+    "version": "1.0.151",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_json/1.0.151"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_repr",
+    "version": "0.1.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_repr/0.1.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_spanned",
+    "version": "1.1.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_spanned/1.1.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_urlencoded",
+    "version": "0.7.1",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/serde_urlencoded/0.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_with",
+    "version": "3.24.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_with/3.24.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serde_with_macros",
+    "version": "3.24.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serde_with_macros/3.24.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serial2",
+    "version": "0.2.38",
+    "license": "BSD-2-Clause OR Apache-2.0",
+    "source": "https://crates.io/crates/serial2/0.2.38"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serialize-to-javascript",
+    "version": "0.1.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serialize-to-javascript/0.1.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "serialize-to-javascript-impl",
+    "version": "0.1.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/serialize-to-javascript-impl/0.1.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "servo_arc",
+    "version": "0.4.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/servo_arc/0.4.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sha2",
+    "version": "0.10.9",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sha2/0.10.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "shared_library",
+    "version": "0.1.9",
+    "license": "Apache-2.0/MIT",
+    "source": "https://crates.io/crates/shared_library/0.1.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "shell-words",
+    "version": "1.1.1",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/shell-words/1.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "shlex",
+    "version": "2.0.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/shlex/2.0.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "simd-adler32",
+    "version": "0.3.10",
+    "license": "MIT",
+    "source": "https://crates.io/crates/simd-adler32/0.3.10"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "simdutf8",
+    "version": "0.1.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/simdutf8/0.1.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "siphasher",
+    "version": "1.0.4",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/siphasher/1.0.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "slab",
+    "version": "0.4.12",
+    "license": "MIT",
+    "source": "https://crates.io/crates/slab/0.4.12"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "smallvec",
+    "version": "1.16.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/smallvec/1.16.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "socket2",
+    "version": "0.6.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/socket2/0.6.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "softbuffer",
+    "version": "0.4.8",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/softbuffer/0.4.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "spin",
+    "version": "0.9.9",
+    "license": "MIT",
+    "source": "https://crates.io/crates/spin/0.9.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sqlx",
+    "version": "0.8.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sqlx/0.8.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sqlx-core",
+    "version": "0.8.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sqlx-core/0.8.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sqlx-macros",
+    "version": "0.8.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sqlx-macros/0.8.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sqlx-macros-core",
+    "version": "0.8.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sqlx-macros-core/0.8.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "sqlx-sqlite",
+    "version": "0.8.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/sqlx-sqlite/0.8.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "stable_deref_trait",
+    "version": "1.2.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/stable_deref_trait/1.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "string_cache",
+    "version": "0.9.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/string_cache/0.9.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "string_cache_codegen",
+    "version": "0.6.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/string_cache_codegen/0.6.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "strsim",
+    "version": "0.11.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/strsim/0.11.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "syn",
+    "version": "2.0.119",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/syn/2.0.119"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "syn",
+    "version": "3.0.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/syn/3.0.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "synstructure",
+    "version": "0.14.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/synstructure/0.14.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tao",
+    "version": "0.37.1",
+    "license": "Apache-2.0",
+    "source": "https://crates.io/crates/tao/0.37.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri",
+    "version": "2.12.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri/2.12.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-build",
+    "version": "2.7.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-build/2.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-codegen",
+    "version": "2.7.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-codegen/2.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-macros",
+    "version": "2.7.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-macros/2.7.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin",
+    "version": "2.7.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin/2.7.1",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT",
+        "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-dialog",
+    "version": "2.8.2",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin-dialog/2.8.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-fs",
+    "version": "2.7.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin-fs/2.7.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-notification",
+    "version": "2.6.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin-notification/2.6.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-single-instance",
+    "version": "2.5.3",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin-single-instance/2.5.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-plugin-window-state",
+    "version": "2.5.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-plugin-window-state/2.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-runtime",
+    "version": "2.12.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-runtime/2.12.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-runtime-wry",
+    "version": "2.12.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-runtime-wry/2.12.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-utils",
+    "version": "2.10.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/tauri-utils/2.10.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-winres",
+    "version": "0.3.6",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tauri-winres/0.3.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tauri-winrt-notification",
+    "version": "0.8.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/tauri-winrt-notification/0.8.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tendril",
+    "version": "0.5.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/tendril/0.5.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "thiserror",
+    "version": "1.0.69",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/thiserror/1.0.69"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "thiserror",
+    "version": "2.0.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/thiserror/2.0.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "thiserror-impl",
+    "version": "1.0.69",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/thiserror-impl/1.0.69"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "thiserror-impl",
+    "version": "2.0.21",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/thiserror-impl/2.0.21"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "time",
+    "version": "0.3.55",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/time/0.3.55"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "time-core",
+    "version": "0.1.9",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/time-core/0.1.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "time-macros",
+    "version": "0.2.32",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/time-macros/0.2.32"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tinystr",
+    "version": "0.8.4",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/tinystr/0.8.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tokio",
+    "version": "1.53.2",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tokio/1.53.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tokio-macros",
+    "version": "2.7.2",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tokio-macros/2.7.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tokio-stream",
+    "version": "0.1.19",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tokio-stream/0.1.19"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "toml",
+    "version": "1.1.8+spec-1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/toml/1.1.8+spec-1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "toml_datetime",
+    "version": "1.1.2+spec-1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/toml_datetime/1.1.2+spec-1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "toml_parser",
+    "version": "1.1.5+spec-1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/toml_parser/1.1.5+spec-1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "toml_writer",
+    "version": "1.1.3+spec-1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/toml_writer/1.1.3+spec-1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tracing",
+    "version": "0.1.44",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tracing/0.1.44"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tracing-attributes",
+    "version": "0.1.31",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tracing-attributes/0.1.31"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "tracing-core",
+    "version": "0.1.36",
+    "license": "MIT",
+    "source": "https://crates.io/crates/tracing-core/0.1.36"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "trash",
+    "version": "5.2.9",
+    "license": "MIT",
+    "source": "https://crates.io/crates/trash/5.2.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "typeid",
+    "version": "1.0.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/typeid/1.0.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "typenum",
+    "version": "1.20.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/typenum/1.20.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "unicode-ident",
+    "version": "1.0.26",
+    "license": "(MIT OR Apache-2.0) AND Unicode-3.0",
+    "source": "https://crates.io/crates/unicode-ident/1.0.26"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "unicode-segmentation",
+    "version": "1.13.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/unicode-segmentation/1.13.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "url",
+    "version": "2.5.8",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/url/2.5.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "urlpattern",
+    "version": "0.6.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/urlpattern/0.6.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "utf8_iter",
+    "version": "1.0.4",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/utf8_iter/1.0.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "uuid",
+    "version": "1.27.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/uuid/1.27.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "vcpkg",
+    "version": "0.2.15",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/vcpkg/0.2.15"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "version_check",
+    "version": "0.9.5",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/version_check/0.9.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "vswhom",
+    "version": "0.1.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/vswhom/0.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "vswhom-sys",
+    "version": "0.1.3",
+    "license": "MIT",
+    "source": "https://crates.io/crates/vswhom-sys/0.1.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "walkdir",
+    "version": "2.5.0",
+    "license": "Unlicense/MIT",
+    "source": "https://crates.io/crates/walkdir/2.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "web-time",
+    "version": "1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/web-time/1.1.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "web_atoms",
+    "version": "0.2.6",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/web_atoms/0.2.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "webview2-com",
+    "version": "0.39.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/webview2-com/0.39.1",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "webview2-com-macros",
+    "version": "0.8.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/webview2-com-macros/0.8.1",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "webview2-com-sys",
+    "version": "0.39.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/webview2-com-sys/0.39.1",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "winapi",
+    "version": "0.3.9",
+    "license": "MIT/Apache-2.0",
+    "source": "https://crates.io/crates/winapi/0.3.9"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "winapi-util",
+    "version": "0.1.11",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/winapi-util/0.1.11"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "window-vibrancy",
+    "version": "0.8.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/window-vibrancy/0.8.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows",
+    "version": "0.62.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows/0.62.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-collections",
+    "version": "0.3.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-collections/0.3.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-core",
+    "version": "0.62.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-core/0.62.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-future",
+    "version": "0.3.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-future/0.3.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-implement",
+    "version": "0.60.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-implement/0.60.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-interface",
+    "version": "0.59.3",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-interface/0.59.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-link",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-link/0.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-numerics",
+    "version": "0.3.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-numerics/0.3.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-result",
+    "version": "0.4.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-result/0.4.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-strings",
+    "version": "0.5.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-strings/0.5.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-sys",
+    "version": "0.60.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-sys/0.60.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-sys",
+    "version": "0.61.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-sys/0.61.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-targets",
+    "version": "0.53.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-targets/0.53.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-threading",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-threading/0.2.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-version",
+    "version": "0.1.7",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-version/0.1.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows_x86_64_msvc",
+    "version": "0.53.1",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows_x86_64_msvc/0.53.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "winnow",
+    "version": "1.0.4",
+    "license": "MIT",
+    "source": "https://crates.io/crates/winnow/1.0.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "winreg",
+    "version": "0.10.1",
+    "license": "MIT",
+    "source": "https://crates.io/crates/winreg/0.10.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "winreg",
+    "version": "0.56.0",
+    "license": "MIT",
+    "source": "https://crates.io/crates/winreg/0.56.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "writeable",
+    "version": "0.6.4",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/writeable/0.6.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "wry",
+    "version": "0.57.0",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/wry/0.57.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "yoke",
+    "version": "0.8.3",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/yoke/0.8.3"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "yoke-derive",
+    "version": "0.8.4",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/yoke-derive/0.8.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerocopy",
+    "version": "0.8.62",
+    "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/zerocopy/0.8.62"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerofrom",
+    "version": "0.1.8",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/zerofrom/0.1.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerofrom-derive",
+    "version": "0.1.8",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/zerofrom-derive/0.1.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerotrie",
+    "version": "0.2.5",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/zerotrie/0.2.5"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerovec",
+    "version": "0.11.8",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/zerovec/0.11.8"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zerovec-derive",
+    "version": "0.11.6",
+    "license": "Unicode-3.0",
+    "source": "https://crates.io/crates/zerovec-derive/0.11.6"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "zmij",
+    "version": "1.0.23",
+    "license": "MIT",
+    "source": "https://crates.io/crates/zmij/1.0.23"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@babel/helper-string-parser",
+    "version": "7.29.7",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@babel/helper-string-parser/v/7.29.7"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@babel/helper-validator-identifier",
+    "version": "7.29.7",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@babel/helper-validator-identifier/v/7.29.7"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@babel/parser",
+    "version": "7.29.9",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@babel/parser/v/7.29.9"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@babel/types",
+    "version": "7.29.8",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@babel/types/v/7.29.8"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/autocomplete",
+    "version": "6.20.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/autocomplete/v/6.20.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/commands",
+    "version": "6.11.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/commands/v/6.11.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-css",
+    "version": "6.3.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-css/v/6.3.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-html",
+    "version": "6.4.12",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-html/v/6.4.12"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-javascript",
+    "version": "6.2.5",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-javascript/v/6.2.5"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-json",
+    "version": "6.0.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-json/v/6.0.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-markdown",
+    "version": "6.5.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-markdown/v/6.5.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-python",
+    "version": "6.2.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-python/v/6.2.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-rust",
+    "version": "6.0.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-rust/v/6.0.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lang-sql",
+    "version": "6.10.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lang-sql/v/6.10.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/language",
+    "version": "6.13.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/language/v/6.13.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/lint",
+    "version": "6.9.7",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/lint/v/6.9.7"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/search",
+    "version": "6.7.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/search/v/6.7.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/state",
+    "version": "6.7.6",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/state/v/6.7.6"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/streamparser",
+    "version": "6.0.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/streamparser/v/6.0.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@codemirror/view",
+    "version": "6.43.14",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@codemirror/view/v/6.43.14"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@css-render/plugin-bem",
+    "version": "0.15.14",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@css-render/plugin-bem/v/0.15.14",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@css-render/vue3-ssr",
+    "version": "0.15.14",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@css-render/vue3-ssr/v/0.15.14",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@emotion/hash",
+    "version": "0.8.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@emotion/hash/v/0.8.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@jridgewell/sourcemap-codec",
+    "version": "1.6.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@jridgewell/sourcemap-codec/v/1.6.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@juggle/resize-observer",
+    "version": "3.4.0",
+    "license": "Apache-2.0",
+    "source": "https://www.npmjs.com/package/@juggle/resize-observer/v/3.4.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/common",
+    "version": "1.5.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/common/v/1.5.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/css",
+    "version": "1.3.9",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/css/v/1.3.9"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/highlight",
+    "version": "1.2.5",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/highlight/v/1.2.5"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/html",
+    "version": "1.3.13",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/html/v/1.3.13"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/javascript",
+    "version": "1.5.6",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/javascript/v/1.5.6"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/json",
+    "version": "1.0.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/json/v/1.0.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/lr",
+    "version": "1.4.11",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/lr/v/1.4.11"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/markdown",
+    "version": "1.8.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/markdown/v/1.8.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/python",
+    "version": "1.1.19",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/python/v/1.1.19"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@lezer/rust",
+    "version": "1.0.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@lezer/rust/v/1.0.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@marijn/find-cluster-break",
+    "version": "1.0.4",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@marijn/find-cluster-break/v/1.0.4"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@tauri-apps/api",
+    "version": "2.12.1",
+    "license": "Apache-2.0 OR MIT",
+    "source": "https://www.npmjs.com/package/@tauri-apps/api/v/2.12.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@tauri-apps/plugin-dialog",
+    "version": "2.8.2",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://www.npmjs.com/package/@tauri-apps/plugin-dialog/v/2.8.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@tauri-apps/plugin-notification",
+    "version": "2.6.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://www.npmjs.com/package/@tauri-apps/plugin-notification/v/2.6.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@types/lodash",
+    "version": "4.17.26",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@types/lodash/v/4.17.26"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@types/lodash-es",
+    "version": "4.17.12",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@types/lodash-es/v/4.17.12"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/compiler-core",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/compiler-core/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/compiler-dom",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/compiler-dom/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/compiler-sfc",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/compiler-sfc/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/compiler-ssr",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/compiler-ssr/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/devtools-api",
+    "version": "8.2.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/devtools-api/v/8.2.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/devtools-kit",
+    "version": "8.2.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/devtools-kit/v/8.2.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/devtools-shared",
+    "version": "8.2.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/devtools-shared/v/8.2.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/reactivity",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/reactivity/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/runtime-core",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/runtime-core/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/runtime-dom",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/runtime-dom/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/server-renderer",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/server-renderer/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@vue/shared",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@vue/shared/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@xterm/addon-fit",
+    "version": "0.11.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@xterm/addon-fit/v/0.11.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "@xterm/xterm",
+    "version": "6.0.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/@xterm/xterm/v/6.0.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "async-validator",
+    "version": "4.2.5",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/async-validator/v/4.2.5"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "birpc",
+    "version": "2.9.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/birpc/v/2.9.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "codemirror",
+    "version": "6.0.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/codemirror/v/6.0.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "crelt",
+    "version": "1.0.7",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/crelt/v/1.0.7"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "css-render",
+    "version": "0.15.14",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/css-render/v/0.15.14",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/07akioni/css-render/9345145da71707d1d05a99c1d3a6e89315ac0574/LICENSE"
+      ],
+      "note": ""
+    }
+  },
+  {
+    "ecosystem": "npm",
+    "name": "csstype",
+    "version": "3.0.11",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/csstype/v/3.0.11"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "csstype",
+    "version": "3.2.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/csstype/v/3.2.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "date-fns",
+    "version": "4.4.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/date-fns/v/4.4.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "date-fns-tz",
+    "version": "3.2.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/date-fns-tz/v/3.2.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "entities",
+    "version": "7.0.1",
+    "license": "BSD-2-Clause",
+    "source": "https://www.npmjs.com/package/entities/v/7.0.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "estree-walker",
+    "version": "2.0.2",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/estree-walker/v/2.0.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "evtd",
+    "version": "0.2.4",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/evtd/v/0.2.4"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "highlight.js",
+    "version": "11.12.0",
+    "license": "BSD-3-Clause",
+    "source": "https://www.npmjs.com/package/highlight.js/v/11.12.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "hookable",
+    "version": "5.5.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/hookable/v/5.5.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "lodash",
+    "version": "4.18.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/lodash/v/4.18.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "lodash-es",
+    "version": "4.18.1",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/lodash-es/v/4.18.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "magic-string",
+    "version": "0.30.21",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/magic-string/v/0.30.21"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "naive-ui",
+    "version": "2.45.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/naive-ui/v/2.45.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "nanoid",
+    "version": "3.3.20",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/nanoid/v/3.3.20"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "nostics",
+    "version": "1.3.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/nostics/v/1.3.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "perfect-debounce",
+    "version": "2.1.0",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/perfect-debounce/v/2.1.0"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "picocolors",
+    "version": "1.1.1",
+    "license": "ISC",
+    "source": "https://www.npmjs.com/package/picocolors/v/1.1.1"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "pinia",
+    "version": "4.0.3",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/pinia/v/4.0.3"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "postcss",
+    "version": "8.5.29",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/postcss/v/8.5.29"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "seemly",
+    "version": "0.3.10",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/seemly/v/0.3.10"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "source-map-js",
+    "version": "1.2.2",
+    "license": "BSD-3-Clause",
+    "source": "https://www.npmjs.com/package/source-map-js/v/1.2.2"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "style-mod",
+    "version": "4.1.4",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/style-mod/v/4.1.4"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "treemate",
+    "version": "0.3.11",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/treemate/v/0.3.11"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "vdirs",
+    "version": "0.1.8",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/vdirs/v/0.1.8",
+    "licenseSupplement": {
+      "sources": [
+        "https://registry.npmjs.org/vdirs/0.1.8"
+      ],
+      "note": "The published package declares MIT and author 07akioni but omits a standalone license. Standard MIT terms are reproduced with the published author attribution; no copyright year was supplied."
+    }
+  },
+  {
+    "ecosystem": "npm",
+    "name": "vooks",
+    "version": "0.2.12",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/vooks/v/0.2.12"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "vue",
+    "version": "3.5.43",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/vue/v/3.5.43"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "vueuc",
+    "version": "0.4.66",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/vueuc/v/0.4.66"
+  },
+  {
+    "ecosystem": "npm",
+    "name": "w3c-keyname",
+    "version": "2.2.8",
+    "license": "MIT",
+    "source": "https://www.npmjs.com/package/w3c-keyname/v/2.2.8"
+  }
+]

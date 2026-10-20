@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Author: jaswtao · Date: 2026-10-15 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <title>Orbyte</title>
+  <desc>系统蓝圆角方形上的开放 O 形轨道与终端下划线光标。</desc>
+  <defs>
+    <linearGradient id="blue" x1="104" y1="24" x2="408" y2="488" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#409CFF"/>
+      <stop offset="0.52" stop-color="#007AFF"/>
+      <stop offset="1" stop-color="#0066D6"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#blue)"/>
+  <rect x="24.75" y="24.75" width="462.5" height="462.5" rx="111.25" stroke="white" stroke-opacity="0.16" stroke-width="1.5"/>
+  <path d="M364 282A118 118 0 1 0 282 364" stroke="white" stroke-width="44" stroke-linecap="round"/>
+  <rect x="330" y="346" width="68" height="36" rx="9" fill="white"/>
+</svg>

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rename-path"
+description = "Enables the rename_path command without any pre-configured scope."
+commands.allow = ["rename_path"]
+
+[[permission]]
+identifier = "deny-rename-path"
+description = "Denies the rename_path command without any pre-configured scope."
+commands.deny = ["rename_path"]

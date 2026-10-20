@@ -1,0 +1,5 @@
+# Author: jaswtao · Date: 2026-10-20
+[toolchain]
+channel = "1.95.0"
+profile = "minimal"
+targets = ["x86_64-pc-windows-msvc"]

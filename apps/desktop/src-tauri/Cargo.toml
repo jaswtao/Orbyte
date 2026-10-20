@@ -1,0 +1,39 @@
+[package]
+name = "orbyte-desktop"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Orbyte developer workbench"
+
+[lib]
+name = "orbyte_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+# 命令测试使用 tests/ 集成宿主，链接 Windows manifest，不生成空的库测试宿主。
+test = false
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+orbyte-files.workspace = true
+orbyte-git.workspace = true
+orbyte-core.workspace = true
+orbyte-storage.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+uuid.workspace = true
+tokio.workspace = true
+tauri-plugin-single-instance = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+orbyte-platform.workspace = true
+orbyte-terminal.workspace = true
+tauri.workspace = true
+
+[dev-dependencies]
+tauri = { workspace = true, features = ["test"] }

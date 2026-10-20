@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-subscribe-terminal"
+description = "Enables the subscribe_terminal command without any pre-configured scope."
+commands.allow = ["subscribe_terminal"]
+
+[[permission]]
+identifier = "deny-subscribe-terminal"
+description = "Denies the subscribe_terminal command without any pre-configured scope."
+commands.deny = ["subscribe_terminal"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reorder-groups"
+description = "Enables the reorder_groups command without any pre-configured scope."
+commands.allow = ["reorder_groups"]
+
+[[permission]]
+identifier = "deny-reorder-groups"
+description = "Denies the reorder_groups command without any pre-configured scope."
+commands.deny = ["reorder_groups"]

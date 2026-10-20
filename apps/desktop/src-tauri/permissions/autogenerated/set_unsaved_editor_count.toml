@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-unsaved-editor-count"
+description = "Enables the set_unsaved_editor_count command without any pre-configured scope."
+commands.allow = ["set_unsaved_editor_count"]
+
+[[permission]]
+identifier = "deny-set-unsaved-editor-count"
+description = "Denies the set_unsaved_editor_count command without any pre-configured scope."
+commands.deny = ["set_unsaved_editor_count"]

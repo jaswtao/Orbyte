@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-workspace-layout"
+description = "Enables the save_workspace_layout command without any pre-configured scope."
+commands.allow = ["save_workspace_layout"]
+
+[[permission]]
+identifier = "deny-save-workspace-layout"
+description = "Denies the save_workspace_layout command without any pre-configured scope."
+commands.deny = ["save_workspace_layout"]

@@ -1,0 +1,53 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #1e1e1e;
+  color: #ddd;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  font-size: 13px;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  background: #252526;
+  border-bottom: 1px solid #333;
+}
+
+.tabs button.active {
+  background: #0e639c;
+  color: #fff;
+}
+
+.status {
+  margin-left: auto;
+  color: #f0b45a;
+}
+
+.panes {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.pane {
+  position: absolute;
+  inset: 4px;
+}
+
+.blank {
+  padding: 16px;
+  color: #888;
+}

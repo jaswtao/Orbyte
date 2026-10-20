@@ -1,0 +1,29 @@
+AGENTS.md
+.idea/
+.playwright-mcp/
+/.tmp/
+
+# Rust
+/target/
+
+# Node
+node_modules/
+dist/
+test-results/
+
+# Tauri
+/apps/desktop/src-tauri/gen/schemas/
+
+# Local secrets and release output
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.jks
+*.keystore
+/release/
+.tools/
+__pycache__/
