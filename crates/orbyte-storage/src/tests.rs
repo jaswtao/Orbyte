@@ -27,6 +27,8 @@ async fn launch_preset_migration_upgrades_existing_database() {
     let path = directory.join("old.db");
     let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true)).await.unwrap();
     sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = ? WHERE version = 1")
+        .bind(migration::original_checksum(1)).execute(&pool).await.unwrap();
     sqlx::raw_sql("INSERT INTO t_project(id,name,path) VALUES ('p','old','C:\\old'); INSERT INTO t_workspace(id,project_id) VALUES ('w','p'); INSERT INTO t_terminal_config(id,workspace_id,name,shell_type,cwd) VALUES ('t','w','CMD','cmd','');").execute(&pool).await.unwrap();
     pool.close().await;
     let db = Database::open(&path).await.unwrap();
@@ -37,6 +39,101 @@ async fn launch_preset_migration_upgrades_existing_database() {
     assert!(sqlx::query("UPDATE t_terminal_config SET launch_preset = 'arbitrary' WHERE id = 't'").execute(&db.pool).await.is_err());
     db.pool.close().await;
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn original_migration_comments_preserve_data_and_history_on_reopen() {
+    let directory = std::env::temp_dir().join(format!("orbyte-legacy-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("legacy.db");
+    let db = Database::open(&path).await.unwrap();
+    let project = db.create_project(input(r"C:\legacy", None)).await.unwrap();
+    let workspace = db.list_projects().await.unwrap()[0].workspace_id.clone();
+    let terminal = db.create_terminal_config_with_preset(
+        &project, &workspace, "Codex", "powershell", "", Some("codex"),
+    ).await.unwrap();
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = CASE version WHEN 1 THEN ? WHEN 2 THEN ? END WHERE version IN (1, 2)")
+        .bind(migration::original_checksum(1)).bind(migration::original_checksum(2))
+        .execute(&db.pool).await.unwrap();
+    db.pool.close().await;
+
+    let db = Database::open(&path).await.unwrap();
+    assert_eq!(db.list_projects().await.unwrap()[0].id, project);
+    assert_eq!(db.list_terminal_configs(&workspace).await.unwrap(), vec![terminal]);
+    let checksums: Vec<Vec<u8>> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations ORDER BY version")
+        .fetch_all(&db.pool).await.unwrap();
+    assert_eq!(checksums, vec![migration::original_checksum(1), migration::original_checksum(2)]);
+    db.pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    assert_eq!(db.list_projects().await.unwrap().len(), 1);
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
+    for applied_count in [1_i64, 2] {
+        let directory = std::env::temp_dir().join(format!("orbyte-crlf-{}", Uuid::new_v4()));
+        let migrations = directory.join("migrations");
+        std::fs::create_dir_all(&migrations).unwrap();
+        std::fs::write(
+            migrations.join("0001_initial.sql"),
+            include_str!("../migrations/0001_initial.sql").replace("\r\n", "\n").replace('\n', "\r\n"),
+        ).unwrap();
+        if applied_count == 2 {
+            std::fs::write(
+                migrations.join("0002_launch_preset.sql"),
+                include_str!("../migrations/0002_launch_preset.sql").replace("\r\n", "\n").replace('\n', "\r\n"),
+            ).unwrap();
+        }
+        let path = directory.join("legacy.db");
+        let pool = SqlitePoolOptions::new().max_connections(1)
+            .connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true))
+            .await.unwrap();
+        sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
+        sqlx::raw_sql("INSERT INTO t_project(id,name,path) VALUES ('p','old','C:\\old'); INSERT INTO t_workspace(id,project_id) VALUES ('w','p'); INSERT INTO t_terminal_config(id,workspace_id,name,shell_type,cwd) VALUES ('t','w','CMD','cmd','');")
+            .execute(&pool).await.unwrap();
+        let original_checksums: Vec<Vec<u8>> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations ORDER BY version")
+            .fetch_all(&pool).await.unwrap();
+        pool.close().await;
+
+        for _ in 0..2 {
+            let db = Database::open(&path).await.unwrap();
+            assert_eq!(db.list_projects().await.unwrap()[0].id, "p");
+            let terminals = db.list_terminal_configs("w").await.unwrap();
+            assert_eq!(terminals.len(), 1);
+            assert_eq!(terminals[0].id, "t");
+            assert_eq!(terminals[0].launch_preset, None);
+            let checksums: Vec<Vec<u8>> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version <= ? ORDER BY version")
+                .bind(applied_count).fetch_all(&db.pool).await.unwrap();
+            assert_eq!(checksums, original_checksums);
+            let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
+                .fetch_one(&db.pool).await.unwrap();
+            assert_eq!(count, 2);
+            db.pool.close().await;
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn migration_compatibility_rejects_unknown_checksums_and_failed_migrations() {
+    let db = memory().await;
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = CASE version WHEN 1 THEN ? ELSE X'00' END")
+        .bind(migration::original_checksum(1)).execute(&db.pool).await.unwrap();
+    assert!(matches!(migration::run(&db.pool).await, Err(sqlx::migrate::MigrateError::VersionMismatch(2))));
+    let checksum: Vec<u8> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version = 1")
+        .fetch_one(&db.pool).await.unwrap();
+    assert_eq!(checksum, migration::original_checksum(1));
+
+    sqlx::query("UPDATE _sqlx_migrations SET checksum = X'00' WHERE version = 1")
+        .execute(&db.pool).await.unwrap();
+    assert!(matches!(migration::run(&db.pool).await, Err(sqlx::migrate::MigrateError::VersionMismatch(1))));
+
+    sqlx::query("UPDATE _sqlx_migrations SET success = FALSE WHERE version = 1")
+        .execute(&db.pool).await.unwrap();
+    assert!(matches!(migration::run(&db.pool).await, Err(sqlx::migrate::MigrateError::Dirty(1))));
+    db.pool.close().await;
 }
 
 #[tokio::test]

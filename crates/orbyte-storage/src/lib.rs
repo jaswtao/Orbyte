@@ -20,6 +20,7 @@ type Result<T> = std::result::Result<T, String>;
 
 mod terminal;
 mod layout;
+mod migration;
 
 #[derive(Clone)]
 pub struct Database {
@@ -59,7 +60,7 @@ impl Database {
             .connect_with(options)
             .await
             .map_err(db_error)?;
-        if let Err(error) = sqlx::migrate!("./migrations").run(&pool).await {
+        if let Err(error) = migration::run(&pool).await {
             pool.close().await;
             return Err(format!("数据库迁移失败，已停止数据写入：{error}"));
         }
