@@ -120,6 +120,10 @@ impl FlowState {
         self.inflight_bytes
     }
 
+    pub fn ack_idle_ms(&self, now: Instant) -> Option<u64> {
+        (self.inflight_bytes > 0).then(|| now.duration_since(self.last_ack).as_millis().min(u64::MAX as u128) as u64)
+    }
+
     /// 有在途数据且超过失联阈值没有 ack。
     pub fn is_stale(&self, now: Instant) -> bool {
         self.inflight_bytes > 0 && now.duration_since(self.last_ack) >= self.cfg.stale_after

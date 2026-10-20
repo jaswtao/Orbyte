@@ -5,6 +5,7 @@
  * Date: 2026-10-09
  */
 import { Channel, invoke } from '@tauri-apps/api/core'
+import type { OutputHealth } from './terminal/recovery'
 
 export type ShellType = 'powershell' | 'cmd' | 'wsl'
 
@@ -26,6 +27,7 @@ export interface TerminalSessionInfo {
   terminalId: string
   terminalConfigId: string | null
   status: TerminalStatus
+  output: OutputHealth & { bufferedBytes: number }
 }
 
 export interface TerminalSize {
@@ -50,6 +52,8 @@ export interface CreatedTerminal {
 export interface LaunchPreset { preset: 'codex' | 'claude-code'; description: string; available: boolean; unavailableReason: string | null }
 
 export const terminalApi = {
+  reportDiagnostic: (terminalId: string, event: 'frame_error' | 'ack_failed' | 'reconnect_started' | 'reconnect_succeeded' | 'reconnect_failed' | 'poll_failed', generation: number, seq: number | null) =>
+    invoke<void>('report_terminal_diagnostic', { terminalId, event, generation, seq }),
   setActiveTerminal: (terminalId: string | null) => invoke<void>('set_active_terminal', { terminalId }),
   saveClipboardImage: (png: Uint8Array) => invoke<string>('save_clipboard_image', png),
   listLaunchPresets: () => invoke<LaunchPreset[]>('list_launch_presets'),
@@ -78,8 +82,10 @@ export const terminalApi = {
 
   writeTerminal: (terminalId: string, data: string) => invoke<void>('write_terminal', { terminalId, data }),
 
-  resizeTerminal: (terminalId: string, size: TerminalSize) =>
-    invoke<void>('resize_terminal', { terminalId, cols: size.cols, rows: size.rows }),
+  resizeTerminal: (terminalId: string, size: TerminalSize, nudge = false) =>
+    invoke<void>('resize_terminal', nudge
+      ? { terminalId, cols: size.cols, rows: size.rows, nudge: true }
+      : { terminalId, cols: size.cols, rows: size.rows }),
 
   stopTerminal: (terminalId: string) => invoke<number | null>('stop_terminal', { terminalId }),
 }

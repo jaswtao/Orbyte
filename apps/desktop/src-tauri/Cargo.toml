@@ -19,6 +19,7 @@ test = false
 tauri-build.workspace = true
 
 [dependencies]
+log.workspace = true
 orbyte-files.workspace = true
 orbyte-git.workspace = true
 orbyte-core.workspace = true

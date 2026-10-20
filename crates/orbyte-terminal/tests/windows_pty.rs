@@ -102,6 +102,26 @@ fn cmd_request() -> SpawnRequest {
 }
 
 #[test]
+fn exit_status_is_queryable_when_output_window_is_full_and_channel_does_not_ack() {
+    let manager = TerminalManager::new(FlowConfig { window: 16, max_batch: 16, ..FlowConfig::default() });
+    let collector = Arc::new(Collector::default());
+    let id = manager.spawn(&cmd_request(), collector).unwrap();
+    let session = manager.get(&id).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while session.info().output.inflight_bytes == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let info = session.info();
+    assert!(info.output.inflight_bytes > 0);
+    assert!(info.output.ack_idle_ms.is_some());
+    manager.stop(&id).unwrap();
+    assert!(session.is_exited());
+    assert!(matches!(session.info().status, orbyte_terminal::TerminalStatus::Exited { .. }));
+    manager.remove(&id).unwrap();
+    assert!(manager.list().is_empty());
+}
+
+#[test]
 fn close_risk_tracks_live_child_tasks_and_clears_after_exit() {
     let manager = TerminalManager::default();
     let collector = Arc::new(Collector::default());

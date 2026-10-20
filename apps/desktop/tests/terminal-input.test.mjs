@@ -317,6 +317,7 @@ const { CompositionHelper } = loadCommonJs(compositionSource, (name) => name.end
 const registrySource = await readFile(new URL('../src/services/terminal/registry.ts', import.meta.url), 'utf8')
 const shortcuts = await loadService('workspace/shortcuts')
 const appearance = await loadService('appearance')
+const recovery = await loadService('terminal/recovery')
 const clipboard = { read: async () => [], readText: async () => '', writeText: async () => {} }
 // Node 的 EventTarget 没有 DOM 父子传播；分开调度捕获和冒泡以覆盖宿主拦截。
 class TerminalHost extends EventTarget {
@@ -351,6 +352,7 @@ function translate(key, params = {}) {
 
 const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
   if (name === '../appearance') return appearance
+  if (name === './recovery') return recovery
   if (name === '../terminalApi') return { terminalApi: {} }
   if (name === 'vue') return { markRaw: (value) => value, shallowReactive: (value) => value }
   if (name === '../workspace/shortcuts') return shortcuts

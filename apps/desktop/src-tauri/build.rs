@@ -36,6 +36,7 @@ const COMMANDS: &[&str] = &[
     "list_terminal_configs",
     "list_running_workspaces",
     "list_terminal_sessions",
+    "report_terminal_diagnostic",
     "terminals_have_running_tasks",
     "subscribe_terminal",
     "ack_terminal",

@@ -6,6 +6,7 @@ import { NButton, NDropdown, NInput, NModal, type DropdownOption } from 'naive-u
 import type { Project, Settings } from '../../services/projectApi'
 import { terminalApi, type ShellInfo, type ShellType, type TerminalConfig, type LaunchPreset } from '../../services/terminalApi'
 import { INITIAL_SIZE } from '../../services/terminal/terminalClient'
+import { withTimeout } from '../../services/terminal/recovery'
 import type { TerminalRegistry, TerminalEntry } from '../../services/terminal/registry'
 import { workspaceApi } from '../../services/workspaceApi'
 import { emptyLayout, leaves, moveTab, removeFromLayout, setRatio, splitLeaf, type Direction, type Layout, type WorkspaceTab } from '../../services/workspace/layout'
@@ -276,7 +277,14 @@ async function closeIds(ids: string[], tab?: WorkspaceTab) {
   for (const id of ids) {
     try {
       if (props.editors.entries.has(id)) props.editors.remove(id)
-      else { const entry = props.registry.byConfig.get(id); if (entry) entry.intentionalStop = true; try { await terminalApi.removeTerminal(id) } catch (reason) { if (entry) entry.intentionalStop = false; throw reason }; props.registry.remove(id); configs.delete(id) }
+      else {
+        const entry = props.registry.byConfig.get(id)
+        if (entry) { entry.intentionalStop = true; entry.client.pauseInput() }
+        try { await withTimeout(terminalApi.removeTerminal(id), 10000) }
+        catch (reason) { if (entry) { entry.intentionalStop = false; await reconcile(entry) }; throw reason }
+        props.registry.remove(id)
+        configs.delete(id)
+      }
       next = removeFromLayout(next, id)
     } catch (reason) { failure = reason; break }
   }
@@ -305,10 +313,20 @@ function stop(id: string) {
     const entry = props.registry.byConfig.get(id)
     if (entry?.client.id) {
       entry.intentionalStop = true
-      try { await terminalApi.stopTerminal(entry.client.id) }
-      catch (reason) { entry.intentionalStop = false; throw reason }
+      entry.client.pauseInput()
+      try { await withTimeout(terminalApi.stopTerminal(entry.client.id), 10000); await reconcile(entry) }
+      catch (reason) { entry.intentionalStop = false; await reconcile(entry); throw reason }
     }
   })
+}
+async function reconcile(entry: TerminalEntry) {
+  try {
+    const sessions = await withTimeout(terminalApi.listTerminalSessions())
+    const session = sessions.find((item) => item.terminalId === entry.client.id)
+    if (session) entry.client.updateStatus(session.status)
+    else entry.client.updateStatus({ state: 'exited', exitCode: null })
+    if (session?.status.state === 'running') entry.client.resumeInput()
+  } catch { entry.client.waitForStatus() } // Keep input disabled until the next successful poll confirms the real status.
 }
 async function selectTab(id: string) {
   await perform(async () => {

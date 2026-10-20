@@ -1,5 +1,9 @@
 /** English UI copy. Author: jaswtao · Date: 2026-10-16 */
 export const en = {
+  'terminal.reconnect': 'Reconnect output',
+  'terminal.reconnecting': 'Reconnecting…',
+  'terminal.reconnected': 'Output connection restored. Some output may be missing.',
+  'terminal.reconnectFailed': 'Output recovery failed. Input is paused. Reconnect, stop, or close this terminal.',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.confirm': 'Confirm',

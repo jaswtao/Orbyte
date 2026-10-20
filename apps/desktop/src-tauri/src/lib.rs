@@ -5,6 +5,7 @@
 
 mod commands;
 mod state;
+mod terminal_log;
 
 use commands::project::StorageState;
 use state::{AppState, ClosePhase};
@@ -105,6 +106,9 @@ pub fn run() {
         .setup(move |app| {
             let database = (|| -> Result<_, String> {
                 let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
+                if let Err(error) = terminal_log::init(directory.join("logs")) {
+                    eprintln!("无法初始化终端诊断日志：{error}");
+                }
                 let integration = directory.join("shell-integration");
                 match orbyte_platform::shell_integration::install(&integration) {
                     Ok(()) => { let _ = app.state::<AppState>().integration_dir.set(integration); }
@@ -144,6 +148,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::clipboard::save_clipboard_image,
             commands::terminal::list_launch_presets,
+            commands::terminal::report_terminal_diagnostic,
             commands::export::export_terminal_output,
             commands::git::git_available,
             commands::git::git_status,

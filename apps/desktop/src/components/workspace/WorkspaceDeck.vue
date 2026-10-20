@@ -1,6 +1,6 @@
 <!-- Author: jaswtao · Date: 2026-10-13 -->
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowReactive, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from 'vue'
 import { NButton, NModal } from 'naive-ui'
 import type { Project, Settings } from '../../services/projectApi'
 import { terminalApi } from '../../services/terminalApi'
@@ -17,6 +17,8 @@ const props = defineProps<{ tabsTarget: string; appearance: AppearanceMode; proj
 const emit = defineEmits<{ error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: import('../../services/workspace/activity').Activity] }>()
 const visited = reactive(new Set<string>())
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || !!discard.value)
+const sessionTimer = setInterval(() => { void registry.syncSessions() }, 2000)
+onBeforeUnmount(() => clearInterval(sessionTimer))
 const editors = new EditorRegistry((message) => emit('error', message), () => props.settings, () => props.shortcutsBlocked || !!discard.value)
 const views = shallowReactive(new Map<string, InstanceType<typeof WorkspaceView>>())
 const mutationBusy = computed(() => !props.activeId || !views.has(props.activeId) || views.get(props.activeId)?.busy || Array.from(editors.entries.values()).some((entry) => entry.projectId === props.activeId && entry.busy))

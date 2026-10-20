@@ -2,6 +2,10 @@
 import type { MessageKey } from './en'
 
 export const zh: Record<MessageKey, string> = {
+  'terminal.reconnect': '重连输出',
+  'terminal.reconnecting': '正在重连…',
+  'terminal.reconnected': '输出连接已恢复，部分输出可能缺失。',
+  'terminal.reconnectFailed': '输出连接恢复失败，已暂停输入。可重连输出、结束或关闭此终端。',
   'common.cancel': '取消',
   'common.save': '保存',
   'common.confirm': '确认',

@@ -46,6 +46,16 @@ pub struct TerminalSessionInfo {
     pub terminal_id: String,
     pub terminal_config_id: Option<String>,
     pub status: TerminalStatus,
+    pub output: OutputHealth,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutputHealth {
+    pub subscribed: bool,
+    pub inflight_bytes: usize,
+    pub buffered_bytes: usize,
+    pub ack_idle_ms: Option<u64>,
 }
 
 const WAIT_SLICE: Duration = Duration::from_millis(200);
@@ -72,6 +82,7 @@ struct State {
 }
 
 struct Shared {
+    terminal_id: String,
     state: Mutex<State>,
     cv: Condvar,
 }
@@ -109,6 +120,7 @@ impl TerminalSession {
         flow.subscribe(now);
 
         let shared = Arc::new(Shared {
+            terminal_id: id.clone(),
             state: Mutex::new(State {
                 flow,
                 cursor: CursorVisibility::default(),
@@ -168,10 +180,17 @@ impl TerminalSession {
     }
 
     pub fn info(&self) -> TerminalSessionInfo {
+        let st = self.shared.lock();
         TerminalSessionInfo {
             terminal_id: self.id.clone(),
             terminal_config_id: self.config_id.clone(),
-            status: self.shared.lock().status.clone(),
+            status: st.status.clone(),
+            output: OutputHealth {
+                subscribed: st.flow.is_subscribed(),
+                inflight_bytes: st.flow.inflight_bytes(),
+                buffered_bytes: st.flow.buffered_len(),
+                ack_idle_ms: st.flow.ack_idle_ms(Instant::now()),
+            },
         }
     }
 
@@ -195,6 +214,23 @@ impl TerminalSession {
         master.resize(size.to_pty()).map_err(|e| TerminalError::Io(e.to_string()))
     }
 
+    /// Nudge one column off and restore the original size so the program redraws. Hold the same lock until restore finishes, so the size cannot stay one column off.
+    pub fn redraw(&self, size: TerminalSize) -> TerminalResult<()> {
+        let size = size.validate()?;
+        let nudged = TerminalSize {
+            cols: if size.cols == u16::MAX { size.cols - 1 } else { size.cols + 1 },
+            rows: size.rows,
+        };
+        let guard = self.master.lock().unwrap_or_else(|e| e.into_inner());
+        let master = guard.as_ref().ok_or(TerminalError::NotRunning)?;
+        master.resize(nudged.to_pty()).map_err(|e| TerminalError::Io(e.to_string()))?;
+        if let Err(error) = master.resize(size.to_pty()) {
+            let _ = master.resize(size.to_pty());
+            return Err(TerminalError::Io(error.to_string()));
+        }
+        Ok(())
+    }
+
     pub fn ack(&self, seq: u64) {
         self.shared.lock().flow.ack(seq, Instant::now());
         self.shared.cv.notify_all();
@@ -202,20 +238,25 @@ impl TerminalSession {
 
     /// 替换订阅：丢弃未发送的缓冲，只推后续输出；已退出的会话会再收到一次退出状态。
     pub fn subscribe(&self, sink: SharedSink) {
-        let mut st = self.shared.lock();
-        st.sink = Some(sink);
-        st.flow.subscribe(Instant::now());
-        // ConPTY 不会重复发送未改变的显隐模式，新建的 xterm 必须先恢复此状态。
-        let cursor = st.cursor.restore_sequence();
-        st.flow.push(cursor, Instant::now());
-        st.pending_status.clear();
-        if st.exited {
-            st.exit_frame_sent = false;
-        } else {
-            let status = st.status.clone();
-            st.pending_status.push_back(status);
-        }
-        drop(st);
+        let (buffered, inflight) = {
+            let mut st = self.shared.lock();
+            let buffered = st.flow.buffered_len();
+            let inflight = st.flow.inflight_bytes();
+            st.sink = Some(sink);
+            st.flow.subscribe(Instant::now());
+            // ConPTY 不会重复发送未改变的显隐模式，新建的 xterm 必须先恢复此状态。
+            let cursor = st.cursor.restore_sequence();
+            st.flow.push(cursor, Instant::now());
+            st.pending_status.clear();
+            if st.exited {
+                st.exit_frame_sent = false;
+            } else {
+                let status = st.status.clone();
+                st.pending_status.push_back(status);
+            }
+            (buffered, inflight)
+        };
+        log::info!(target: "orbyte_terminal", "subscribe session={} buffered={} inflight={}", self.id, buffered, inflight);
         self.shared.cv.notify_all();
     }
 
@@ -229,6 +270,7 @@ impl TerminalSession {
     ///
     /// 阻塞调用，返回退出码。
     pub fn stop(&self, grace: Duration) -> Option<u32> {
+        log::info!(target: "orbyte_terminal", "stop session={}", self.id);
         {
             let mut st = self.shared.lock();
             if st.exited {
@@ -250,8 +292,8 @@ impl TerminalSession {
         if !self.wait_exited(grace) {
             #[cfg(windows)]
             if let Some(job) = self.job.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-                if let Err(e) = job.terminate(1) {
-                    log::warn!("结束会话 Job 失败：{e}");
+                if let Err(error) = job.terminate(1) {
+                    log::warn!(target: "orbyte_terminal", "job_terminate_failed session={} error={error}", self.id);
                 }
             }
             self.wait_exited(Duration::from_secs(2));
@@ -326,6 +368,7 @@ impl TerminalSession {
             st.exit_code = exit_code;
             st.status = TerminalStatus::Exited { exit_code };
         }
+        log::info!(target: "orbyte_terminal", "exit session={} code={:?}", self.id, exit_code);
         self.shared.cv.notify_all();
 
         // 进程退出后 ConPTY 不会主动关闭输出管道，需要关闭伪终端让读取线程收到 EOF。
@@ -345,7 +388,11 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, shared: Arc<Shared>) {
     let mut buf = vec![0u8; READ_CHUNK];
     loop {
         let n = match reader.read(&mut buf) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
+            Err(error) => {
+                log::warn!(target: "orbyte_terminal", "reader_failed session={} kind={:?}", shared.terminal_id, error.kind());
+                break;
+            }
             Ok(n) => n,
         };
         let mut st = shared.lock();
@@ -364,6 +411,7 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, shared: Arc<Shared>) {
 }
 
 fn sender_loop(shared: Arc<Shared>) {
+    let mut stalled_reported = false;
     loop {
         let (sink, frames) = {
             let mut st = shared.lock();
@@ -386,12 +434,25 @@ fn sender_loop(shared: Arc<Shared>) {
                 if !frames.is_empty() {
                     break (st.sink.clone().expect("frames require a sink"), frames);
                 }
+                let stale = st.flow.is_stale(Instant::now());
+                if stale && !stalled_reported {
+                    let buffered = st.flow.buffered_len();
+                    let inflight = st.flow.inflight_bytes();
+                    let idle_ms = st.flow.ack_idle_ms(Instant::now());
+                    stalled_reported = true;
+                    drop(st);
+                    log::warn!(target: "orbyte_terminal", "ack_stalled session={} buffered={buffered} inflight={inflight} idle_ms={idle_ms:?}", shared.terminal_id);
+                    st = shared.lock();
+                    continue;
+                }
+                stalled_reported = stale;
                 st = shared.cv.wait_timeout(st, WAIT_SLICE).unwrap_or_else(|e| e.into_inner()).0;
             }
         };
 
         for frame in frames {
             if !sink.send(frame) {
+                log::warn!(target: "orbyte_terminal", "channel_send_failed session={}", shared.terminal_id);
                 let mut st = shared.lock();
                 if st.sink.as_ref().is_some_and(|s| Arc::ptr_eq(s, &sink)) {
                     st.sink = None;

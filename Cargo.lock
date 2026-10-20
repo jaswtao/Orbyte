@@ -2814,6 +2814,7 @@ dependencies = [
 name = "orbyte-desktop"
 version = "0.1.0"
 dependencies = [
+ "log",
  "orbyte-core",
  "orbyte-files",
  "orbyte-git",

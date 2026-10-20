@@ -2,12 +2,13 @@
 import { markRaw, shallowReactive } from 'vue'
 import type { ITerminalOptions } from '@xterm/xterm'
 import type { TerminalStatus } from '../terminalApi'
-import { terminalApi } from '../terminalApi'
 import type { Settings } from '../projectApi'
 import { TerminalClient } from './terminalClient'
 import { terminalAppearance, type AppearanceMode } from '../appearance'
 import { matchShortcut } from '../workspace/shortcuts'
 import { t } from '../../i18n/translate'
+import { withTimeout } from './recovery'
+import { terminalApi } from '../terminalApi'
 
 export interface TerminalEntry {
   client: TerminalClient
@@ -18,11 +19,52 @@ export interface TerminalEntry {
   unread: boolean
   visible: boolean
   intentionalStop: boolean
+  connection: 'connected' | 'reconnecting' | 'disconnected'
 }
 
 export class TerminalRegistry {
   constructor(private readonly appearance: () => AppearanceMode, private readonly settings: () => Settings, private readonly shortcutsBlocked: () => boolean = () => false) {}
   readonly byConfig = new Map<string, TerminalEntry>()
+  private pollsInFlight = 0
+  private pollGeneration = 0
+
+  async syncSessions(): Promise<void> {
+    // One in-flight poll may be retried once. Do not queue more until one of them returns.
+    if (this.pollsInFlight >= 2 || !this.byConfig.size) return
+    this.pollsInFlight++
+    const generation = ++this.pollGeneration
+    const observed = Array.from(this.byConfig.values(), (entry) => ({ entry, id: entry.client.id }))
+    let request: ReturnType<typeof terminalApi.listTerminalSessions>
+    try {
+      request = terminalApi.listTerminalSessions()
+    } catch {
+      this.pollsInFlight--
+      this.reportPollFailures(generation, observed)
+      return
+    }
+    void request.finally(() => { this.pollsInFlight-- }).catch(() => {})
+    try {
+      const sessions = await withTimeout(request)
+      if (generation !== this.pollGeneration) return
+      const current = new Set(this.byConfig.values())
+      for (const { entry, id } of observed) {
+        if (!id || entry.client.id !== id || !current.has(entry)) continue
+        const session = sessions.find((item) => item.terminalId === id)
+        if (session) entry.client.observeSession(session)
+        else entry.client.updateStatus({ state: 'exited', exitCode: null })
+      }
+    } catch {
+      this.reportPollFailures(generation, observed)
+    }
+  }
+
+  private reportPollFailures(generation: number, observed: Array<{ entry: TerminalEntry; id: string | null }>): void {
+    if (generation !== this.pollGeneration) return
+    for (const { entry, id } of observed) {
+      if (!id || entry.client.id !== id) continue
+      entry.client.reportPollFailed()
+    }
+  }
 
   updateSettings(settings: Settings): void {
     for (const entry of this.byConfig.values()) {
@@ -38,6 +80,8 @@ export class TerminalRegistry {
     const host = document.createElement('div')
     host.className = 'terminal-host'
     const client = markRaw(new TerminalClient(host, { ...options, theme: terminalAppearance(this.appearance()) }, {
+      onConnection: (state) => { entry.connection = state },
+      onWarning,
       onStatus: (status) => {
         const exitedAlready = entry.status.state === 'exited'
         entry.status = status
@@ -58,7 +102,7 @@ export class TerminalRegistry {
       onError,
       onGap: (bytes) => { onWarning?.(t('terminal.outputGap', { bytes: bytes.toLocaleString() })) },
     }))
-    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false })
+    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected' })
     entry.client.term.attachCustomKeyEventHandler((event) => {
       // Windows 输入法会把 Esc 标记为 229，xterm 6 会在编码前丢弃它。
       // 正在组词时仍交给输入法取消候选，避免误中断终端程序。

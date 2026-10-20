@@ -11,17 +11,24 @@ export class InputQueue {
   private pending = ''
   private inFlight = false
   private sender: InputSender | null = null
+  private generation = 0
+  private paused = false
 
   constructor(private readonly onError: (error: unknown) => void = () => undefined) {}
 
   /** 设置发送函数；在终端 ID 就绪之前到达的输入会先排队。 */
   setSender(sender: InputSender | null): void {
+    this.generation++
+    this.inFlight = false
     this.sender = sender
     this.pump()
   }
 
+  pause(): void { this.paused = true; this.clear(); this.setSender(null) }
+  resume(sender: InputSender): void { this.paused = false; this.setSender(sender) }
+
   push(data: string): void {
-    if (!data) return
+    if (!data || this.paused) return
     this.pending += data
     this.pump()
   }
@@ -34,11 +41,13 @@ export class InputQueue {
   private pump(): void {
     if (this.inFlight || !this.sender || !this.pending) return
     const data = this.pending
+    const generation = this.generation
     this.pending = ''
     this.inFlight = true
     this.sender(data)
-      .catch((error) => this.onError(error))
+      .catch((error) => { if (generation === this.generation) this.onError(error) })
       .finally(() => {
+        if (generation !== this.generation) return
         this.inFlight = false
         this.pump()
       })

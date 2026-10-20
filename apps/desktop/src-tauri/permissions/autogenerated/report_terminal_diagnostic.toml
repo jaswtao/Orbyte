@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-report-terminal-diagnostic"
+description = "Enables the report_terminal_diagnostic command without any pre-configured scope."
+commands.allow = ["report_terminal_diagnostic"]
+
+[[permission]]
+identifier = "deny-report-terminal-diagnostic"
+description = "Denies the report_terminal_diagnostic command without any pre-configured scope."
+commands.deny = ["report_terminal_diagnostic"]

@@ -212,7 +212,40 @@ pub async fn list_running_workspaces(
 
 #[tauri::command]
 pub async fn list_terminal_sessions(state: State<'_, AppState>) -> CmdResult<Vec<TerminalSessionInfo>> {
-    Ok(state.terminals.list())
+    let terminals = state.terminals.clone();
+    blocking(move || Ok(terminals.list())).await
+}
+
+/// Strict metadata enum. Rejects terminal text, keystrokes, and arbitrary error strings.
+#[derive(serde::Deserialize, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalDiagnostic {
+    FrameError, AckFailed, ReconnectStarted, ReconnectSucceeded, ReconnectFailed, PollFailed,
+}
+
+#[tauri::command]
+pub async fn report_terminal_diagnostic(
+    state: State<'_, AppState>,
+    terminal_id: String,
+    event: TerminalDiagnostic,
+    generation: u32,
+    seq: Option<u64>,
+) -> CmdResult<()> {
+    if terminal_id.is_empty() || terminal_id.len() > 64 || terminal_id.bytes().any(|byte| byte.is_ascii_control()) {
+        return Err("无效的终端标识".into());
+    }
+    let terminals = state.terminals.clone();
+    blocking(move || {
+        // A failed session list must not take the session lock, so it cannot pile onto an already stuck query.
+        if matches!(event, TerminalDiagnostic::PollFailed) {
+            log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?}");
+            return Ok(());
+        }
+        let session = terminals.get(&terminal_id).map_err(err_text)?;
+        let info = session.info();
+        log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?} status={:?} output={:?}", info.status, info.output);
+        Ok(())
+    }).await
 }
 
 /// 关闭前批量检查运行时进程树；兼容手动启动和脚本包装的智能体。
@@ -252,8 +285,17 @@ pub async fn resize_terminal(
     terminal_id: String,
     cols: u16,
     rows: u16,
+    nudge: Option<bool>,
 ) -> CmdResult<()> {
-    state.terminals.resize(&terminal_id, TerminalSize { cols, rows }).map_err(err_text)
+    let terminals = state.terminals.clone();
+    blocking(move || {
+        let size = TerminalSize { cols, rows };
+        if nudge.unwrap_or(false) {
+            terminals.redraw(&terminal_id, size).map_err(err_text)
+        } else {
+            terminals.resize(&terminal_id, size).map_err(err_text)
+        }
+    }).await
 }
 
 #[tauri::command]

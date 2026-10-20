@@ -8,7 +8,7 @@ import ts from 'typescript'
 const source = await readFile(new URL('../src/components/workspace/WorkspaceView.vue', import.meta.url), 'utf8')
 const script = source.split('<script setup lang="ts">')[1].split('</script>')[0]
 const ast = ts.createSourceFile('WorkspaceView.ts', script, ts.ScriptTarget.Latest, true)
-const names = new Set(['confirmIfRunning', 'closePane', 'closeTab', 'stop', 'confirmAction'])
+const names = new Set(['confirmIfRunning', 'closePane', 'closeTab', 'stop', 'confirmAction', 'reconcile'])
 const body = ast.statements.filter((node) => ts.isFunctionDeclaration(node) && names.has(node.name?.text)).map((node) => node.getText(ast)).join('\n')
 const compiled = ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
@@ -27,7 +27,10 @@ function t(key, params = {}) {
 
 function fixture(enabled, state = 'running', dirty = false, runningTasks = false) {
   const closed = [], stopped = [], errors = []
-  const entry = { status: { state }, client: { id: 'session' }, intentionalStop: false }
+  const entry = { status: { state }, client: { id: 'session', paused: false,
+    pauseInput() { this.paused = true }, resumeInput() { this.paused = false },
+    updateStatus(status) { entry.status = status },
+  }, intentionalStop: false }
   const editor = { document: { dirty } }
   const props = {
     settings: { confirm_close_terminal: enabled },
@@ -41,7 +44,10 @@ function fixture(enabled, state = 'running', dirty = false, runningTasks = false
     leaves: (root) => root,
     closeIds: async (ids) => { closed.push(...ids) },
     perform: async (action) => { await action() },
-    terminalApi: { async terminalsHaveRunningTasks() { if (runningTasks instanceof Error) throw runningTasks; return runningTasks }, async stopTerminal(id) { stopped.push(id) } },
+    withTimeout: (promise) => promise,
+    terminalApi: { async terminalsHaveRunningTasks() { if (runningTasks instanceof Error) throw runningTasks; return runningTasks }, async stopTerminal(id) { stopped.push(id) },
+      async listTerminalSessions() { return [{ terminalId: 'session', status: { state: stopped.length ? 'exited' : state, exitCode: 0 } }] },
+    },
     error: (message) => errors.push(message),
     t,
   })
@@ -93,7 +99,10 @@ test('结束终端仍要求确认，忙碌时不重复关闭', async () => {
   assert.ok(f.confirmation.value)
   assert.deepEqual(f.stopped, [])
   await f.run('confirmAction()')
+  await new Promise(setImmediate)
   assert.deepEqual(f.stopped, ['session'])
+  assert.equal(f.props.registry.byConfig.get('terminal').client.paused, true)
+  assert.equal(f.props.registry.byConfig.get('terminal').status.state, 'exited')
   f.busy.value = true
   await f.run("closePane('terminal')")
   assert.deepEqual(f.closed, [])

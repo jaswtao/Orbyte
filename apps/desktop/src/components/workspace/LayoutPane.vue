@@ -82,6 +82,7 @@ onBeforeUnmount(() => cleanupDrag?.())
   <div v-else-if="node.type === 'terminal'" class="terminal-pane" :class="{ focused: focused === node.terminalConfigId }" @mousedown.capture="focus">
     <div class="pane-heading">
       <span>{{ config?.launchPreset ? config.name : config?.shellType }} · {{ statusText }}</span>
+      <button v-if="entry?.status.state === 'running' && entry.connection !== 'connected'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.reconnect()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.reconnect') }}</button>
       <button v-if="entry?.status.state !== 'running' && entry?.status.state !== 'starting'" @click.stop="emit('restart', node.terminalConfigId)">{{ t('pane.restart') }}</button>
       <button :disabled="!entry" @click.stop="emit('export', node.terminalConfigId)">{{ t('pane.export') }}</button>
       <NDropdown v-if="entry?.status.state === 'running'" trigger="click" placement="bottom-end" :show="moreMenuOpen" :options="moreMenuOptions" @update:show="moreMenuOpen = $event" @select="selectMoreAction" @clickoutside="moreMenuOpen = false">

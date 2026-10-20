@@ -116,6 +116,10 @@ impl TerminalManager {
         self.get(terminal_id)?.resize(size)
     }
 
+    pub fn redraw(&self, terminal_id: &str, size: TerminalSize) -> TerminalResult<()> {
+        self.get(terminal_id)?.redraw(size)
+    }
+
     pub fn ack(&self, terminal_id: &str, seq: u64) -> TerminalResult<()> {
         self.get(terminal_id)?.ack(seq);
         Ok(())

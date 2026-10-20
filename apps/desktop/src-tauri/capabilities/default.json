@@ -47,6 +47,7 @@
     "allow-list-terminal-configs",
     "allow-list-running-workspaces",
     "allow-list-terminal-sessions",
+    "allow-report-terminal-diagnostic",
     "allow-terminals-have-running-tasks",
     "allow-subscribe-terminal",
     "allow-ack-terminal",

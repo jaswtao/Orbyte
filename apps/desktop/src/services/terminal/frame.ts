@@ -22,7 +22,9 @@ export interface TerminalFrame {
 }
 
 export function decodeFrame(buffer: ArrayBuffer): TerminalFrame {
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < FRAME_HEADER_LEN) throw new Error('Invalid terminal frame')
   const view = new DataView(buffer)
+  if (![1, 2, 3, 4].includes(view.getUint8(0))) throw new Error('Unknown terminal frame kind')
   return {
     kind: view.getUint8(0),
     seq: Number(view.getBigUint64(1, true)),
