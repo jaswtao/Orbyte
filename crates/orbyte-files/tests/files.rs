@@ -260,9 +260,15 @@ fn delete_uses_recycle_bin_and_can_restore_exact_test_file() {
     let fixture = Fixture::new();
     let path = fixture.0.join("recycle-test.txt");
     fs::write(&path, "recoverable content").unwrap();
+    // Match the Shell's canonical path, including expanded Windows TEMP aliases.
+    let path = dunce::canonicalize(&path).unwrap();
     delete(&fixture.0, "recycle-test.txt").unwrap();
     assert!(!path.exists());
-    let item = trash::os_limited::list().unwrap().into_iter().find(|item| item.original_path() == path).expect("测试文件应存在于回收站");
+    let item = trash::os_limited::list()
+        .unwrap()
+        .into_iter()
+        .find(|item| item.original_path() == path)
+        .unwrap_or_else(|| panic!("Test file should be in the recycle bin: {}", path.display()));
     trash::os_limited::restore_all([item]).unwrap();
     assert_eq!(fs::read_to_string(path).unwrap(), "recoverable content");
 }
