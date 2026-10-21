@@ -127,21 +127,17 @@ export class TerminalRegistry {
       return false
     })
     const copy = async () => {
-      try { if (entry.client.term.hasSelection()) await navigator.clipboard.writeText(entry.client.term.getSelection()) }
+      try { if (entry.client.term.hasSelection()) await terminalApi.writeClipboardText(entry.client.term.getSelection()) }
       catch (error) { onError(t('terminal.copyFailed', { reason: String(error) })) }
     }
     const paste = async (forwardWithoutText = false) => {
       try {
-        const text = await navigator.clipboard.readText()
+        const text = await terminalApi.readClipboardText()
         if (text) entry.client.term.paste(text)
         else if (forwardWithoutText) {
-          // WebView 将 Windows 位图转换为 PNG，避免依赖 CLI 的剪贴板格式支持。
-          const items = await navigator.clipboard.read()
-          const image = items.find((item) => item.types.includes('image/png'))
-          if (!image) return
-          const blob = await image.getType('image/png')
-          if (blob.size > 50 * 1024 * 1024) throw new Error(t('terminal.screenshotTooLarge'))
-          const path = await terminalApi.saveClipboardImage(new Uint8Array(await blob.arrayBuffer()))
+          // Native clipboard access also works when WebView denies browser clipboard reads.
+          const path = await terminalApi.saveClipboardImage()
+          if (!path) return
           entry.client.term.paste(`"${path.replace(/\\/g, '/')}" `)
         }
       }

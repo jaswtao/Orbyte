@@ -146,6 +146,8 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::clipboard::read_clipboard_text,
+            commands::clipboard::write_clipboard_text,
             commands::clipboard::save_clipboard_image,
             commands::terminal::list_launch_presets,
             commands::terminal::report_terminal_diagnostic,

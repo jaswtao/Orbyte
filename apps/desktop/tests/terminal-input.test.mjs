@@ -353,7 +353,11 @@ function translate(key, params = {}) {
 const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
   if (name === '../appearance') return appearance
   if (name === './recovery') return recovery
-  if (name === '../terminalApi') return { terminalApi: {} }
+  if (name === '../terminalApi') return { terminalApi: {
+    readClipboardText: () => clipboard.readText(),
+    writeClipboardText: (text) => clipboard.writeText(text),
+    saveClipboardImage: () => clipboard.read(),
+  } }
   if (name === 'vue') return { markRaw: (value) => value, shallowReactive: (value) => value }
   if (name === '../workspace/shortcuts') return shortcuts
   if (name === '../../i18n/translate') return { t: translate }
@@ -361,10 +365,15 @@ const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
     term = new xterm.Terminal()
   } }
   throw new Error(`未预期的依赖：${name}`)
-}, { document: { querySelector: () => null, createElement: () => new TerminalHost() }, navigator: { clipboard } })
+}, { document: { querySelector: () => null, createElement: () => new TerminalHost() }, navigator: { clipboard: {
+  readText: async () => { throw new DOMException('Read permission denied', 'NotAllowedError') },
+  writeText: async () => { throw new DOMException('Write permission denied', 'NotAllowedError') },
+  read: async () => { throw new DOMException('Read permission denied', 'NotAllowedError') },
+} } })
 
 function keyboardFixture(custom = true, readText = async () => '', errors = [], settings = { shortcuts: {} }, blocked = false) {
   clipboard.readText = readText
+  clipboard.read = async () => null
   clipboard.writeText = async () => {}
   const entry = custom ? new TerminalRegistry(() => 'dark', () => settings, () => blocked).create({}, (message) => errors.push(message)) : null
   const term = entry ? entry.client.term : new xterm.Terminal()
@@ -445,6 +454,33 @@ test('Ctrl+V 读取剪贴板失败时提示错误，不发送控制字符', asyn
   await flush()
   assert.deepEqual(fixture.sent, [])
   assert.deepEqual(errors, ['Paste failed: Error: 剪贴板不可用'])
+  fixture.term.dispose()
+})
+
+test('WebView 拒绝剪贴板权限时通过原生命令粘贴截图，文本快捷键不读取图片', async () => {
+  const errors = []
+  const fixture = keyboardFixture(true, async () => null, errors)
+  let images = 0
+  clipboard.read = async () => { images++; return 'C:\\cache\\screenshot.png' }
+  fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true, shiftKey: true })
+  await flush()
+  assert.equal(images, 0)
+  fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true })
+  await flush()
+  assert.equal(images, 1)
+  assert.deepEqual(fixture.sent, ['"C:/cache/screenshot.png" '])
+  assert.deepEqual(errors, [])
+  fixture.term.dispose()
+})
+
+test('原生图片读取失败仍报告错误且不发送终端输入', async () => {
+  const errors = []
+  const fixture = keyboardFixture(true, async () => null, errors)
+  clipboard.read = async () => { throw new Error('Clipboard occupied') }
+  fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true })
+  await flush()
+  assert.deepEqual(fixture.sent, [])
+  assert.deepEqual(errors, ['Paste failed: Error: Clipboard occupied'])
   fixture.term.dispose()
 })
 

@@ -4,6 +4,8 @@
   "description": "主窗口权限：只授予 Orbyte 声明的命令和所需的核心能力",
   "windows": ["main"],
   "permissions": [
+    "allow-read-clipboard-text",
+    "allow-write-clipboard-text",
     "allow-save-clipboard-image",
     "core:event:allow-listen",
     "core:event:allow-unlisten",

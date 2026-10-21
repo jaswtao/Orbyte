@@ -49,6 +49,13 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "arboard",
+    "version": "3.7.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/arboard/3.7.0"
+  },
+  {
+    "ecosystem": "cargo",
     "name": "atoi",
     "version": "2.0.0",
     "license": "MIT",
@@ -133,10 +140,24 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "bytemuck",
+    "version": "1.25.2",
+    "license": "Zlib OR Apache-2.0 OR MIT",
+    "source": "https://crates.io/crates/bytemuck/1.25.2"
+  },
+  {
+    "ecosystem": "cargo",
     "name": "byteorder",
     "version": "1.5.0",
     "license": "Unlicense OR MIT",
     "source": "https://crates.io/crates/byteorder/1.5.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "byteorder-lite",
+    "version": "0.1.0",
+    "license": "Unlicense OR MIT",
+    "source": "https://crates.io/crates/byteorder-lite/0.1.0"
   },
   {
     "ecosystem": "cargo",
@@ -200,6 +221,19 @@
     "version": "0.1.1",
     "license": "MIT",
     "source": "https://crates.io/crates/cfg_aliases/0.1.1"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "clipboard-win",
+    "version": "5.4.1",
+    "license": "BSL-1.0",
+    "source": "https://crates.io/crates/clipboard-win/5.4.1",
+    "licenseSupplement": {
+      "sources": [
+        "https://raw.githubusercontent.com/DoumanAsh/clipboard-win/3b27cf2bfd1adcfa6e0264eb51c1025ddaf0f342/LICENSE"
+      ],
+      "note": "The published crate omits its license file; the text is taken from the exact upstream source revision."
+    }
   },
   {
     "ecosystem": "cargo",
@@ -466,6 +500,13 @@
     "version": "0.4.10",
     "license": "MIT OR Apache-2.0",
     "source": "https://crates.io/crates/erased-serde/0.4.10"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "error-code",
+    "version": "3.4.0",
+    "license": "BSL-1.0",
+    "source": "https://crates.io/crates/error-code/3.4.0"
   },
   {
     "ecosystem": "cargo",
@@ -777,6 +818,13 @@
   },
   {
     "ecosystem": "cargo",
+    "name": "image",
+    "version": "0.25.10",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/image/0.25.10"
+  },
+  {
+    "ecosystem": "cargo",
     "name": "indexmap",
     "version": "1.9.3",
     "license": "Apache-2.0 OR MIT",
@@ -907,6 +955,13 @@
     "version": "1.2.4",
     "license": "MIT",
     "source": "https://crates.io/crates/mio/1.2.4"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "moxcms",
+    "version": "0.8.1",
+    "license": "BSD-3-Clause OR Apache-2.0",
+    "source": "https://crates.io/crates/moxcms/0.8.1"
   },
   {
     "ecosystem": "cargo",
@@ -1124,6 +1179,13 @@
     "version": "1.0.107",
     "license": "MIT OR Apache-2.0",
     "source": "https://crates.io/crates/proc-macro2/1.0.107"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "pxfm",
+    "version": "0.1.30",
+    "license": "BSD-3-Clause OR Apache-2.0",
+    "source": "https://crates.io/crates/pxfm/0.1.30"
   },
   {
     "ecosystem": "cargo",

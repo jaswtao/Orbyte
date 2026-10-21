@@ -318,15 +318,18 @@ async fn project_path_change_and_deletion_clean_runtime_sessions() {
             .as_nanos()
     ));
     std::fs::create_dir(&root).unwrap();
-    let duplicate = db
-        .create_project(ProjectInput {
+    // Create through the command boundary so equivalent Windows paths are normalized.
+    let duplicate = crate::commands::project::create_project(
+        app.state(),
+        ProjectInput {
             name: "另一项目".into(),
-            path: root.to_str().unwrap().into(),
+            path: root.join(".").to_str().unwrap().into(),
             group_id: None,
             favorite: false,
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     let error = crate::commands::project::update_project(
         app.state(),
         app.state(),

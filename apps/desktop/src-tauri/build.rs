@@ -4,6 +4,8 @@
 //! Date: 2026-10-09
 
 const COMMANDS: &[&str] = &[
+    "read_clipboard_text",
+    "write_clipboard_text",
     "save_clipboard_image",
     "resolve_close_request",
     "list_directory", "read_file", "write_file", "create_file", "create_directory",

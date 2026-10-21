@@ -55,7 +55,9 @@ export const terminalApi = {
   reportDiagnostic: (terminalId: string, event: 'frame_error' | 'ack_failed' | 'reconnect_started' | 'reconnect_succeeded' | 'reconnect_failed' | 'poll_failed', generation: number, seq: number | null) =>
     invoke<void>('report_terminal_diagnostic', { terminalId, event, generation, seq }),
   setActiveTerminal: (terminalId: string | null) => invoke<void>('set_active_terminal', { terminalId }),
-  saveClipboardImage: (png: Uint8Array) => invoke<string>('save_clipboard_image', png),
+  readClipboardText: () => invoke<string | null>('read_clipboard_text'),
+  writeClipboardText: (text: string) => invoke<void>('write_clipboard_text', { text }),
+  saveClipboardImage: () => invoke<string | null>('save_clipboard_image'),
   listLaunchPresets: () => invoke<LaunchPreset[]>('list_launch_presets'),
   exportOutput: (defaultName: string, content: string) => invoke<string | null>('export_terminal_output', { defaultName, content }),
   listAvailableShells: () => invoke<ShellInfo[]>('list_available_shells'),

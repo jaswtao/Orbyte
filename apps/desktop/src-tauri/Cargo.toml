@@ -19,6 +19,8 @@ test = false
 tauri-build.workspace = true
 
 [dependencies]
+arboard = "3.6"
+png = "0.18"
 log.workspace = true
 orbyte-files.workspace = true
 orbyte-git.workspace = true
