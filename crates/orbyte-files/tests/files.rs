@@ -258,11 +258,13 @@ fn atomic_replace_preserves_creation_time_and_hidden_attribute() {
 #[test]
 fn delete_uses_recycle_bin_and_can_restore_exact_test_file() {
     let fixture = Fixture::new();
-    let path = fixture.0.join("recycle-test.txt");
+    // trash uses the Shell display name, which can hide known file extensions.
+    let filename = "recycle-test";
+    let path = fixture.0.join(filename);
     fs::write(&path, "recoverable content").unwrap();
     // Match the Shell's canonical path, including expanded Windows TEMP aliases.
     let path = dunce::canonicalize(&path).unwrap();
-    delete(&fixture.0, "recycle-test.txt").unwrap();
+    delete(&fixture.0, filename).unwrap();
     assert!(!path.exists());
     let item = trash::os_limited::list()
         .unwrap()
