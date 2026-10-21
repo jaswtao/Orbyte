@@ -1,6 +1,7 @@
 <!-- Author: jaswtao · Date: 2026-10-12 -->
 <script setup lang="ts">
 import { matchShortcut } from './services/workspace/shortcuts'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import {
   NNotificationProvider,
@@ -50,6 +51,7 @@ function windowFocus() { if (store.active) git.schedule(store.active.id) }
 const settingsDialog = ref(false)
 const closeDialog = ref(false)
 const closeBusy = ref(false)
+let closeRequestPending = false
 let unlistenClose: (() => void) | undefined
 let disposed = false
 const deck = ref<InstanceType<typeof WorkspaceDeck>>()
@@ -171,6 +173,18 @@ function workspaceShortcut(event: KeyboardEvent) {
     if (project) void store.activate(project.id)
   }
 }
+async function closeShortcut(event: KeyboardEvent) {
+  if (event.code !== 'F4' || !event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  if (event.repeat || event.isComposing || disposed || closeRequestPending || closeDialog.value || closeBusy.value) return
+  closeRequestPending = true
+  try { await getCurrentWindow().close() }
+  catch (reason) { reportError(t('titlebar.windowActionFailed', { reason: String(reason) })) }
+  finally { closeRequestPending = false }
+}
+// Child onMounted runs before the parent hook, so register here to capture Alt+F4 first.
+document.addEventListener('keydown', closeShortcut, true)
 async function resolveClose(action: 'save' | 'discard' | 'cancel') {
   if (closeBusy.value) return
   closeBusy.value = true
@@ -196,7 +210,7 @@ onMounted(async () => {
     await store.run(async () => {})
   } catch (reason) { reportError(t('app.closeInitFailed', { reason: String(reason) })) }
 })
-onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); document.removeEventListener('keydown', workspaceShortcut, true); window.removeEventListener('focus', windowFocus) })
+onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); document.removeEventListener('keydown', closeShortcut, true); document.removeEventListener('keydown', workspaceShortcut, true); window.removeEventListener('focus', windowFocus) })
 </script>
 
 <template>

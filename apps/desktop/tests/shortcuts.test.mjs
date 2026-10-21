@@ -11,6 +11,109 @@ const { matchShortcut, bindings, shortcutConflicts, shortcutHint, validShortcut,
 const tabShortcutIndex = (event) => { const id = matchShortcut(event); return /^tab[1-9]$/.test(id ?? '') ? Number(id.slice(3)) - 1 : -1 }
 const key = (code, modifiers = {}) => ({ altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, code, ...modifiers })
 
+const appSource = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8')
+const appScript = appSource.split('<script setup lang="ts">')[1].split('</script>')[0]
+const appAst = ts.createSourceFile('App.ts', appScript, ts.ScriptTarget.Latest, true)
+const closeShortcut = appAst.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'closeShortcut')
+const closeShortcutJs = ts.transpileModule(closeShortcut.getText(appAst), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+
+function appCloseFixture(close = async () => {}) {
+  const calls = [], errors = []
+  const context = vm.createContext({
+    closeRequestPending: false, disposed: false,
+    closeDialog: { value: false }, closeBusy: { value: false },
+    getCurrentWindow: () => ({ async close() { calls.push('close'); await close() } }),
+    reportError: (message) => errors.push(message),
+    t: (id, params) => `${id}: ${params.reason}`,
+  })
+  vm.runInContext(closeShortcutJs, context)
+  return { context, calls, errors, async press(modifiers = {}, code = 'F4') {
+    const event = { ...key(code, { altKey: true, ...modifiers }),
+      preventDefault() { this.prevented = true }, stopImmediatePropagation() { this.stopped = true } }
+    await context.closeShortcut(event)
+    return event
+  } }
+}
+
+test('Alt+F4 requests window close and intercepts the event before terminal or editor input', async () => {
+  const f = appCloseFixture()
+  const event = await f.press()
+  assert.deepEqual(f.calls, ['close'])
+  assert.equal(event.prevented, true)
+  assert.equal(event.stopped, true)
+  for (const modifiers of [{ altKey: false }, { ctrlKey: true }, { shiftKey: true }, { metaKey: true }]) {
+    const unmatched = await f.press(modifiers)
+    assert.equal(unmatched.prevented, undefined)
+    assert.equal(unmatched.stopped, undefined)
+  }
+  await f.press({}, 'F3')
+  assert.deepEqual(f.calls, ['close'])
+})
+
+test('Alt+F4 suppresses repeats, composition, pending requests and close confirmation', async () => {
+  let finishClose
+  const f = appCloseFixture(() => new Promise((resolve) => { finishClose = resolve }))
+  for (const modifiers of [{ repeat: true }, { isComposing: true }]) {
+    const event = await f.press(modifiers)
+    assert.equal(event.prevented, true)
+    assert.equal(event.stopped, true)
+  }
+  const pending = f.press()
+  await f.press()
+  assert.deepEqual(f.calls, ['close'])
+  finishClose()
+  await pending
+  assert.equal(f.context.closeRequestPending, false)
+  for (const state of ['closeDialog', 'closeBusy']) {
+    f.context[state].value = true
+    await f.press()
+    f.context[state].value = false
+  }
+  f.context.disposed = true
+  await f.press()
+  assert.deepEqual(f.calls, ['close'])
+})
+
+test('Alt+F4 reports close failures and allows retry after failure or cancelled confirmation', async () => {
+  let fail = true
+  const f = appCloseFixture(async () => { if (fail) throw new Error('close failed') })
+  await f.press()
+  assert.deepEqual(f.errors, ['titlebar.windowActionFailed: Error: close failed'])
+  assert.equal(f.context.closeRequestPending, false)
+  fail = false
+  await f.press()
+  f.context.closeDialog.value = true
+  await f.press()
+  f.context.closeDialog.value = false
+  await f.press()
+  assert.deepEqual(f.calls, ['close', 'close', 'close'])
+})
+
+function listenerCalls(handler) {
+  const found = []
+  const visit = (node) => {
+    if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+      && ['addEventListener', 'removeEventListener'].includes(node.expression.name.text)
+      && node.arguments[1]?.getText(appAst) === handler) {
+      const inside = []
+      for (let current = node.parent; current; current = current.parent) {
+        if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) inside.push(current.expression.text)
+      }
+      found.push({ method: node.expression.name.text, target: node.expression.expression.getText(appAst), args: node.arguments.map((arg) => arg.getText(appAst)), inside })
+    }
+    ts.forEachChild(node, visit)
+  }
+  visit(appAst)
+  return found
+}
+
+test('Alt+F4 listener is registered on document during setup and removed on unmount', () => {
+  assert.deepEqual(listenerCalls('closeShortcut'), [
+    { method: 'addEventListener', target: 'document', args: ["'keydown'", 'closeShortcut', 'true'], inside: [] },
+    { method: 'removeEventListener', target: 'document', args: ["'keydown'", 'closeShortcut', 'true'], inside: ['onBeforeUnmount'] },
+  ])
+})
+
 function t(key, params = {}) {
   const messages = {
     'workspace.unsavedSuffix': '{text} {count} file(s) have unsaved changes.',
@@ -146,7 +249,6 @@ test('快捷键冲突阻止提交，保存失败保留草稿并允许重试，�
   assert.deepEqual(child.emitted, [['update:show', false]])
 })
 
-const appSource = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8')
 const script = appSource.split('<script setup lang="ts">')[1].split('</script>')[0]
 const ast = ts.createSourceFile('App.ts', script, ts.ScriptTarget.Latest, true)
 const handler = ast.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'workspaceShortcut')
