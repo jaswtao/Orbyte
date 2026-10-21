@@ -303,14 +303,24 @@ public class InputProbe {
     [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int n);
     [DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h, uint mode);
     [DllImport("kernel32.dll")] static extern bool SetConsoleCP(uint cp);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, ExactSpelling=true)] static extern bool ReadConsoleW(IntPtr h, [Out] char[] buffer, uint count, out uint read, IntPtr control);
     [DllImport("kernel32.dll")] static extern bool ReadConsoleInputW(IntPtr h, out Record r, uint count, out uint read);
     public static void Run(uint mode, int count, bool bytes) {
         var h = GetStdHandle(-10);
         if(!SetConsoleMode(h, mode) || !SetConsoleCP(65001)) throw new Exception("console setup failed");
         Console.WriteLine("probe-ready");
         if(bytes) {
-            var input = Console.OpenStandardInput();
-            for(int i = 0; i < count; i++) Console.WriteLine("byte:{0:X2}", input.ReadByte());
+            // Older console hosts cannot reliably read UTF-8 through ReadFile.
+            var buffer = new char[256];
+            int received = 0;
+            while(received < count) {
+                uint read;
+                if(!ReadConsoleW(h, buffer, (uint)buffer.Length, out read, IntPtr.Zero) || read == 0)
+                    throw new Exception("console read failed");
+                var data = System.Text.Encoding.UTF8.GetBytes(buffer, 0, (int)read);
+                foreach(var value in data) Console.WriteLine("byte:{0:X2}", value);
+                received += data.Length;
+            }
             return;
         }
         int n = 0;
@@ -365,7 +375,7 @@ fn unicode_punctuation_reaches_raw_console_without_modifiers() {
 }
 
 #[test]
-fn unicode_paste_reaches_vt_input_as_utf8_without_protocol_leaking() {
+fn unicode_paste_reaches_vt_input_without_protocol_leaking() {
     let input = "\x1b[200~甲“乙”\r‘丙’\"丁\"\x1b[201~";
     let text = probe_console_input(console_input_probe(0x298, input.len(), true), &[input]);
     let actual: Vec<_> = text.lines().filter_map(|line| line.find("byte:").map(|index| &line[index..])).collect();
