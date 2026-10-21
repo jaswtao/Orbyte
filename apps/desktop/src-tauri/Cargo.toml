@@ -38,5 +38,9 @@ orbyte-platform.workspace = true
 orbyte-terminal.workspace = true
 tauri.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+clipboard-win = "5.4"
+image = { version = "0.25", default-features = false, features = ["bmp"] }
+
 [dev-dependencies]
 tauri = { workspace = true, features = ["test"] }

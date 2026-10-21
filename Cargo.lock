@@ -2914,6 +2914,8 @@ name = "orbyte-desktop"
 version = "0.1.0"
 dependencies = [
  "arboard",
+ "clipboard-win",
+ "image",
  "log",
  "orbyte-core",
  "orbyte-files",

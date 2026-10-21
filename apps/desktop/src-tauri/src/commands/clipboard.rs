@@ -56,11 +56,41 @@ fn encode_image(image: &arboard::ImageData<'_>) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
+#[cfg(windows)]
+fn decode_dib(bytes: &[u8]) -> Result<arboard::ImageData<'static>, String> {
+    let decoder = image::codecs::bmp::BmpDecoder::new_without_file_header(std::io::Cursor::new(bytes))
+        .map_err(|e| format!("无法解码剪贴板位图：{e}"))?;
+    let pixels = image::DynamicImage::from_decoder(decoder)
+        .map_err(|e| format!("无法读取剪贴板位图像素：{e}"))?
+        .into_rgba8();
+    Ok(arboard::ImageData {
+        width: pixels.width() as usize,
+        height: pixels.height() as usize,
+        bytes: pixels.into_raw().into(),
+    })
+}
+
+fn read_image(clipboard: &mut arboard::Clipboard) -> Result<Option<arboard::ImageData<'static>>, String> {
+    let result = clipboard.get_image();
+    #[cfg(windows)]
+    if matches!(&result, Err(arboard::Error::ConversionFailure | arboard::Error::ContentNotAvailable)) {
+        // PixPin's synthesized DIBV5 can fail decoding while its original DIB remains valid.
+        let _guard = clipboard_win::Clipboard::new_attempts(10).map_err(|e| format!("无法打开剪贴板：{e}"))?;
+        if clipboard_win::is_format_avail(clipboard_win::formats::CF_DIB) {
+            let mut bytes = Vec::new();
+            clipboard_win::raw::get_vec(clipboard_win::formats::CF_DIB, &mut bytes)
+                .map_err(|e| format!("无法读取剪贴板位图：{e}"))?;
+            return decode_dib(&bytes).map(Some);
+        }
+    }
+    optional_content(result)
+}
+
 #[tauri::command]
 pub async fn save_clipboard_image(app: tauri::AppHandle) -> Result<Option<String>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-        let Some(image) = optional_content(clipboard.get_image())? else { return Ok(None) };
+        let Some(image) = read_image(&mut clipboard)? else { return Ok(None) };
         let png = encode_image(&image)?;
         let directory = app.path().app_cache_dir().map_err(|e| e.to_string())?.join("clipboard-images");
         save_png(&directory, &png).map(|path| Some(path.to_string_lossy().into_owned()))
@@ -72,6 +102,29 @@ pub async fn save_clipboard_image(app: tauri::AppHandle) -> Result<Option<String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn decodes_pixpin_dib_with_rgb_masks_and_bottom_up_rows() {
+        // A 1x2, 32-bit BITMAPINFOHEADER with BI_BITFIELDS and three RGB masks.
+        let mut dib = vec![0u8; 52];
+        dib[0..4].copy_from_slice(&40u32.to_le_bytes());
+        dib[4..8].copy_from_slice(&1i32.to_le_bytes());
+        dib[8..12].copy_from_slice(&2i32.to_le_bytes());
+        dib[12..14].copy_from_slice(&1u16.to_le_bytes());
+        dib[14..16].copy_from_slice(&32u16.to_le_bytes());
+        dib[16..20].copy_from_slice(&3u32.to_le_bytes());
+        dib[40..44].copy_from_slice(&0x00ff0000u32.to_le_bytes());
+        dib[44..48].copy_from_slice(&0x0000ff00u32.to_le_bytes());
+        dib[48..52].copy_from_slice(&0x000000ffu32.to_le_bytes());
+        dib.extend_from_slice(&[255, 0, 0, 255, 0, 0, 255, 255]);
+        let image = decode_dib(&dib).unwrap();
+        assert_eq!((image.width, image.height), (1, 2));
+        assert_eq!(&*image.bytes, &[255, 0, 0, 255, 0, 0, 255, 255]);
+        assert!(encode_image(&image).unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(decode_dib(&dib[..52]).is_err());
+        assert!(decode_dib(b"invalid bitmap").is_err());
+    }
 
     #[test]
     fn absent_format_is_empty_but_access_errors_are_reported() {
