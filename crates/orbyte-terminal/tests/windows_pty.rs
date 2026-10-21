@@ -400,6 +400,10 @@ fn resubscribe_restores_hidden_cursor_before_subsequent_output() {
 fn integrated_shells_report_directory_and_powershell_exit_code() {
     let directory = std::env::temp_dir().join(format!("orbyte-osc-Tao's-{}", std::process::id()));
     orbyte_platform::shell_integration::install(&directory).unwrap();
+    // Shells report expanded paths even when TEMP uses an 8.3 alias.
+    let directory = std::path::PathBuf::from(
+        orbyte_platform::path::normalize_project_path(directory.to_str().unwrap()).unwrap(),
+    );
     let mut candidates: Vec<_> = [ShellType::Powershell, ShellType::Cmd].into_iter().filter_map(|shell| detect_shell(&SystemShellEnv, shell).program.map(|program| (shell, program))).collect();
     if let Some(root) = std::env::var_os("SystemRoot") {
         let program = std::path::PathBuf::from(root).join(r"System32\WindowsPowerShell\v1.0\powershell.exe");

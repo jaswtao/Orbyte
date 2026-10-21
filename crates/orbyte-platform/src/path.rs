@@ -54,10 +54,13 @@ mod tests {
         std::fs::create_dir_all(&sub).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
         let project = root.to_str().unwrap();
-        assert_eq!(resolve_terminal_directory(project, "").unwrap(), root);
+        assert_eq!(
+            resolve_terminal_directory(project, "").unwrap(),
+            dunce::canonicalize(&root).unwrap()
+        );
         assert_eq!(
             resolve_terminal_directory(project, "中文 空格").unwrap(),
-            sub
+            dunce::canonicalize(&sub).unwrap()
         );
         assert!(resolve_terminal_directory(project, "missing").is_err());
         assert!(resolve_terminal_directory(project, "../project-outside").is_err());
