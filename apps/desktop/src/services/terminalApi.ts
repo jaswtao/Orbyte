@@ -6,6 +6,7 @@
  */
 import { Channel, invoke } from '@tauri-apps/api/core'
 import type { OutputHealth } from './terminal/recovery'
+import type { TerminalFrameData } from './terminal/frame'
 
 export type ShellType = 'powershell' | 'cmd' | 'wsl'
 
@@ -62,10 +63,10 @@ export const terminalApi = {
   exportOutput: (defaultName: string, content: string) => invoke<string | null>('export_terminal_output', { defaultName, content }),
   listAvailableShells: () => invoke<ShellInfo[]>('list_available_shells'),
 
-  createTerminal: (projectId: string, workspaceId: string, shell: ShellType, cwd: string, size: TerminalSize, channel: Channel<ArrayBuffer>, launchPreset: TerminalConfig['launchPreset'] = null) =>
+  createTerminal: (projectId: string, workspaceId: string, shell: ShellType, cwd: string, size: TerminalSize, channel: Channel<TerminalFrameData>, launchPreset: TerminalConfig['launchPreset'] = null) =>
     invoke<CreatedTerminal>('create_terminal', { projectId, workspaceId, shell, cwd, launchPreset, cols: size.cols, rows: size.rows, channel }),
 
-  startTerminal: (terminalConfigId: string, size: TerminalSize, channel: Channel<ArrayBuffer>) =>
+  startTerminal: (terminalConfigId: string, size: TerminalSize, channel: Channel<TerminalFrameData>) =>
     invoke<string>('start_terminal', { terminalConfigId, cols: size.cols, rows: size.rows, channel }),
 
   removeTerminal: (terminalConfigId: string) => invoke<void>('remove_terminal', { terminalConfigId }),
@@ -77,7 +78,7 @@ export const terminalApi = {
   listTerminalSessions: () => invoke<TerminalSessionInfo[]>('list_terminal_sessions'),
   terminalsHaveRunningTasks: (terminalIds: string[]) => invoke<boolean>('terminals_have_running_tasks', { terminalIds }),
 
-  subscribeTerminal: (terminalId: string, channel: Channel<ArrayBuffer>) =>
+  subscribeTerminal: (terminalId: string, channel: Channel<TerminalFrameData>) =>
     invoke<void>('subscribe_terminal', { terminalId, channel }),
 
   ackTerminal: (terminalId: string, seq: number) => invoke<void>('ack_terminal', { terminalId, seq }),

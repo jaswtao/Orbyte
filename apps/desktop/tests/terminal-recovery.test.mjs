@@ -46,15 +46,17 @@ function clientFixture(t) {
   const diagnostics = []
   const api = { reportDiagnostic: async (...args) => diagnostics.push(args), ackTerminal: async () => {}, resizeTerminal: async () => {}, writeTerminal: async () => {} }
   class Terminal {
+    writes = []
     options = {}
     buffer = { active: {} }
     parser = { registerOscHandler() {} }
     loadAddon() {} open() {} onResize() {} onWriteParsed() {} onData(callback) { this.data = callback }
-    write(data, callback) { if (this.failWrite) throw new Error('parser failed'); callback?.() }
+    write(data, callback) { if (this.failWrite) throw new Error('parser failed'); this.writes.push(new TextDecoder().decode(data)); callback?.() }
     dispose() {} reset() {}
   }
   const exports = {}
-  vm.runInNewContext(clientSource, { exports, window, document: { visibilityState: 'visible' }, performance, queueMicrotask, ArrayBuffer,
+  const document = { visibilityState: 'visible' }
+  vm.runInNewContext(clientSource, { exports, window, document, performance, queueMicrotask, ArrayBuffer,
     ResizeObserver: class { observe() {} disconnect() {} },
     require(name) {
       if (name === '@tauri-apps/api/core') return { Channel }
@@ -77,16 +79,16 @@ function clientFixture(t) {
   const channel = client.createChannel()
   client.attach('session')
   let index = 0
-  function deliver(kind, payload) {
+  function deliver(kind, payload, fallback = false) {
     const data = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload
     const frame = new ArrayBuffer(17 + data.length)
     new DataView(frame).setUint8(0, kind)
     new DataView(frame).setBigUint64(1, BigInt(index), true)
     new Uint8Array(frame, 17).set(data)
-    callbacks.get(channel.id)({ index: index++, message: frame })
+    callbacks.get(channel.id)({ index: index++, message: fallback ? Array.from(new Uint8Array(frame)) : frame })
   }
   t.after(() => { client.dispose(); globalThis.window = previous })
-  return { client, deliver, statuses, diagnostics, api, callbacks, channel, container }
+  return { client, deliver, statuses, diagnostics, api, callbacks, channel, container, document }
 }
 
 test('真实 Tauri 有序 Channel 中，坏 JSON 后仍能接收退出状态', (t) => {
@@ -138,6 +140,80 @@ function outputFrame(kind, text) {
   new Uint8Array(buffer, 17).set(payload)
   return buffer
 }
+
+test('IPC fallback byte arrays keep output acknowledged and input usable after reconnect', async (t) => {
+  const f = clientFixture(t)
+  const confirmed = []
+  const inputs = []
+  f.api.writeTerminal = async (id, data) => inputs.push([id, data])
+  f.api.ackTerminal = async (_id, seq) => confirmed.push(seq)
+  f.deliver(2, '{"state":"running"}')
+  f.deliver(1, 'Codex redraw '.repeat(1024), true)
+  await f.client.flushAck()
+  assert.equal(f.client.connection, 'connected')
+  assert.equal(f.client.term.options.disableStdin, false)
+  assert.deepEqual(confirmed, [1])
+  assert.equal(f.diagnostics.some((args) => args[1] === 'frame_error'), false)
+  assert.equal(f.client.term.writes.at(-1), 'Codex redraw '.repeat(1024))
+  f.client.term.data('draft')
+  await flush()
+  assert.deepEqual(inputs, [['session', 'draft']])
+
+  f.api.listTerminalSessions = async () => [{ terminalId: 'session', status: { state: 'running' } }]
+  f.api.subscribeTerminal = async (_id, channel) => {
+    channel.onmessage(outputFrame(1, '\x1b[?25l'))
+    channel.onmessage(Array.from(new Uint8Array(outputFrame(1, 'Codex redraw '.repeat(1024)))))
+  }
+  await f.client.reconnect()
+  await f.client.flushAck()
+  f.deliver(1, 'ignored old subscription', true)
+  assert.equal(f.client.connection, 'connected')
+  assert.equal(f.client.term.options.disableStdin, false)
+  assert.equal(f.diagnostics.some((args) => args[1] === 'frame_error'), false)
+  assert.equal(f.client.term.writes.at(-1), 'Codex redraw '.repeat(1024))
+  f.client.term.data('after reconnect')
+  await flush()
+  assert.deepEqual(inputs.at(-1), ['session', 'after reconnect'])
+})
+
+test('fallback frames reject invalid bytes rather than silently coercing them', () => {
+  for (const byte of [-1, 256, 1.5, '1', null, NaN]) {
+    const frame = Array.from(new Uint8Array(outputFrame(1, 'text')))
+    frame[17] = byte
+    assert.throws(() => frameModule.decodeFrame(frame))
+  }
+})
+
+test('background output and IPC fallback do not disable input when returning from a browser', async (t) => {
+  const f = clientFixture(t)
+  f.container.offsetWidth = 800
+  f.container.offsetHeight = 600
+  const inputs = []
+  const confirmed = []
+  f.api.writeTerminal = async (id, data) => inputs.push([id, data])
+  f.api.ackTerminal = async (_id, seq) => confirmed.push(seq)
+  f.deliver(2, '{"state":"running"}')
+  f.document.visibilityState = 'hidden'
+  f.client.observeSession({ terminalId: 'session', status: { state: 'running' },
+    output: { subscribed: true, inflightBytes: 12000, ackIdleMs: 60000 } })
+  f.deliver(1, 'Browser operation completed\r\n'.repeat(512), true)
+  await f.client.flushAck()
+
+  f.document.visibilityState = 'visible'
+  f.client.observeSession({ terminalId: 'session', status: { state: 'running' },
+    output: { subscribed: true, inflightBytes: 0, ackIdleMs: null } })
+  f.deliver(1, '\x1b[?25l')
+  f.deliver(1, 'Codex redraw after return\r\n'.repeat(512), true)
+  await f.client.flushAck()
+  f.client.term.data('next question')
+  await flush()
+  assert.equal(f.client.connection, 'connected')
+  assert.equal(f.client.term.options.disableStdin, false)
+  assert.deepEqual(confirmed, [1, 3])
+  assert.deepEqual(inputs, [['session', 'next question']])
+  assert.equal(f.client.term.writes.at(-1), 'Codex redraw after return\r\n'.repeat(512))
+  assert.deepEqual(f.diagnostics, [])
+})
 
 test('帧异常自动恢复一次，后续异常保留手动重连入口且不重启会话', async (t) => {
   const f = clientFixture(t)

@@ -11,7 +11,7 @@ import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm'
 
 import { terminalApi, type TerminalSize, type TerminalStatus, type TerminalSessionInfo } from '../terminalApi'
 import { AckQueue, OutputRecovery, withTimeout } from './recovery'
-import { decodeFrame, decodeJsonPayload, FrameKind } from './frame'
+import { decodeFrame, decodeJsonPayload, FrameKind, type TerminalFrameData } from './frame'
 import { InputQueue } from './inputQueue'
 import { bindTerminalIme } from './ime'
 import { bindTerminalSelection } from './selection'
@@ -70,8 +70,8 @@ export class TerminalClient {
   private readonly observer: ResizeObserver
   private readonly ime: ReturnType<typeof bindTerminalIme>
   private readonly selection: IDisposable
-  private pendingChannel: { frames: ArrayBuffer[] } | null = null
-  private activeChannel: { frames: ArrayBuffer[] } | null = null
+  private pendingChannel: { frames: TerminalFrameData[] } | null = null
+  private activeChannel: { frames: TerminalFrameData[] } | null = null
   status: TerminalStatus = { state: 'starting' }
 
   constructor(
@@ -106,10 +106,10 @@ export class TerminalClient {
   }
 
   /** 创建绑定到本实例的 Channel，用于 create / start / subscribe 命令。 */
-  createChannel(): Channel<ArrayBuffer> {
-    const subscription = { frames: [] as ArrayBuffer[] }
+  createChannel(): Channel<TerminalFrameData> {
+    const subscription = { frames: [] as TerminalFrameData[] }
     this.pendingChannel = subscription
-    const channel = new Channel<ArrayBuffer>()
+    const channel = new Channel<TerminalFrameData>()
     channel.onmessage = (buffer) => {
       this.safe(() => {
         if (this.pendingChannel === subscription) subscription.frames.push(buffer)
@@ -338,7 +338,7 @@ export class TerminalClient {
     }
   }
 
-  private handleFrame(buffer: ArrayBuffer): void {
+  private handleFrame(buffer: TerminalFrameData): void {
     const frame = decodeFrame(buffer)
     switch (frame.kind) {
       case FrameKind.Output: {

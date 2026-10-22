@@ -14,6 +14,8 @@ export const FrameKind = {
 
 export const FRAME_HEADER_LEN = 17
 
+export type TerminalFrameData = ArrayBuffer | number[]
+
 export interface TerminalFrame {
   kind: number
   seq: number
@@ -21,7 +23,16 @@ export interface TerminalFrame {
   payload: Uint8Array
 }
 
-export function decodeFrame(buffer: ArrayBuffer): TerminalFrame {
+export function decodeFrame(data: TerminalFrameData): TerminalFrame {
+  // Tauri's postMessage fallback serializes raw IPC responses as JSON byte arrays.
+  // Small Channel frames still arrive as ArrayBuffer, so both can occur in one subscription.
+  let buffer: ArrayBuffer
+  if (Array.isArray(data)) {
+    for (let index = 0; index < data.length; index++) {
+      if (!Number.isInteger(data[index]) || data[index]! < 0 || data[index]! > 255) throw new Error('Invalid terminal frame byte')
+    }
+    buffer = new Uint8Array(data).buffer
+  } else buffer = data
   if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < FRAME_HEADER_LEN) throw new Error('Invalid terminal frame')
   const view = new DataView(buffer)
   if (![1, 2, 3, 4].includes(view.getUint8(0))) throw new Error('Unknown terminal frame kind')
