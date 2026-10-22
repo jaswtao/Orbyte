@@ -119,6 +119,18 @@ pub fn run() {
             })();
             app.manage(StorageState(database));
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(windows)]
+                match window.hwnd() {
+                    Ok(hwnd) => {
+                        // SAFETY: setup runs on the UI thread and the main window is still alive.
+                        if let Err(error) = unsafe {
+                            orbyte_platform::windows::system_menu::disable_keyboard_menu(hwnd.0 as _)
+                        } {
+                            eprintln!("禁用窗口菜单的键盘激活失败：{error}");
+                        }
+                    }
+                    Err(error) => eprintln!("读取主窗口句柄失败，无法禁用菜单的键盘激活：{error}"),
+                }
                 // 开发标识与安装版分开，窗口标题也分开，避免两套进程叠在同一个任务栏入口下。
                 if app.config().identifier.ends_with(".dev") {
                     window.set_title("Orbyte Dev")?;

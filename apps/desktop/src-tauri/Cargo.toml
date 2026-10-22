@@ -44,3 +44,6 @@ image = { version = "0.25", default-features = false, features = ["bmp"] }
 
 [dev-dependencies]
 tauri = { workspace = true, features = ["test"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys.workspace = true
