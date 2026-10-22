@@ -2,6 +2,7 @@ AGENTS.md
 .idea/
 .playwright-mcp/
 /.tmp/
+/promotion/
 
 # Rust
 /target/

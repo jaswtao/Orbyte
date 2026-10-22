@@ -1,14 +1,30 @@
 # Orbyte
 
-[English](README.en.md) · [下载与发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
+[English](README.en.md) · [下载 Windows 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) · [快速上手](doc/getting-started.md) · [发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
 
-Windows 本地开发工作台，使用 Tauri 2、Vue 3 和 Rust。支持项目分组、多终端 Tab 与分屏，以及 CodeMirror 文本编辑器。
+**将多个项目、终端和 AI 编码 CLI 集中到一个 Windows 窗口，减少来回切换。**
+
+Orbyte 是一个开源的本地开发工作台。按项目组织终端和文件，在 Tab 与分屏之间切换，也可以启动已安装的 Codex / Claude Code。
+
+- **多个项目，各自保留工作现场**：切换项目或 Tab 时，终端继续运行，未保存的编辑内容留在当前应用会话中。
+- **命令与文件并排查看**：在同一工作区运行 PowerShell、CMD 或已安装的 WSL，并编辑文本文件。
+- **分开处理不同任务**：查看 Git 状态，新建分支 worktree 或将已有 worktree 加入项目组。
+
+支持中文 / English 界面。使用 Tauri 2、Vue 3、Rust 和 CodeMirror 构建，项目自有代码采用 MIT 许可证。
 
 ![Orbyte 工作区](doc/images/workspace.png)
 
 ## 版本与下载
 
-首次公开版本为 **0.1.0 预发布版，仅支持 Windows x64**。仓库发布后从上方 Releases 页面下载 NSIS 安装包，并用发布附件 SHA256SUMS.txt 核对 SHA-256。尚无公开发行版时可从源码构建。
+首个公开预览版本 **v0.1.0 已提供下载，仅支持 Windows x64**。普通用户使用安装包即可，无需安装 Rust、Node.js 或构建工具。
+
+1. 下载 [Orbyte_0.1.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt)。
+2. 执行下方命令，将输出与校验文件中同名安装包的 SHA-256 比较，一致后安装。
+3. 打开 Orbyte，添加本地项目目录，点击「新建终端」。完整步骤见[快速上手](doc/getting-started.md)。
+
+```powershell
+Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
+```
 
 安装包暂未签名，Windows 可能显示信任提示。Git、WSL、Codex、Claude Code 需自行安装；Orbyte 不捆绑这些 CLI。
 
@@ -121,4 +137,4 @@ Orbyte 本身未配置遥测或应用自动更新服务。Shell 命令、Git 与
 
 第三方内容仍遵循各自许可，详见 [完整声明](THIRD_PARTY_NOTICES.txt) 和 [依赖许可清单](THIRD_PARTY_LICENSES.json)。发布附件提供 third-party-mpl-sources.zip。
 
-[贡献指南](CONTRIBUTING.md) · [安全反馈](SECURITY.md)
+[贡献指南](CONTRIBUTING.md) · [问题反馈](https://github.com/jaswtao/Orbyte/issues) · [安全反馈](SECURITY.md)

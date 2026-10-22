@@ -1,14 +1,28 @@
 # Orbyte
 
-[简体中文](README.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
+[简体中文](README.md) · [Download for Windows](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) · [Quick start](doc/getting-started.en.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
 
-Orbyte is a local Windows development workbench built with Tauri 2, Vue 3 and Rust. Organize projects, keep multiple terminals running across tabs and split panes, and edit text alongside terminal sessions.
+**Keep your projects, terminals and AI coding CLIs in one Windows workspace.**
+
+Orbyte is an open-source local development workbench. Organize terminals and files by project, switch between tabs and split panes, and launch your installed Codex or Claude Code CLI.
+
+- **Keep each project's work at hand.** Terminals keep running when you switch projects or tabs; unsaved edits remain available during the current app session.
+- **Put commands beside files.** Run PowerShell, CMD or an installed WSL distribution alongside a text editor.
+- **Separate tasks with worktrees.** Check Git status, create a branch worktree or add an existing worktree to a project group.
+
+Chinese and English interfaces. Built with Tauri 2, Vue 3, Rust and CodeMirror; first-party code is MIT-licensed.
 
 ![Orbyte desktop](doc/images/workspace.png)
 
 ## Status and installation
 
-The first public preview is 0.1.0 for Windows x64. Download an installer only from the repository's Releases page once a release is published. Preview installers are unsigned and Windows may display a trust warning. Compare the downloaded file's SHA-256 hash with the release's SHA256SUMS.txt.
+The first public preview, **v0.1.0, is available for Windows x64**. Using the installer does not require Rust, Node.js or build tools.
+
+1. Download [Orbyte_0.1.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt).
+2. Run the command below and compare the hash with the installer's entry in the checksum file before installing.
+3. Open Orbyte, add a local project directory and select **New terminal**. Follow the [quick start](doc/getting-started.en.md) for a first walkthrough.
+
+The installer is unsigned and Windows may display a trust warning.
 
 ```powershell
 Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
