@@ -1,5 +1,5 @@
 /** Git IPC。Author: jaswtao · Date: 2026-10-14 */
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 export type GitKind = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
 export interface GitStatus { isRepo: boolean; branch: string | null; detached: boolean; upstream: string | null; ahead: number; behind: number; files: { path: string; kind: GitKind }[]; truncated: boolean }
 export interface Worktree { path: string; branch: string | null; head: string; detached: boolean; isMain: boolean; projectId: string | null }

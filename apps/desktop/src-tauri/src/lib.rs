@@ -5,7 +5,7 @@
 
 mod commands;
 mod state;
-mod terminal_log;
+mod app_log;
 
 use commands::project::StorageState;
 use state::{AppState, ClosePhase};
@@ -19,6 +19,7 @@ fn request_close(app: &tauri::AppHandle) {
     let mut phase = state.close_phase.lock().unwrap_or_else(|e| e.into_inner());
     let fresh = phase.request(state.unsaved_editor_count.load(Ordering::Acquire));
     let pending = *phase == ClosePhase::Pending;
+    log::info!("close_requested fresh={fresh} phase={phase:?}");
     drop(phase);
     if pending {
         if let Some(window) = app.get_webview_window("main") {
@@ -28,7 +29,7 @@ fn request_close(app: &tauri::AppHandle) {
         }
         if fresh {
             if let Err(error) = app.emit("app_close_requested", ()) {
-                eprintln!("无法请求未保存确认：{error}");
+                log::warn!("无法请求未保存确认：{error}");
                 let _ = state.close_phase.lock().unwrap_or_else(|e| e.into_inner()).resolve(false);
             }
         }
@@ -46,6 +47,7 @@ fn resolve_close_request(app: tauri::AppHandle, proceed: bool) -> Result<(), Str
 
 /// 从进入清理时计时，包含进行中文件修改与生命周期锁等待；超时退出由全局 Job 兜底。
 fn begin_shutdown(app: &tauri::AppHandle) {
+    log::info!("shutdown_started");
     app.state::<AppState>().close_started.store(true, Ordering::Release);
     let _ = app.emit("app_shutdown_started", ());
     let app = app.clone();
@@ -56,12 +58,17 @@ fn begin_shutdown(app: &tauri::AppHandle) {
             let _guard = state.terminal_lifecycle.lock().await;
             let terminals = state.terminals.clone();
             let files = state.files.clone();
-            let _ = tauri::async_runtime::spawn_blocking(move || {
+            let result = tauri::async_runtime::spawn_blocking(move || {
                 files.clear();
                 terminals.stop_all();
             }).await;
+            if let Err(error) = result { log::error!("shutdown_cleanup_failed error={error}"); }
         };
-        let _ = tokio::time::timeout(orbyte_terminal::STOP_GRACE, cleanup).await;
+        if tokio::time::timeout(orbyte_terminal::STOP_GRACE, cleanup).await.is_err() {
+            log::warn!("shutdown_cleanup_timeout");
+        }
+        log::info!("shutdown_complete");
+        log::logger().flush();
         state.close_complete.store(true, Ordering::Release);
         app.exit(0);
     });
@@ -70,9 +77,7 @@ fn begin_shutdown(app: &tauri::AppHandle) {
 pub fn run() {
     // 尽早加入全局 Job，之后创建的 WebView2 与终端进程都继承该 Job，崩溃时由系统清理。
     #[cfg(windows)]
-    if let Err(e) = orbyte_platform::windows::job::install_global_job() {
-        eprintln!("创建全局 Job 失败，崩溃时可能残留子进程：{e}");
-    }
+    let global_job_error = orbyte_platform::windows::job::install_global_job().err();
 
     let state = AppState::new();
     #[cfg(windows)]
@@ -106,17 +111,24 @@ pub fn run() {
         .setup(move |app| {
             let database = (|| -> Result<_, String> {
                 let directory = app.path().app_data_dir().map_err(|e| e.to_string())?;
-                if let Err(error) = terminal_log::init(directory.join("logs")) {
-                    eprintln!("无法初始化终端诊断日志：{error}");
+                if let Err(error) = app_log::init(directory.join("logs")) {
+                    eprintln!("无法初始化应用诊断日志：{error}");
                 }
+                log::info!("app_start version={} os={} arch={} log_directory={}", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH, directory.join("logs").display());
+                #[cfg(windows)]
+                if let Some(error) = &global_job_error { log::error!("global_job_install_failed error={error}"); }
                 let integration = directory.join("shell-integration");
                 match orbyte_platform::shell_integration::install(&integration) {
                     Ok(()) => { let _ = app.state::<AppState>().integration_dir.set(integration); }
-                    Err(e) => eprintln!("Shell 集成脚本安装失败，新终端将不启用集成：{e}"),
+                    Err(e) => log::warn!("Shell 集成脚本安装失败，新终端将不启用集成：{e}"),
                 }
                 std::fs::create_dir_all(&directory).map_err(|e| format!("无法创建数据目录：{e}"))?;
                 tauri::async_runtime::block_on(orbyte_storage::Database::open(&directory.join("orbyte.db")))
             })();
+            match &database {
+                Ok(_) => log::info!("database_ready"),
+                Err(error) => log::error!("database_init_failed error={error}"),
+            }
             app.manage(StorageState(database));
             if let Some(window) = app.get_webview_window("main") {
                 #[cfg(windows)]
@@ -126,10 +138,10 @@ pub fn run() {
                         if let Err(error) = unsafe {
                             orbyte_platform::windows::system_menu::disable_keyboard_menu(hwnd.0 as _)
                         } {
-                            eprintln!("禁用窗口菜单的键盘激活失败：{error}");
+                            log::warn!("禁用窗口菜单的键盘激活失败：{error}");
                         }
                     }
-                    Err(error) => eprintln!("读取主窗口句柄失败，无法禁用菜单的键盘激活：{error}"),
+                    Err(error) => log::warn!("读取主窗口句柄失败，无法禁用菜单的键盘激活：{error}"),
                 }
                 // 开发标识与安装版分开，窗口标题也分开，避免两套进程叠在同一个任务栏入口下。
                 if app.config().identifier.ends_with(".dev") {
@@ -139,7 +151,7 @@ pub fn run() {
                 if let Err(error) = window.restore_state(
                     StateFlags::SIZE | StateFlags::POSITION | StateFlags::MAXIMIZED,
                 ) {
-                    eprintln!("恢复窗口状态失败：{error}");
+                    log::warn!("恢复窗口状态失败：{error}");
                 }
                 window.show()?;
                 window.set_focus()?;
@@ -151,13 +163,14 @@ pub fn run() {
                         move |pid| terminals.is_active_process(pid),
                     ) {
                         Ok(service) => *activation_setup.lock().unwrap_or_else(|e| e.into_inner()) = Some(service),
-                        Err(error) => eprintln!("启动终端窗口激活服务失败：{error}"),
+                        Err(error) => log::warn!("启动终端窗口激活服务失败：{error}"),
                     }
                 }
             }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::diagnostics::report_app_diagnostic,
             commands::clipboard::read_clipboard_text,
             commands::clipboard::write_clipboard_text,
             commands::clipboard::save_clipboard_image,

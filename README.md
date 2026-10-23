@@ -125,7 +125,7 @@ pnpm build
 
 安装版数据库与 Shell 集成脚本位于 `%APPDATA%\com.orbyte.desktop\`；截图缓存位于 `%LOCALAPPDATA%\com.orbyte.desktop\clipboard-images\`。开发版使用 com.orbyte.desktop.dev 标识和独立目录。窗口状态还可能保存在应用的本地配置目录。删除这些目录前先备份，不假设卸载会清除用户数据。
 
-终端诊断日志位于应用数据目录的 `logs/terminal.log`，记录会话状态及输出传输元数据，不记录终端正文、键盘输入或剪贴板。单文件达到 2 MiB 时轮转，最多保留三份。详情见 [终端恢复与诊断](doc/terminal-recovery.md)。
+应用诊断日志位于应用数据目录的 `logs/orbyte-<UTC日编号>-<分片>.log`，使用 JSON Lines 格式，包含时间戳（Unix 毫秒）、级别、进程、模块，以及启动/退出、数据库错误、终端状态、前端异常和操作结果/耗时。操作日志包含请求编号与项目/会话 ID，不记录终端正文、键盘输入、文件正文、剪贴板或设置值。日志按 UTC 日及 2 MiB 大小轮转，最多保留最近 30 天；启动、跨日写入及运行期间每小时清理过期文件，旧版 `terminal.log*` 也按修改时间清理。应用未运行时将在下次启动清理；清理失败会报告错误并重试。详情见 [终端恢复与诊断](doc/terminal-recovery.md)。
 
 Orbyte 本身未配置遥测或应用自动更新服务。Shell 命令、Git 与第三方 AI CLI 按各自行为访问网络；WebView2 引导安装可能下载微软运行时。导出内容和截图可能包含私人信息，请勿直接提交至 Issue。
 

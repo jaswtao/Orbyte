@@ -1,5 +1,6 @@
 /** 项目文件 IPC。Author: jaswtao · Date: 2026-10-13 */
-import { Channel, invoke } from '@tauri-apps/api/core'
+import { Channel } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 export type Encoding = 'utf-8' | 'gbk'
 export interface TextFile { content: string; version: string; encoding: Encoding; bom: boolean; lineEnding: 'LF' | 'CRLF' }
 export interface FileError { kind: 'message' | 'missing' | 'conflict' | 'unmappable'; message: string; position?: number; length?: number }

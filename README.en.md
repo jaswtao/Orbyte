@@ -70,7 +70,7 @@ The release stores its database and shell integration scripts under `%APPDATA%\c
 
 Orbyte itself has no configured telemetry or application update service. Shell commands, Git and third-party CLIs may access the network according to their own behavior. WebView2 installation may download Microsoft runtime components. Terminal exports and screenshots can contain sensitive data.
 
-Terminal diagnostics are stored in `logs/terminal.log` under the application data directory. Logs contain session state and output transport metadata, excluding terminal text, keyboard input and clipboard content. Files rotate at 2 MiB, keeping at most three files.
+Application diagnostics are JSON Lines files at `logs/orbyte-<UTC-day-number>-<part>.log` under the application data directory. Records include Unix millisecond timestamps, severity, process/module, startup/shutdown, database errors, terminal state, frontend failures and command outcomes/durations with request and project/session IDs. Terminal text, keyboard input, file contents, clipboard contents and setting values are excluded. Files rotate by UTC day and at 2 MiB. Retention is limited to the most recent 30 days, with cleanup on startup, day changes and hourly while running; legacy `terminal.log*` files expire by modification time. While the app is closed, cleanup waits until the next launch. Cleanup failures are reported and retried.
 
 ## License
 

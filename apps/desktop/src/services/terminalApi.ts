@@ -4,7 +4,8 @@
  * Author: jaswtao
  * Date: 2026-10-09
  */
-import { Channel, invoke } from '@tauri-apps/api/core'
+import { Channel } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 import type { OutputHealth } from './terminal/recovery'
 import type { TerminalFrameData } from './terminal/frame'
 

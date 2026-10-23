@@ -1,7 +1,7 @@
 /** 项目管理 IPC 边界。Author: jaswtao · Date: 2026-10-12 */
 import type { ShortcutOverrides } from './workspace/shortcuts'
 import { t } from '../i18n/translate'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 import { open } from '@tauri-apps/plugin-dialog'
 
 export interface ProjectInput {

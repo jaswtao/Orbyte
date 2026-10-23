@@ -23,7 +23,9 @@ Author: jaswtao
 
 ## 诊断日志
 
-日志位于 Tauri 应用数据目录的 `logs/terminal.log`。Windows 默认目录可通过 `%APPDATA%\com.orbyte.desktop\logs` 查找。单个文件达到 2 MiB 时轮转，当前文件及两份历史文件合计最多三份；轮转失败时不继续追加。
+日志位于 Tauri 应用数据目录的 `logs/orbyte-<UTC日编号>-<分片>.log`（日编号为 Unix 时间戳秒数整除 86400）。Windows 默认目录为 `%APPDATA%\com.orbyte.desktop\logs`，开发版为 `%APPDATA%\com.orbyte.desktop.dev\logs`。JSON Lines 的 `timestamp_ms` 为 Unix 毫秒时间，`pid` 区分进程，`target` 区分来源。单个文件达到 2 MiB 或 UTC 日期变化时切换文件；重启续写当天分片，不覆盖已有日志。按日桶最多保留最近 30 天，桶内最早记录到期时整桶删除，因此边界日可能提前删除部分记录。启动、跨日写入及每小时执行清理，未运行时在下次启动清理；删除失败时报告错误并重试。旧版 `terminal.log`、`terminal.log.1`、`terminal.log.2` 按最后修改时间参与清理。
+
+应用日志还记录数据库错误、启动/退出、退出超时、Rust panic 的位置和堆栈、前端异常的代码位置。操作开始/结束日志使用同一 `request`，附带项目/会话 ID、结果和耗时；高频终端输入、ACK、尺寸变更和状态轮询仅记录错误或超过 1 秒的调用。前端不上传参数、返回值、任意错误正文或 rejection 值；文件错误仅记录类别。排查时先按 `ERROR`/`WARN` 定位，再按请求或会话 ID 关联前后记录。
 
 记录时间（Unix 毫秒）、会话 ID、订阅代次、帧序号、缓冲和在途字节数、确认空闲时长，以及读取失败、发送失败、恢复和退出事件。不记录终端正文、键盘输入、剪贴板或认证令牌。前端上报仅允许固定事件枚举，且受 Tauri 命令权限约束。
 
@@ -31,7 +33,7 @@ Author: jaswtao
 
 - 自动测试覆盖：真实 Tauri Channel 的坏帧隔离、确认失败重试及旧订阅隔离、隐藏及空闲判定、单次自动恢复额度、退出后的尾部输出、暂停期间丢弃输入、停止失败后的状态恢复。
 - Windows ConPTY 测试覆盖：输出窗口占满且不确认时，退出状态仍可查询，注册项仍可移除。
-- 日志测试覆盖：三文件轮转及非终端日志过滤。
+- 日志测试覆盖：大小/跨日轮转、重启续写、30 天边界、旧日志清理、时钟回退、结构化输出与日志过滤。
 - 隔离桌面测试：注入坏帧后自动恢复；再次丢弃输出通道，手动重连后中文输入正常；结束后出现“重新启动”，关闭后会话列表为空。
 - Codex 实测：隔离实例中注入坏帧，恢复前后 PID 保持为同一个进程，中文草稿重新可见；未提交模型请求。
 
@@ -40,7 +42,7 @@ Author: jaswtao
 ```powershell
 pnpm --filter orbyte-desktop test
 cargo test -p orbyte-terminal
-cargo test -p orbyte-desktop --test terminal_commands --test terminal_logging
+cargo test -p orbyte-desktop --test terminal_commands --test app_logging
 pnpm build
 ```
 

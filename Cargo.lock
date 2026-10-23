@@ -2977,6 +2977,7 @@ dependencies = [
 name = "orbyte-storage"
 version = "0.1.0"
 dependencies = [
+ "log",
  "orbyte-core",
  "serde_json",
  "sqlx",

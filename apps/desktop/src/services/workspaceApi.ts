@@ -1,5 +1,5 @@
 /** 布局 IPC。Author: jaswtao · Date: 2026-10-13 */
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 import type { Layout } from './workspace/layout'
 export const workspaceApi = {
   load: (workspaceId: string) => invoke<Layout>('load_workspace_layout', { workspaceId }),

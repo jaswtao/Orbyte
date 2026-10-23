@@ -2,6 +2,9 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
+import { installDiagnostics, attachVueDiagnostics } from './services/diagnostics'
+
+installDiagnostics()
 
 if (import.meta.env.PROD) {
   // 正式版阻止 WebView 的刷新和开发者工具快捷键，避免丢失未保存文档。
@@ -20,5 +23,5 @@ if (import.meta.env.DEV && new URLSearchParams(location.search).has('probe')) {
   void import('./terminalProbe')
 } else {
   // 样式就绪后挂载，避免首帧显示系统默认控件并触发颜色过渡。
-  void import('./style.css').then(() => createApp(App).use(createPinia()).mount('#app'))
+  void import('./style.css').then(() => attachVueDiagnostics(createApp(App)).use(createPinia()).mount('#app'))
 }

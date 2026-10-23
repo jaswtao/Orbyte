@@ -1,5 +1,5 @@
 /** 窗口关闭确认 IPC。Author: jaswtao · Date: 2026-10-13 */
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from './diagnostics'
 import { listen } from '@tauri-apps/api/event'
 
 export const lifecycleApi = {

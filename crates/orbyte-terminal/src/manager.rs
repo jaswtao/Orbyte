@@ -50,11 +50,16 @@ impl TerminalManager {
             return Err(TerminalError::AlreadyRunning);
         }
         let id = uuid::Uuid::new_v4().to_string();
-        let session = TerminalSession::spawn(id.clone(), req, sink, self.flow.clone())?;
+        log::info!("spawn_started session={id} config={:?} cols={} rows={}", req.config_id, req.size.cols, req.size.rows);
+        let session = TerminalSession::spawn(id.clone(), req, sink, self.flow.clone()).inspect_err(|error| {
+            log::error!("spawn_failed session={id} error={error}");
+        })?;
+        log::info!("spawn_succeeded session={id}");
         let mut sessions = self.sessions.write().unwrap_or_else(|e| e.into_inner());
         if let Some(previous) = previous {
             previous.dispose();
             sessions.remove(previous.id());
+            log::info!("replaced session={} replacement={id}", previous.id());
         }
         sessions.insert(id.clone(), session);
         Ok(id)
@@ -141,6 +146,7 @@ impl TerminalManager {
         let session = self.get(terminal_id)?;
         session.stop(STOP_GRACE);
         session.dispose();
+        log::info!("removed session={terminal_id}");
         self.sessions
             .write()
             .unwrap_or_else(|e| e.into_inner())

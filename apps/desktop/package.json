@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/terminal-recovery.test.mjs tests/close-confirmation.test.mjs tests/appearance.test.mjs tests/activity.test.mjs tests/editor-document.test.mjs tests/i18n.test.mjs tests/notification.test.mjs tests/production-build.test.mjs tests/shell-integration.test.mjs tests/shortcuts.test.mjs tests/sidebar.test.mjs tests/terminal-export.test.mjs tests/terminal-input.test.mjs tests/workspace-layout.test.mjs",
+    "test": "node --test tests/diagnostics.test.mjs tests/terminal-recovery.test.mjs tests/close-confirmation.test.mjs tests/appearance.test.mjs tests/activity.test.mjs tests/editor-document.test.mjs tests/i18n.test.mjs tests/notification.test.mjs tests/production-build.test.mjs tests/shell-integration.test.mjs tests/shortcuts.test.mjs tests/sidebar.test.mjs tests/terminal-export.test.mjs tests/terminal-input.test.mjs tests/workspace-layout.test.mjs",
     "dev": "vite",
     "tauri:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "build": "vue-tsc --noEmit && vite build",

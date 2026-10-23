@@ -27,7 +27,14 @@ pub struct Database {
     pool: SqlitePool,
 }
 
+#[track_caller]
 fn db_error(error: sqlx::Error) -> String {
+    let location = std::panic::Location::caller();
+    if let sqlx::Error::Database(ref detail) = error {
+        log::error!("database_operation_failed code={:?} location={location}", detail.code());
+    } else {
+        log::error!("database_operation_failed error={error} location={location}");
+    }
     if let sqlx::Error::Database(ref error) = error {
         if error.is_unique_violation() {
             return "该项目目录已经添加，请勿重复添加".into();
