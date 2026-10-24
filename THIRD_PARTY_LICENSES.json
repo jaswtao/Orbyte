@@ -225,12 +225,12 @@
   {
     "ecosystem": "cargo",
     "name": "clipboard-win",
-    "version": "5.4.1",
+    "version": "5.4.3",
     "license": "BSL-1.0",
-    "source": "https://crates.io/crates/clipboard-win/5.4.1",
+    "source": "https://crates.io/crates/clipboard-win/5.4.3",
     "licenseSupplement": {
       "sources": [
-        "https://raw.githubusercontent.com/DoumanAsh/clipboard-win/3b27cf2bfd1adcfa6e0264eb51c1025ddaf0f342/LICENSE"
+        "https://raw.githubusercontent.com/DoumanAsh/clipboard-win/ed27008ae5d1f10cfbb266de039f0fb35fd05a56/LICENSE"
       ],
       "note": "The published crate omits its license file; the text is taken from the exact upstream source revision."
     }
@@ -1791,9 +1791,9 @@
   {
     "ecosystem": "cargo",
     "name": "tokio",
-    "version": "1.53.2",
+    "version": "1.53.3",
     "license": "MIT",
-    "source": "https://crates.io/crates/tokio/1.53.2"
+    "source": "https://crates.io/crates/tokio/1.53.3"
   },
   {
     "ecosystem": "cargo",
@@ -2103,6 +2103,13 @@
   {
     "ecosystem": "cargo",
     "name": "windows-sys",
+    "version": "0.48.0",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-sys/0.48.0"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-sys",
     "version": "0.60.2",
     "license": "MIT OR Apache-2.0",
     "source": "https://crates.io/crates/windows-sys/0.60.2"
@@ -2113,6 +2120,13 @@
     "version": "0.61.2",
     "license": "MIT OR Apache-2.0",
     "source": "https://crates.io/crates/windows-sys/0.61.2"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows-targets",
+    "version": "0.48.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows-targets/0.48.5"
   },
   {
     "ecosystem": "cargo",
@@ -2134,6 +2148,13 @@
     "version": "0.1.7",
     "license": "MIT OR Apache-2.0",
     "source": "https://crates.io/crates/windows-version/0.1.7"
+  },
+  {
+    "ecosystem": "cargo",
+    "name": "windows_x86_64_msvc",
+    "version": "0.48.5",
+    "license": "MIT OR Apache-2.0",
+    "source": "https://crates.io/crates/windows_x86_64_msvc/0.48.5"
   },
   {
     "ecosystem": "cargo",

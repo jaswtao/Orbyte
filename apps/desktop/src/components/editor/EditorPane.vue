@@ -4,12 +4,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { NButton, NModal } from 'naive-ui'
 import type { EditorRegistry } from '../../services/editor/registry'
 import type { Encoding } from '../../services/fileApi'
+import { invoke } from '../../services/diagnostics'
 import { t } from '../../i18n'
 const props = defineProps<{ id: string; editors: EditorRegistry; visible: boolean; focused: boolean }>()
 const emit = defineEmits<{ focus: [id: string]; close: [id: string] }>()
 const mount = ref<HTMLElement>()
 const entry = computed(() => props.editors.entries.get(props.id))
 function attach() { if (mount.value && entry.value) { mount.value.appendChild(entry.value.view.dom); if (props.visible) entry.value.view.requestMeasure() } }
+async function copyDraft() { try { await invoke('write_clipboard_text', { text: entry.value?.recovery?.content ?? entry.value?.document.content ?? '' }) } catch { if (entry.value) entry.value.draftError = t('draft.failed') } }
 function focus() { emit('focus', props.id) }
 function answer(action: 'cancel' | 'reload' | 'overwrite' | 'utf8') {
   const target = entry.value
@@ -25,12 +27,19 @@ watch(() => [props.id, props.visible], attach, { flush: 'post' })
 </script>
 <template>
   <div v-if="entry" class="terminal-pane editor-pane" :class="{ focused }" @focusin="focus" @mousedown="focus">
-    <div class="pane-heading"><span :title="entry.path">{{ entry.document.dirty ? '● ' : '' }}{{ entry.path }}</span><button :disabled="entry.busy || !entry.metadata" @click="editors.save(id)">{{ t('editor.save') }}</button><button :aria-label="t('editor.close')" @click="emit('close', id)">×</button></div>
+    <div class="pane-heading"><span :title="entry.path">{{ entry.document.dirty ? '● ' : '' }}{{ entry.path }}</span><button :disabled="entry.busy || !entry.metadata || !!entry.recovery || !entry.initialized" @click="editors.save(id)">{{ t('editor.save') }}</button><button :aria-label="t('editor.close')" @click="emit('close', id)">×</button></div>
+    <div v-if="entry.recovery" class="terminal-notice">
+      {{ editors.rootChanged(entry) ? t('draft.rootChanged') : t('draft.available') }}
+      <button :disabled="entry.busy || editors.rootChanged(entry)" @click="editors.recover(id, true).catch(() => { entry!.draftError = t('draft.failed') })">{{ t('draft.restore') }}</button>
+      <button @click="copyDraft">{{ t('draft.copy') }}</button>
+      <button :disabled="entry.busy" @click="editors.recover(id, false).catch(() => { entry!.draftError = t('draft.failed') })">{{ t('draft.discard') }}</button>
+    </div>
+    <div v-if="entry.draftError" class="terminal-notice">{{ entry.draftError }} <button @click="entry.draftSync ? entry.draftSync.flush().catch(() => {}) : editors.reload(id)">{{ t('common.retry') }}</button></div>
     <div v-if="entry.document.external" class="terminal-notice">{{ t('editor.external') }} <button @click="entry.dialog = { kind: 'reopen', encoding: entry.metadata?.encoding ?? 'utf-8', message: t('editor.reloadExternal') }">{{ t('editor.reload') }}</button><button @click="entry.document.external = false">{{ t('editor.keepMine') }}</button></div>
     <div v-if="entry.deleted" class="terminal-notice">{{ t('editor.deleted') }}</div>
-    <div v-if="entry.error" class="terminal-notice">{{ entry.error }} <button :disabled="entry.busy" @click="entry.document.dirty ? editors.reopen(id, entry.metadata?.encoding ?? 'utf-8') : editors.reload(id)">{{ t('editor.reread') }}</button></div>
+    <div v-if="entry.error" class="terminal-notice">{{ entry.error }} <button :disabled="entry.busy || !!entry.recovery" @click="entry.document.dirty ? editors.reopen(id, entry.metadata?.encoding ?? 'utf-8') : editors.reload(id)">{{ t('editor.reread') }}</button></div>
     <div ref="mount" class="editor-mount" />
-    <div class="pane-status"><select :value="entry.metadata?.encoding ?? 'utf-8'" :disabled="entry.busy" :aria-label="t('editor.reopenEncoding')" @change="editors.reopen(id, ($event.target as HTMLSelectElement).value as Encoding)"><option value="utf-8">{{ t('editor.reopenUtf8') }}</option><option value="gbk">{{ t('editor.reopenGbk') }}</option></select> · {{ entry.metadata?.lineEnding }}{{ entry.metadata?.bom ? ' · BOM' : '' }}{{ entry.busy ? ` · ${t('editor.busy')}` : '' }}</div>
+    <div class="pane-status"><select :value="entry.metadata?.encoding ?? 'utf-8'" :disabled="entry.busy || !!entry.recovery" :aria-label="t('editor.reopenEncoding')" @change="editors.reopen(id, ($event.target as HTMLSelectElement).value as Encoding)"><option value="utf-8">{{ t('editor.reopenUtf8') }}</option><option value="gbk">{{ t('editor.reopenGbk') }}</option></select> · {{ entry.metadata?.lineEnding }}{{ entry.metadata?.bom ? ' · BOM' : '' }}{{ entry.busy ? ` · ${t('editor.busy')}` : '' }}</div>
     <NModal :show="!!entry.dialog" preset="card" :title="t('editor.dialogTitle')" class="form-modal" @update:show="(show) => { if (!show) answer('cancel') }">
       <p>{{ entry.dialog?.message }}</p><div class="dialog-actions"><NButton @click="answer('cancel')">{{ t('common.cancel') }}</NButton><template v-if="entry.dialog?.kind === 'conflict'"><NButton @click="answer('reload')">{{ t('editor.reload') }}</NButton><NButton type="warning" @click="answer('overwrite')">{{ t('editor.overwrite') }}</NButton></template><NButton v-else-if="entry.dialog?.kind === 'unmappable'" @click="answer('utf8')">{{ t('editor.saveUtf8') }}</NButton><NButton v-else @click="answer('reload')">{{ t('editor.discardReopen') }}</NButton></div>
     </NModal>

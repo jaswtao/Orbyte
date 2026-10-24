@@ -51,6 +51,7 @@ function windowFocus() { if (store.active) git.schedule(store.active.id) }
 const settingsDialog = ref(false)
 const closeDialog = ref(false)
 const closeBusy = ref(false)
+const recoveryDialog = ref(false)
 let closeRequestPending = false
 let unlistenClose: (() => void) | undefined
 let disposed = false
@@ -148,7 +149,7 @@ function editProject(project?: Project, groupId?: string) { editingProject.value
 function editGroup(group?: ProjectGroup) { editingGroup.value = group ?? null; groupDialog.value = true }
 function confirmProjectChange(id: string) { return deck.value?.confirmProjectChange(id) ?? Promise.resolve(true) }
 function workspaceShortcut(event: KeyboardEvent) {
-  if (projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value) return
+  if (projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
   if (!command) return
   event.preventDefault()
@@ -195,6 +196,7 @@ async function resolveClose(action: 'save' | 'discard' | 'cancel') {
       closeDialog.value = false
       return
     }
+    if (action === 'discard') await deck.value?.discardAllEditors()
     await lifecycleApi.resolveClose(action !== 'cancel')
     closeDialog.value = false
   } catch (reason) { reportError(String(reason)) }
@@ -250,9 +252,9 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
             <NButton v-if="store.ready" type="primary" @click="editProject()">{{ t('app.addProject') }}</NButton>
             <NButton v-else-if="store.error" @click="store.run(async () => {})">{{ t('common.retry') }}</NButton>
           </div>
-          <WorkspaceDeck ref="deck" v-if="store.ready && store.settings" v-show="!!store.active" tabs-target="#workspace-titlebar-tabs"
+          <WorkspaceDeck @recovery-visibility="recoveryDialog = $event" @activate="store.activate($event)" ref="deck" v-if="store.ready && store.settings" v-show="!!store.active" tabs-target="#workspace-titlebar-tabs"
             :appearance="appearance" :projects="store.projects" :settings="store.settings" :active-id="store.active?.id ?? null"
-            :shortcuts-blocked="worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
+            :shortcuts-blocked="recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
             @error="reportError" @activity="(id, state) => activities.set(id, state)"
             @files-changed="(id, change) => { fileChanges.set(id, change); git.schedule(id) }" />
         </main>

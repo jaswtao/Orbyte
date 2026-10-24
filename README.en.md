@@ -6,7 +6,7 @@
 
 Orbyte is an open-source local development workbench. Organize terminals and files by project, switch between tabs and split panes, and launch your installed Codex or Claude Code CLI.
 
-- **Keep each project's work at hand.** Terminals keep running when you switch projects or tabs; unsaved edits remain available during the current app session.
+- **Keep each project's work at hand.** Terminals keep running when you switch projects or tabs; unsaved edits are periodically stored as local recovery drafts.
 - **Put commands beside files.** Run PowerShell, CMD or an installed WSL distribution alongside a text editor.
 - **Separate tasks with worktrees.** Check Git status, create a branch worktree or add an existing worktree to a project group.
 
@@ -58,13 +58,18 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/ by default
 - PowerShell/CMD shell integration, background activity indicators and configurable notifications.
 - UTF-8 and GBK editing, disk conflict detection, recycle-bin deletion and Git status/worktree helpers.
 - Chinese/English interface, light/dark themes and configurable shortcuts. Ctrl+F4 closes a tab; Ctrl+Shift+W closes a pane.
-- Restart restores projects, layouts and file paths, but does not preserve unsaved edits, processes or terminal output.
+- Restart restores projects, layouts and file paths and offers local draft recovery. Processes, terminal output and editor undo history are not restored.
+- Filename content writes, Git internals and atomic saves reuse the search index. Structure changes and in-project ignore rules invalidate it after the watcher batch. Worktree gitdir excludes and global `core.excludesFile` changes require reopening the project or another structural change.
 - Clipboard screenshots remain in the application cache until manually removed.
 - Windows managed child processes stop with their terminal. WSL detached processes and services have different lifetime limits.
 - No UNC/WSL network project directories. The text editor has a 5 MiB file limit.
 - Installation, native notifications and desktop interactions require the checks in [the release checklist](doc/release-checklist.md). Automated tests do not certify these scenarios.
 
 ## Local data and privacy
+
+Draft recovery and index optimizations in this branch still require installed desktop acceptance; the public v0.1.0 download does not imply these changes are included. See [validation records](doc/next-stage-validation.md).
+
+Drafts stay in the local SQLite database and are excluded from diagnostics. Writes occur after 750 ms idle or at most every 5 seconds of continuous input, plus queue and storage time; draft text is limited to 5 MiB of UTF-8 bytes. Recovery changes only the editor buffer. Explicitly discarding changes, saving, or undoing to a known disk baseline removes the corresponding draft; cancellation and abnormal exits keep the last successfully persisted copy. Changed project roots allow viewing, copying or discarding old drafts, with no automatic application to the new root.
 
 The release stores its database and shell integration scripts under `%APPDATA%\com.orbyte.desktop\`; clipboard images are under `%LOCALAPPDATA%\com.orbyte.desktop\clipboard-images\`. Development uses the `com.orbyte.desktop.dev` identifier. Window state may also be stored in the app's local configuration directory. Back up data before deleting application directories; do not assume uninstall removes them.
 

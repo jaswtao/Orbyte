@@ -260,7 +260,7 @@ function projectNavigation(visible) {
   const projects = [{ id: 'b', groupId: 'second' }, { id: 'u', groupId: null }, { id: 'a', groupId: 'first' }, { id: 'c', groupId: 'second' }]
   const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => selected.push(id) }
   const context = { matchShortcut, store, sidebar: { value: visible === undefined ? undefined : { getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
-  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog']) context[name] = { value: false }
+  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(handlerJs, context)
   return { store, selected, press(key, overrides = {}) { context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
@@ -321,7 +321,7 @@ function sidebarResize(innerWidth = 1200) {
     SIDEBAR_MIN: 220, SIDEBAR_MAX: 640, window: { innerWidth },
     localStorage: { setItem: (name, value) => stored.set(name, value) },
   }
-  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog']) context[name] = { value: false }
+  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(clampJs + persistJs + handlerJs, context)
   return {
@@ -696,4 +696,13 @@ test('工作区新绑定只执行一次，保留数字 Tab 定位并阻断后台
   context.props.shortcutsBlocked = true
   press('KeyQ', { ctrlKey: true })
   assert.deepEqual(calls, ['new', 'second', 1, 'horizontal'])
+})
+
+test('草稿恢复弹窗阻止项目导航和侧栏快捷键，关闭后恢复', () => {
+  const resize = sidebarResize()
+  resize.context.recoveryDialog.value = true
+  assert.equal(resize.press('ArrowLeft'), false)
+  assert.deepEqual(resize.selected, [])
+  resize.context.recoveryDialog.value = false
+  assert.equal(resize.press('ArrowLeft'), true)
 })

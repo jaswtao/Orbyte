@@ -178,6 +178,38 @@ fn watcher_reports_external_writes_invalidates_index_and_replaces_subscription()
     );
     files.remove("project");
 }
+
+#[test]
+fn watcher_keeps_content_saves_cached_and_refreshes_ignore_rules() {
+    let fixture = Fixture::new();
+    fs::create_dir_all(fixture.0.join(".git/info")).unwrap();
+    fs::write(fixture.0.join("existing.txt"), "initial").unwrap();
+    let files = FileManager::default();
+    let project = files.project("cache", &fixture.0).unwrap();
+    project.search("existing").unwrap();
+    let (tx, rx) = mpsc::channel();
+    files.watch("cache", &fixture.0, move |event| { let _ = tx.send(event); }).unwrap();
+    for save in [false, true] {
+        if save {
+            let mut request = fixture.request("existing.txt"); request.content = "saved".into();
+            write(&fixture.0, "existing.txt", request).unwrap();
+        } else { fs::write(fixture.0.join("existing.txt"), "modified").unwrap(); }
+        rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(project.search("existing").unwrap().paths, ["existing.txt"]);
+        assert_eq!(project.rebuild_count(), 1);
+    }
+    fs::write(fixture.0.join(".ignore"), "existing.txt\n").unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(project.search("existing").unwrap().paths.is_empty());
+    assert_eq!(project.rebuild_count(), 2);
+    fs::remove_file(fixture.0.join(".ignore")).unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(project.search("existing").unwrap().paths, ["existing.txt"]);
+    assert_eq!(project.rebuild_count(), 3);
+    fs::remove_file(fixture.0.join("existing.txt")).unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(project.search("existing").unwrap().paths.is_empty());
+}
 #[cfg(windows)]
 #[test]
 fn junction_escape_is_rejected_for_existing_and_new_files() {

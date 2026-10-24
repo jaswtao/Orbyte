@@ -5,6 +5,7 @@ Push-Location (Split-Path $PSScriptRoot -Parent)
 try {
     $checks = @(
         @{ Command = 'python'; Arguments = @('scripts/check-release.py') },
+        @{ Command = 'python'; Arguments = @('-m', 'unittest', 'discover', '-s', 'scripts/tests') },
         @{ Command = $Gitleaks; Arguments = @('dir', '.', '--redact', '--no-banner') },
         @{ Command = 'python'; Arguments = @('scripts/audit-dependencies.py') },
         @{ Command = 'pnpm'; Arguments = @('audit', '--prod') },

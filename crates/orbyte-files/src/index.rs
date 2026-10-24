@@ -1,11 +1,13 @@
 //! 遵守忽略规则的文件名索引。Author: jaswtao · Date: 2026-10-13
 use crate::{path_guard::resolve, FileResult};
 use serde::Serialize;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 #[derive(Default)]
 pub struct FileIndex {
     paths: Vec<String>,
+    membership: HashSet<String>,
+    directories: HashSet<String>,
     incomplete: bool,
 }
 #[derive(Serialize)]
@@ -22,10 +24,7 @@ impl FileIndex {
             .require_git(false)
             .follow_links(false)
             .filter_entry(|entry| {
-                !entry
-                    .file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case(".git")
+                !excluded_path(&entry.file_name().to_string_lossy())
             })
             .build();
         for entry in walker {
@@ -51,11 +50,18 @@ impl FileIndex {
                 .replace('\\', "/");
             // 遍历不跟随链接，条目均位于规范化根目录内，只需校验路径语法。
             if orbyte_core::validate_relative_path(&path).is_ok() {
+                index.membership.insert(path.to_lowercase());
+                for (offset, _) in path.match_indices('/') {
+                    index.directories.insert(path[..offset].to_lowercase());
+                }
                 index.paths.push(path);
             }
         }
         Ok(index)
     }
+    pub fn contains(&self, path: &str) -> bool { self.membership.contains(&path.to_lowercase()) }
+    pub fn contains_directory(&self, path: &str) -> bool { self.directories.contains(&path.to_lowercase()) }
+
     pub fn search(&self, query: &str) -> SearchResult {
         let query = query.to_lowercase();
         let mut matches: Vec<_> = self
@@ -81,3 +87,5 @@ impl FileIndex {
         }
     }
 }
+
+fn excluded_path(name: &str) -> bool { name.eq_ignore_ascii_case(".git") || (name.starts_with(".orbyte-") && name.ends_with(".tmp")) }

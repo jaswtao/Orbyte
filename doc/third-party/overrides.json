@@ -8,6 +8,15 @@
     ],
     "note": "The published crate omits its license file; the text is taken from the exact upstream source revision."
   },
+  "cargo/clipboard-win@5.4.3": {
+    "files": [
+      "doc/third-party/cargo_clipboard-win-5.4.3/LICENSE-1.txt"
+    ],
+    "sources": [
+      "https://raw.githubusercontent.com/DoumanAsh/clipboard-win/ed27008ae5d1f10cfbb266de039f0fb35fd05a56/LICENSE"
+    ],
+    "note": "The published crate omits its license file; the text is taken from the exact upstream source revision."
+  },
   "cargo/alloc-stdlib@0.3.0": {
     "files": [
       "doc/third-party/cargo_alloc-stdlib-0.3.0/LICENSE-1.txt"

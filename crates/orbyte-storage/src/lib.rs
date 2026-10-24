@@ -18,6 +18,8 @@ use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, String>;
 
+mod draft;
+pub use draft::{EditorDraft, MAX_DRAFT_BYTES};
 mod terminal;
 mod layout;
 mod migration;

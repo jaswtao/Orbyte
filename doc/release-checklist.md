@@ -38,3 +38,19 @@ Author: jaswtao · Date: 2026-10-20
 - [ ] 人工完成安装验收后再将草稿公开为 prerelease。
 
 未完成的可选功能必须注明具体限制；安装、启动、文件安全和进程清理失败时不得发布。
+
+## 2026-10-24 下一阶段工作区验收
+
+当前 0.1.0 源码工作区新增草稿恢复及文件索引优化，尚未发布。环境、基线提交、自动检查、性能原始数据、原生逐步执行表统一见[下一阶段验收记录](next-stage-validation.md)。公开下载的旧包不作为本轮安装版验收证据。
+
+- [x] 草稿存储与编辑器竞争条件、索引结构变化回归检查。
+- [x] 1 万/9 万文件优化前后重复测量与资源采样。
+- [x] Rust 1.90 全目标兼容检查。
+- [ ] 干净安装、升级、输入法、截图粘贴、真实 AI CLI、通知和退出清理，逐项执行 N01–N11 后填写实际结果及证据。
+- [x] 连续 Git difftool 前台激活专项：安装 TortoiseGitMerge，设置 `ORBYTE_TEST_DIFFTOOL` 后运行下列命令；本机在 `C:/apps/TortoiseGit/bin/` 找到工具，本轮实际结果见验收记录。
+
+```powershell
+cargo test -p orbyte-terminal --test windows_pty consecutive_git_difftool_windows_receive_foreground -- --ignored --exact --nocapture
+```
+
+本轮原生验收未完成，保持不发布。输入法、安装和通知不以逻辑测试通过代替。

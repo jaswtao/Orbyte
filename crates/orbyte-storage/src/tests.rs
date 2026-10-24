@@ -60,7 +60,7 @@ async fn original_migration_comments_preserve_data_and_history_on_reopen() {
     let db = Database::open(&path).await.unwrap();
     assert_eq!(db.list_projects().await.unwrap()[0].id, project);
     assert_eq!(db.list_terminal_configs(&workspace).await.unwrap(), vec![terminal]);
-    let checksums: Vec<Vec<u8>> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations ORDER BY version")
+    let checksums: Vec<Vec<u8>> = sqlx::query_scalar("SELECT checksum FROM _sqlx_migrations WHERE version <= 2 ORDER BY version")
         .fetch_all(&db.pool).await.unwrap();
     assert_eq!(checksums, vec![migration::original_checksum(1), migration::original_checksum(2)]);
     db.pool.close().await;
@@ -109,7 +109,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 2);
+            assert_eq!(count, 3);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();

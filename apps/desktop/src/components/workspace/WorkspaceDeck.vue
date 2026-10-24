@@ -6,23 +6,32 @@ import type { Project, Settings } from '../../services/projectApi'
 import { terminalApi } from '../../services/terminalApi'
 import type { AppearanceMode } from '../../services/appearance'
 import { TerminalRegistry } from '../../services/terminal/registry'
+import DraftRecovery from '../editor/DraftRecovery.vue'
 import WorkspaceView from './WorkspaceView.vue'
 import { EditorRegistry } from '../../services/editor/registry'
-import type { FileChange } from '../../services/fileApi'
+import { type EditorDraft, type FileChange } from '../../services/fileApi'
 import '@xterm/xterm/css/xterm.css'
 import './workspace.css'
 import { t } from '../../i18n'
 
 const props = defineProps<{ tabsTarget: string; appearance: AppearanceMode; projects: Project[]; settings: Settings; activeId: string | null; shortcutsBlocked: boolean }>()
-const emit = defineEmits<{ error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: import('../../services/workspace/activity').Activity] }>()
+const emit = defineEmits<{ activate: [projectId: string]; recoveryVisibility: [show: boolean]; error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: import('../../services/workspace/activity').Activity] }>()
 const visited = reactive(new Set<string>())
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || !!discard.value)
 const sessionTimer = setInterval(() => { void registry.syncSessions() }, 2000)
 onBeforeUnmount(() => clearInterval(sessionTimer))
-const editors = new EditorRegistry((message) => emit('error', message), () => props.settings, () => props.shortcutsBlocked || !!discard.value)
+const editors = new EditorRegistry((message) => emit('error', message), () => props.settings, () => props.shortcutsBlocked || !!discard.value, (id) => props.projects.find((p) => p.id === id)?.path ?? '')
 const views = shallowReactive(new Map<string, InstanceType<typeof WorkspaceView>>())
 const mutationBusy = computed(() => !props.activeId || !views.has(props.activeId) || views.get(props.activeId)?.busy || Array.from(editors.entries.values()).some((entry) => entry.projectId === props.activeId && entry.busy))
 const discard = ref<{ projectId: string; resolve: (proceed: boolean) => void } | null>(null)
+const pendingDraft = ref<EditorDraft | null>(null)
+function openDraft(draft: EditorDraft) { pendingDraft.value = draft; visited.add(draft.projectId); emit('activate', draft.projectId) }
+watch(() => [props.activeId, views.get(pendingDraft.value?.projectId ?? '')?.ready], async () => {
+  const draft = pendingDraft.value
+  if (!draft || props.activeId !== draft.projectId || !views.get(draft.projectId)?.ready) return
+  pendingDraft.value = null
+  await views.get(draft.projectId)?.openFile(draft.path)
+})
 function openFile(path: string) { if (props.activeId) void views.get(props.activeId)?.openFile(path) }
 function renamed(from: string, to: string) { if (props.activeId) void views.get(props.activeId)?.renamed(from, to) }
 function confirmProjectChange(projectId: string) {
@@ -41,6 +50,9 @@ async function resolveDiscard(save: boolean, proceed: boolean) {
         if (entry.document.dirty) { emit('error', t('workspace.stillUnsaved')); return }
       }
     } finally { discardSaving.value = false }
+  }
+  if (!save && proceed) {
+    try { await editors.discardAll(pending.projectId) } catch (reason) { emit('error', String(reason)); return }
   }
   discard.value = null; pending.resolve(proceed)
 }
@@ -64,7 +76,7 @@ watch([
   editors.updateSettings(props.settings, props.appearance)
   registry.updateSettings(props.settings)
 }, { flush: 'post' })
-defineExpose({ openFile, renamed, confirmProjectChange, mutationBusy, saveAllEditors })
+defineExpose({ openFile, renamed, confirmProjectChange, mutationBusy, saveAllEditors, discardAllEditors: () => editors.discardAll() })
 const retained = computed(() => props.projects.filter((project) => visited.has(project.id)))
 watch(() => props.activeId, (id) => { if (id) visited.add(id) }, { immediate: true })
 onMounted(async () => {
@@ -78,6 +90,7 @@ onMounted(async () => {
 <template>
   <div class="workspace-deck">
     <WorkspaceView v-for="project in retained" :key="`${project.id}:${project.path}`" :ref="(view) => { if (view) views.set(project.id, view as InstanceType<typeof WorkspaceView>); else views.delete(project.id) }" :tabs-target="tabsTarget" :project="project" :settings="settings" :active="activeId === project.id" :registry="registry" :editors="editors" :shortcuts-blocked="shortcutsBlocked || !!discard" @activity="(id, state) => emit('activity', id, state)" @error="emit('error', $event)" @files-changed="(id, change) => emit('filesChanged', id, change)" />
+    <div class="draft-recovery-bar"><DraftRecovery :projects="projects" :editors="editors" @visibility="emit('recoveryVisibility', $event)" @open="openDraft" @error="emit('error', $event)" /></div>
     <NModal :show="!!discard" preset="card" :title="t('workspace.unsavedTitle')" class="form-modal" @update:show="(show) => { if (!show) resolveDiscard(false, false) }"><p>{{ t('workspace.unsavedBody') }}</p><div class="dialog-actions"><NButton :disabled="discardSaving" @click="resolveDiscard(false, false)">{{ t('common.cancel') }}</NButton><NButton :loading="discardSaving" @click="resolveDiscard(true, true)">{{ t('workspace.saveAllContinue') }}</NButton><NButton type="error" :disabled="discardSaving" @click="resolveDiscard(false, true)">{{ t('workspace.discardContinue') }}</NButton></div></NModal>
   </div>
 </template>

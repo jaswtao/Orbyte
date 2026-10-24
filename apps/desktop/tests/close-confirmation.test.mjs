@@ -26,7 +26,7 @@ function t(key, params = {}) {
 }
 
 function fixture(enabled, state = 'running', dirty = false, runningTasks = false) {
-  const closed = [], stopped = [], errors = []
+  const closed = [], stopped = [], discarded = [], errors = []
   const entry = { status: { state }, client: { id: 'session', paused: false,
     pauseInput() { this.paused = true }, resumeInput() { this.paused = false },
     updateStatus(status) { entry.status = status },
@@ -35,7 +35,7 @@ function fixture(enabled, state = 'running', dirty = false, runningTasks = false
   const props = {
     settings: { confirm_close_terminal: enabled },
     registry: { byConfig: new Map([['terminal', entry]]) },
-    editors: { entries: new Map(dirty ? [['file', editor]] : []), async save() { editor.document.dirty = false } },
+    editors: { entries: new Map(dirty ? [['file', editor]] : []), async save() { editor.document.dirty = false }, async discard(id) { discarded.push(id) } },
   }
   const confirmation = { value: null }
   const busy = { value: false }
@@ -52,7 +52,7 @@ function fixture(enabled, state = 'running', dirty = false, runningTasks = false
     t,
   })
   vm.runInContext(compiled, context)
-  return { props, confirmation, busy, closed, stopped, errors, run: (code) => vm.runInContext(code, context) }
+  return { props, confirmation, busy, closed, stopped, discarded, errors, run: (code) => vm.runInContext(code, context) }
 }
 
 test('开关控制页签和窗格，启动中和运行中的终端都遵循设置', async () => {
@@ -89,6 +89,7 @@ test('关闭开关仍保护未保存文件，取消、保存关闭和放弃修�
     await f.run(`confirmAction(${saveFiles})`)
     assert.deepEqual(f.closed, ['file'])
     assert.equal(f.props.editors.entries.get('file').document.dirty, !saveFiles)
+    assert.deepEqual(f.discarded, saveFiles ? [] : ['file'])
     assert.deepEqual(f.errors, [])
   }
 })

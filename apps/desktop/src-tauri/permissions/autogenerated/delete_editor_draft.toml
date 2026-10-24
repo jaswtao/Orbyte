@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-editor-draft"
+description = "Enables the delete_editor_draft command without any pre-configured scope."
+commands.allow = ["delete_editor_draft"]
+
+[[permission]]
+identifier = "deny-delete-editor-draft"
+description = "Denies the delete_editor_draft command without any pre-configured scope."
+commands.deny = ["delete_editor_draft"]

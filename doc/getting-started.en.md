@@ -38,7 +38,7 @@ Removing a project from Orbyte only removes workspace configuration. To remove i
 
 ## Before you close the app
 
-Switching projects keeps the current sessions alive. Exiting the app stops managed Windows terminal child processes. Restart restores projects, layouts and file paths, but not running processes, terminal output or unsaved edits. Save files first. Detached WSL processes and Linux services have different lifetime limits.
+Switching projects keeps the current sessions alive. Exiting the app stops managed Windows terminal child processes. Restart restores projects, layouts and file paths, but not running processes or terminal output. Restore, copy or discard local drafts from the editor prompt or the recovery button at the bottom of the workspace. Recovery never writes to the source file automatically. Drafts flush after 750 ms idle or every 5 seconds of continuous input, plus storage time; forced exits may still lose recent input. Discarding changes clears the corresponding draft; cancelling keeps it. Detached WSL processes and Linux services have different lifetime limits.
 
 ## Get help
 
@@ -48,3 +48,5 @@ Switching projects keeps the current sessions alive. Exiting the app stops manag
 - Report vulnerabilities through [private security reporting](https://github.com/jaswtao/Orbyte/security/advisories/new).
 
 See the [README](../README.en.md) for all limitations and local data locations.
+
+> Draft recovery in this branch still requires installed desktop acceptance. The public download does not imply this capability is included. See [validation records](next-stage-validation.md).

@@ -356,6 +356,10 @@ async function confirmAction(saveFiles = false) {
       for (const id of pending.dirtyIds) { await props.editors.save(id); if (props.editors.entries.get(id)?.document.dirty) { error(t('workspace.saveIncomplete')); return } }
     } finally { confirmSaving.value = false }
   }
+  if (!saveFiles) {
+    try { for (const id of pending.dirtyIds) await props.editors.discard(id) }
+    catch (reason) { error(reason); return }
+  }
   confirmation.value = null
   void perform(pending.action)
 }
@@ -386,7 +390,7 @@ async function openFile(path: string, direction?: Direction) {
   })
 }
 async function renamed(from: string, to: string) {
-  props.editors.rename(props.project.id, from, to)
+  await props.editors.rename(props.project.id, from, to)
   await perform(async () => {
     const next = renameEditorPaths(layout.value, from, to)
     // 磁盘重命名已完成，即使布局保存失败也展示新路径。
@@ -394,7 +398,7 @@ async function renamed(from: string, to: string) {
     await commit(next)
   })
 }
-defineExpose({ openFile, renamed, busy })
+defineExpose({ openFile, renamed, busy, ready })
 function saveRename() {
   const target = rename.value
   if (!target?.title.trim() || busy.value || !ready.value) return

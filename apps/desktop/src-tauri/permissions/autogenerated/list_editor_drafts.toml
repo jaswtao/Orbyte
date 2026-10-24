@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-editor-drafts"
+description = "Enables the list_editor_drafts command without any pre-configured scope."
+commands.allow = ["list_editor_drafts"]
+
+[[permission]]
+identifier = "deny-list-editor-drafts"
+description = "Denies the list_editor_drafts command without any pre-configured scope."
+commands.deny = ["list_editor_drafts"]

@@ -20,3 +20,5 @@ pub(crate) fn err_text(e: impl std::fmt::Display) -> String {
     log::warn!("command_failed location={} error={message}", std::panic::Location::caller());
     message
 }
+
+pub mod drafts;

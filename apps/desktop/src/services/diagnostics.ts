@@ -6,6 +6,7 @@ import type { App } from 'vue'
 const quietCommands = new Set([
   'ack_terminal', 'write_terminal', 'resize_terminal', 'set_active_terminal',
   'list_terminal_sessions', 'list_running_workspaces', 'terminals_have_running_tasks',
+  'put_editor_draft', 'delete_editor_draft',
   'git_status', 'set_unsaved_editor_count', 'report_terminal_diagnostic',
 ])
 let sequence = 0
