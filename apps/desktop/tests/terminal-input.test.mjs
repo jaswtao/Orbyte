@@ -710,7 +710,9 @@ test('开始组词时立即校准锚点，长拼音和 xterm 延迟更新均不�
 
 function inverseLine(columns) {
   const inverse = new Set(columns)
-  return { length: 80, getCell: (x) => x >= 0 && x < 80 ? { isInverse: () => inverse.has(x) ? 1 : 0, getWidth: () => 1 } : undefined }
+  return { length: 80, getCell: (x) => x >= 0 && x < 80 ? {
+    isInverse: () => inverse.has(x) ? 1 : 0, getWidth: () => 1, isFgRGB: () => false,
+  } : undefined }
 }
 
 test('孤立反色格覆盖硬件光标，延迟覆写和短暂消失后仍锚在假光标', async () => {
@@ -779,6 +781,174 @@ test('两个相邻的反色窄字符不是一个宽字符假光标', async (t) =
   fixture.textarea.dispatchEvent(new Event('compositionstart'))
   assert.equal(fixture.textarea.style.left, '0px')
   assert.equal(fixture.textarea.style.top, '460px')
+})
+
+const qoderText = '\x1b[38;2;216;216;216m\x1b[48;2;30;30;30m'
+const qoderCaret = '\x1b[38;2;30;30;30m\x1b[48;2;216;216;216m'
+
+test('Qoder ConPTY output anchors composition after Chinese text while the buffer cursor is parked at the right edge', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  // Preserve the cursor movement and inverse attributes emitted by Qoder CLI 1.1.78.
+  await new Promise((resolve) => terminal.write('\x1b[?25l\x1b[14;2H> \x1b[7m \x1b[27m Type your message\x1b[K\x1b[80C', resolve))
+  await new Promise((resolve) => terminal.write('\x1b[14;4H如何\x1b[7m \x1b[27m\x1b[1C\x1b[K\x1b[70C', resolve))
+  assert.equal(terminal.buffer.active.cursorX, 79)
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  fixture.textarea.dispatchEvent(new Event('compositionupdate'))
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(fixture.textarea.style.left, '70px')
+  assert.equal(fixture.textarea.style.top, '260px')
+  assert.equal(fixture.textarea.style.width, '10px')
+  assert.equal(fixture.composition.style.left, '70px')
+})
+
+test('RGB cursor matches bold palette text according to drawBoldTextInBrightColors', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  for (const [bright, color] of [[true, '238;238;236'], [false, '211;215;207']]) {
+    fixture.term.options.drawBoldTextInBrightColors = bright
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;4H\x1b[1;37;40mx\x1b[0;38;2;46;52;54;48;2;${color}m \x1b[1;37;40mx\x1b[5;35H`, resolve))
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '40px', String(bright))
+    assert.equal(fixture.textarea.style.top, '40px', String(bright))
+  }
+})
+
+test('Qoder black-on-light cursor is recognized over the default dark background', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  fixture.term.options.theme = { foreground: '#f5f5f7', background: '#1c1c1e' }
+  // Attributes captured from Qoder CLI: text uses RGB foreground/default background,
+  // while the cursor uses black foreground rather than the terminal background.
+  for (const char of [' ', 'a', '中']) {
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[14;2H> \x1b[38;2;238;238;235mhello\x1b[38;2;0;0;0;48;2;238;238;235m${char}\x1b[0m\x1b[K\x1b[70C`, resolve))
+    fixture.textarea.dispatchEvent(new Event('compositionstart'))
+    fixture.textarea.dispatchEvent(new Event('compositionupdate'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(fixture.textarea.style.left, '80px', char)
+    assert.equal(fixture.textarea.style.top, '260px', char)
+    assert.equal(fixture.composition.style.left, '80px', char)
+    fixture.textarea.dispatchEvent(new Event('compositionend'))
+  }
+})
+
+test('Qoder RGB cursor anchors spaces, text and wide characters instead of the parked cursor', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  for (const char of [' ', 'a', '中']) {
+    await new Promise((resolve) => terminal.write(`\x1b[2J\x1b[?25l\x1b[3;3H${qoderText}中${qoderCaret}${char}${qoderText} text\x1b[5;35H`, resolve))
+    fixture.textarea.dispatchEvent(new Event('compositionstart'))
+    assert.equal(terminal.buffer.active.getLine(2).getCell(4).isInverse(), 0)
+    assert.equal(fixture.textarea.style.left, '40px', char)
+    assert.equal(fixture.textarea.style.top, '40px', char)
+    assert.equal(fixture.composition.style.left, '40px', char)
+    fixture.textarea.dispatchEvent(new Event('compositionupdate'))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal(fixture.textarea.style.left, '40px', char)
+    assert.equal(fixture.textarea.style.width, '10px', char)
+    fixture.textarea.dispatchEvent(new Event('compositionend'))
+  }
+})
+
+test('RGB cursor compares default and palette colors through the current terminal theme', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  fixture.term.options.theme = { foreground: '#d8d8d8', background: '#1e1e1e', white: '#d8d8d8', black: '#1e1e1e' }
+  for (const normal of ['\x1b[0m', '\x1b[37;40m', qoderText]) {
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;4H${normal}x${qoderCaret} ${normal}x\x1b[5;35H`, resolve))
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '40px', normal)
+    assert.equal(fixture.textarea.style.top, '40px', normal)
+  }
+  fixture.term.options.theme = { foreground: '#eeeeee', background: '#111111' }
+  await new Promise((resolve) => terminal.write('\x1b[0m\x1b[2J\x1b[3;4Hx\x1b[38;2;17;17;17;48;2;238;238;238m \x1b[0mx\x1b[5;35H', resolve))
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '40px')
+})
+
+test('RGB highlighting and ambiguous visual cursors fall back to the buffer cursor', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  for (const content of [
+    `${qoderText}x${qoderCaret}AB${qoderText}x`,
+    `${qoderText}x${qoderCaret}中A${qoderText}x`,
+    `${qoderText}x\x1b[48;2;255;0;0mA${qoderText}x`,
+    `${qoderText}x${qoderCaret} ${qoderText}x${qoderCaret} ${qoderText}x`,
+    `${qoderText}x${qoderCaret} ${qoderText}x\x1b[6;5H\x1b[7m \x1b[0m`,
+  ]) {
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;4H${content}\x1b[5;35H`, resolve))
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '340px', content)
+    assert.equal(fixture.textarea.style.top, '80px', content)
+  }
+})
+
+test('RGB cursor resolves the default ANSI palette, color cube and grayscale', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  for (const [normal, caret] of [
+    ['\x1b[37;40m', '\x1b[38;2;46;52;54;48;2;211;215;207m'],
+    ['\x1b[38;5;75;48;5;235m', '\x1b[38;2;38;38;38;48;2;95;175;255m'],
+    ['\x1b[38;5;250;48;5;16m', '\x1b[38;2;0;0;0;48;2;188;188;188m'],
+  ]) {
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;4H${normal}x${caret} ${normal}x\x1b[5;35H`, resolve))
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '40px', normal)
+    assert.equal(fixture.textarea.style.top, '40px', normal)
+  }
+})
+
+test('RGB cursor at either screen edge is ignored when visible or ambiguous during composition', async (t) => {
+  const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+  const fixture = imeFixture(terminal)
+  t.after(() => { fixture.binding.dispose(); terminal.dispose() })
+  fixture.term.options.theme = { foreground: '#d8d8d8', background: '#1e1e1e' }
+  for (const [col, content] of [[0, `${qoderCaret} ${qoderText}x`], [79, `${qoderText}x${qoderCaret} `]]) {
+    await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;${col === 0 ? 1 : 79}H${content}\x1b[5;35H`, resolve))
+    fixture.textarea.dispatchEvent(new Event('compositionstart'))
+    assert.equal(fixture.textarea.style.left, `${col * 10}px`)
+    await new Promise((resolve) => terminal.write(`\x1b[7;4H${qoderText}x${qoderCaret} ${qoderText}x\x1b[5;35H`, resolve))
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '340px')
+    fixture.textarea.dispatchEvent(new Event('compositionend'))
+  }
+  await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25h\x1b[3;4H${qoderText}x${qoderCaret} ${qoderText}x\x1b[5;35H`, resolve))
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(fixture.textarea.style.left, '340px')
+})
+
+test('RGB cursor pin survives blinking, follows movement and releases on show or reset', async (t) => {
+  for (const reset of ['\x1b[?25h', '\x1b[!p', '\x1bc', null]) {
+    const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
+    const fixture = imeFixture(terminal)
+    try {
+      await new Promise((resolve) => terminal.write(`\x1b[?25l\x1b[3;4H${qoderText}x${qoderCaret} ${qoderText}x\x1b[5;35H`, resolve))
+      fixture.textarea.dispatchEvent(new Event('compositionstart'))
+      assert.equal(fixture.textarea.style.left, '40px')
+      await new Promise((resolve) => terminal.write(`\x1b[3;5H${qoderText} \x1b[5;35H`, resolve))
+      fixture.listeners.get('onRender')()
+      assert.equal(fixture.textarea.style.left, '40px')
+      await new Promise((resolve) => terminal.write(`\x1b[3;6H${qoderCaret}x${qoderText}x\x1b[5;35H`, resolve))
+      fixture.listeners.get('onRender')()
+      assert.equal(fixture.textarea.style.left, '50px')
+      fixture.screen.clientWidth = 640
+      fixture.listeners.get('onResize')()
+      assert.equal(fixture.textarea.style.left, '40px')
+      if (reset) await new Promise((resolve) => terminal.write(reset, resolve))
+      else { terminal.reset(); fixture.binding.reset() }
+      await new Promise((resolve) => terminal.write('\x1b[5;35H', resolve))
+      fixture.listeners.get('onRender')()
+      assert.equal(fixture.textarea.style.left, '272px', String(reset))
+      assert.equal(fixture.textarea.style.top, '80px', String(reset))
+    } finally { fixture.binding.dispose(); terminal.dispose() }
+  }
 })
 
 test('宽字符与其他反色字符相邻时仍按高亮条处理', async (t) => {

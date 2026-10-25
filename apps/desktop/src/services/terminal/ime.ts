@@ -1,26 +1,80 @@
 /** 输入法锚点与组词边界兼容处理（xterm 6）。Author: jaswtao · Date: 2026-10-15 */
-import type { IDisposable, Terminal } from '@xterm/xterm'
+import type { IBufferCell, IDisposable, Terminal } from '@xterm/xterm'
 
-/** 可见区域最下方的孤立反色字符；宽字符连同占位格作为整体判断。 */
-function visualCaret(term: Terminal): { col: number; row: number } | null {
+const ansiNames = [
+  'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+  'brightBlack', 'brightRed', 'brightGreen', 'brightYellow', 'brightBlue', 'brightMagenta', 'brightCyan', 'brightWhite',
+] as const
+const ansiDefaults = [
+  0x2e3436, 0xcc0000, 0x4e9a06, 0xc4a000, 0x3465a4, 0x75507b, 0x06989a, 0xd3d7cf,
+  0x555753, 0xef2929, 0x8ae234, 0xfce94f, 0x729fcf, 0xad7fa8, 0x34e2e2, 0xeeeeec,
+]
+
+/** Resolve the hex colors used by terminal themes; unknown colors cannot establish a match. */
+function themeColor(value: string): number | undefined {
+  if (/^#[\da-f]{6}$/i.test(value)) return Number.parseInt(value.slice(1), 16)
+  if (/^#[\da-f]{3}$/i.test(value)) return Number.parseInt(value.slice(1).replace(/./g, '$&$&'), 16)
+  return undefined
+}
+
+function cellColor(cell: IBufferCell, foreground: boolean, options: Terminal['options']): number | undefined {
+  const theme = options.theme ?? {}
+  const fg = cell.isInverse() ? !foreground : foreground
+  let color = fg ? cell.getFgColor() : cell.getBgColor()
+  if (fg ? cell.isFgRGB() : cell.isBgRGB()) return color
+  if (fg ? cell.isFgDefault() : cell.isBgDefault()) {
+    return themeColor(fg ? theme.foreground ?? '#ffffff' : theme.background ?? '#000000')
+  }
+  if (foreground && color < 8 && cell.isBold() && options.drawBoldTextInBrightColors !== false) color += 8
+  if (color < 16) {
+    const configured = theme[ansiNames[color]!]
+    return configured === undefined ? ansiDefaults[color] : themeColor(configured)
+  }
+  if (color >= 232) return (8 + (color - 232) * 10) * 0x010101
+  const level = [0, 95, 135, 175, 215, 255]
+  const index = color - 16
+  return (level[Math.floor(index / 36)]! << 16) | (level[Math.floor(index / 6) % 6]! << 8) | level[index % 6]!
+}
+
+/** Qoder can draw a black-on-light RGB cursor instead of using ANSI inverse. */
+function isRgbCaret(cell: IBufferCell, left: IBufferCell | undefined, right: IBufferCell | undefined, options: Terminal['options']): boolean {
+  if (!cell.isFgRGB() || !cell.isBgRGB()) return false
+  const fg = cell.getFgColor()
+  const bg = cell.getBgColor()
+  if (fg === bg) return false
+  const neighbors = [left, right].filter((neighbor): neighbor is IBufferCell => neighbor !== undefined)
+  const background = neighbors[0] && cellColor(neighbors[0], false, options)
+  // Require an isolated background matching the surrounding text. Qoder uses
+  // fixed black/white cursor text even when the terminal background differs.
+  return background !== undefined && background !== bg
+    && (fg === background || fg === 0x000000 || fg === 0xffffff)
+    && neighbors.every((neighbor) => cellColor(neighbor, false, options) === background)
+    && neighbors.some((neighbor) => cellColor(neighbor, true, options) === bg)
+}
+
+/** Find isolated visual cursors, stopping once the position is ambiguous. */
+function visualCarets(term: Terminal): { col: number; row: number }[] {
   const buffer = term.buffer.active
-  if (typeof buffer.getLine !== 'function') return null
+  if (typeof buffer.getLine !== 'function') return []
   const start = buffer.viewportY
-  let found: { col: number; row: number } | null = null
+  const found: { col: number; row: number }[] = []
   for (let y = start; y < start + term.rows; y++) {
     const line = buffer.getLine(y)
     if (!line) continue
     const limit = Math.min(line.length, term.cols)
     for (let x = 0; x < limit; x++) {
       const cell = line.getCell(x)
-      if (!cell?.isInverse()) continue
+      if (!cell || (!cell.isInverse() && (!cell.isFgRGB() || !cell.isBgRGB()))) continue
       const width = cell.getWidth()
       if (!width || x + width > limit) continue
-      const left = x > 0 ? line.getCell(x - 1) : undefined
+      let left = x > 0 ? line.getCell(x - 1) : undefined
+      if (left?.getWidth() === 0) left = line.getCell(x - 2)
       const right = x + width < limit ? line.getCell(x + width) : undefined
-      // 跳过宽字符内部的占位格，只检查整个字符两侧，避免把反色高亮条当光标。
+      // Treat wide characters and their continuation cells as one glyph.
       if (left?.isInverse() || right?.isInverse()) continue
-      found = { col: x, row: y - start }
+      if (!cell.isInverse() && !isRgbCaret(cell, left, right, term.options)) continue
+      found.push({ col: x, row: y - start })
+      if (found.length > 1) return found
     }
   }
   return found
@@ -44,9 +98,9 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
     if (disposed) return
     const buffer = term.buffer.active
     // 只有程序隐藏真实光标时才寻找假光标，普通 Shell 反色输出不参与定位。
-    const hit = cursorHidden ? visualCaret(term) : null
-    if (hit) pinned = hit
-    else if (!cursorHidden || !composing) pinned = null
+    const hits = cursorHidden ? visualCarets(term) : []
+    if (hits.length === 1) pinned = hits[0]!
+    else if (hits.length > 1 || !cursorHidden || !composing) pinned = null
     const col = pinned ? pinned.col : Math.min(buffer.cursorX, term.cols - 1)
     const row = pinned ? pinned.row : buffer.baseY + buffer.cursorY - buffer.viewportY
     if (!screen.clientWidth || !screen.clientHeight || row < 0 || row >= term.rows) return
@@ -62,6 +116,9 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
       maxWidth: `${cellWidth}px`,
       height: `${cellHeight}px`, lineHeight: `${cellHeight}px`,
       fontFamily: term.options.fontFamily, fontSize: `${term.options.fontSize}px`,
+      // Collapse advances for narrow and wide glyphs without zeroing the native
+      // character height: Windows IMEs need that height to locate the candidate window.
+      letterSpacing: composing ? `${-2 * cellWidth}px` : 'normal',
     })
     if (composing) {
       Object.assign(composition.style, {
