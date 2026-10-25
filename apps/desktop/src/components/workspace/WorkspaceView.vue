@@ -25,7 +25,7 @@ import { renameEditorPaths } from '../../services/workspace/layout'
 import { presetLabel, shellLabel, t } from '../../i18n'
 
 const props = defineProps<{ tabsTarget: string; project: Project; settings: Settings; active: boolean; registry: TerminalRegistry; editors: EditorRegistry; shortcutsBlocked: boolean }>()
-const emit = defineEmits<{ error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: Activity] }>()
+const emit = defineEmits<{ recoverDrafts: []; error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: Activity] }>()
 const quickOpen = ref(false)
 const openDirection = ref<Direction | undefined>()
 let watchChannel: Awaited<ReturnType<typeof fileApi.watch>> | undefined
@@ -42,13 +42,15 @@ const failed = ref(false)
 const focused = ref<string | null>(null)
 const activeTab = computed(() => layout.value.tabs.find((t) => t.id === layout.value.activeTabId))
 const addMenu = computed<DropdownOption[]>(() => [
-  ...shells.value.map((s) => ({ label: shellLabel(s), key: s.shellType, disabled: !s.available })),
+  ...shells.value.map((s) => ({ label: shellLabel(s), key: s.shellType, disabled: busy.value || !ready.value || !s.available })),
   { type: 'divider', key: 'ai-divider' },
-  { type: 'group', key: 'ai', label: t('workspace.aiCli'), children: presets.value.map((p) => ({ key: p.preset, label: presetLabel(p), disabled: !p.available || !shells.value.some((s) => s.shellType === 'powershell' && s.available) })) },
+  { type: 'group', key: 'ai', label: t('workspace.aiCli'), children: presets.value.map((p) => ({ key: p.preset, label: presetLabel(p), disabled: busy.value || !ready.value || !p.available || !shells.value.some((s) => s.shellType === 'powershell' && s.available) })) },
   { type: 'divider', key: 'divider' },
-  { key: 'open-file', label: t('workspace.openFileMenu', { hint: hint('quickOpen') }) },
-  { key: 'open-file-horizontal', label: t('workspace.fileSplitHorizontal'), disabled: !activeTab.value || !focused.value },
-  { key: 'open-file-vertical', label: t('workspace.fileSplitVertical'), disabled: !activeTab.value || !focused.value },
+  { key: 'open-file', label: t('workspace.openFileMenu', { hint: hint('quickOpen') }), disabled: busy.value || !ready.value },
+  { key: 'open-file-horizontal', label: t('workspace.fileSplitHorizontal'), disabled: busy.value || !ready.value || !activeTab.value || !focused.value },
+  { key: 'open-file-vertical', label: t('workspace.fileSplitVertical'), disabled: busy.value || !ready.value || !activeTab.value || !focused.value },
+  { type: 'divider', key: 'draft-divider' },
+  { key: 'recover-drafts', label: t('draft.title') },
 ])
 const rename = ref<{ id: string; title: string } | null>(null)
 const renameInput = ref<{ focus: () => void; select: () => void } | null>(null)
@@ -365,6 +367,7 @@ async function confirmAction(saveFiles = false) {
 }
 function chooseFile(direction?: Direction) { openDirection.value = direction; quickOpen.value = true }
 function onAddSelect(key: string) {
+  if (key === 'recover-drafts') { emit('recoverDrafts'); return }
   if (busy.value || !ready.value) return
   if (key === 'codex' || key === 'claude-code') { if (presets.value.some((p) => p.preset === key && p.available)) void create(undefined, 'powershell', key) }
   else if (key === 'open-file') chooseFile()
@@ -484,8 +487,8 @@ onBeforeUnmount(() => {
         <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="rename = { id: tab.id, title: tab.title }"><span v-if="tabActivity(tab)" class="activity-dot" :class="tabActivity(tab)" :title="tabActivity(tab) === 'failed' ? t('workspace.activityFailed') : t('workspace.activityUnread')" />{{ tab.title }}{{ leaves(tab.root).some((leaf) => leaf.type === 'editor' && editors.entries.get(leaf.id)?.document.dirty) ? ' ●' : '' }}</button>
         <button :disabled="busy" :aria-label="t('workspace.closeTabButton', { title: tab.title })" @click="closeTab(tab)">×</button>
       </div>
-      <NDropdown trigger="click" :options="addMenu" :disabled="busy || !ready" @select="onAddSelect">
-        <button class="workspace-tab-add" :disabled="busy || !ready" :aria-label="t('workspace.new')" :title="t('workspace.newTitle', { hint: hint('newTerminal') })"><UiIcon name="plus" :size="16" /></button>
+      <NDropdown trigger="click" :options="addMenu" @select="onAddSelect">
+        <button class="workspace-tab-add" :aria-label="t('workspace.new')" :title="t('workspace.newTitle', { hint: hint('newTerminal') })"><UiIcon name="plus" :size="16" /></button>
       </NDropdown>
     </div>
     </Teleport>

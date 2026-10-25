@@ -25,6 +25,7 @@ const views = shallowReactive(new Map<string, InstanceType<typeof WorkspaceView>
 const mutationBusy = computed(() => !props.activeId || !views.has(props.activeId) || views.get(props.activeId)?.busy || Array.from(editors.entries.values()).some((entry) => entry.projectId === props.activeId && entry.busy))
 const discard = ref<{ projectId: string; resolve: (proceed: boolean) => void } | null>(null)
 const pendingDraft = ref<EditorDraft | null>(null)
+const recovery = ref<InstanceType<typeof DraftRecovery>>()
 function openDraft(draft: EditorDraft) { pendingDraft.value = draft; visited.add(draft.projectId); emit('activate', draft.projectId) }
 watch(() => [props.activeId, views.get(pendingDraft.value?.projectId ?? '')?.ready], async () => {
   const draft = pendingDraft.value
@@ -89,8 +90,8 @@ onMounted(async () => {
 </script>
 <template>
   <div class="workspace-deck">
-    <WorkspaceView v-for="project in retained" :key="`${project.id}:${project.path}`" :ref="(view) => { if (view) views.set(project.id, view as InstanceType<typeof WorkspaceView>); else views.delete(project.id) }" :tabs-target="tabsTarget" :project="project" :settings="settings" :active="activeId === project.id" :registry="registry" :editors="editors" :shortcuts-blocked="shortcutsBlocked || !!discard" @activity="(id, state) => emit('activity', id, state)" @error="emit('error', $event)" @files-changed="(id, change) => emit('filesChanged', id, change)" />
-    <div class="draft-recovery-bar"><DraftRecovery :projects="projects" :editors="editors" @visibility="emit('recoveryVisibility', $event)" @open="openDraft" @error="emit('error', $event)" /></div>
+    <WorkspaceView v-for="project in retained" :key="`${project.id}:${project.path}`" :ref="(view) => { if (view) views.set(project.id, view as InstanceType<typeof WorkspaceView>); else views.delete(project.id) }" :tabs-target="tabsTarget" :project="project" :settings="settings" :active="activeId === project.id" :registry="registry" :editors="editors" :shortcuts-blocked="shortcutsBlocked || !!discard" @recover-drafts="recovery?.open()" @activity="(id, state) => emit('activity', id, state)" @error="emit('error', $event)" @files-changed="(id, change) => emit('filesChanged', id, change)" />
+    <DraftRecovery ref="recovery" :projects="projects" :editors="editors" @visibility="emit('recoveryVisibility', $event)" @open="openDraft" @error="emit('error', $event)" />
     <NModal :show="!!discard" preset="card" :title="t('workspace.unsavedTitle')" class="form-modal" @update:show="(show) => { if (!show) resolveDiscard(false, false) }"><p>{{ t('workspace.unsavedBody') }}</p><div class="dialog-actions"><NButton :disabled="discardSaving" @click="resolveDiscard(false, false)">{{ t('common.cancel') }}</NButton><NButton :loading="discardSaving" @click="resolveDiscard(true, true)">{{ t('workspace.saveAllContinue') }}</NButton><NButton type="error" :disabled="discardSaving" @click="resolveDiscard(false, true)">{{ t('workspace.discardContinue') }}</NButton></div></NModal>
   </div>
 </template>

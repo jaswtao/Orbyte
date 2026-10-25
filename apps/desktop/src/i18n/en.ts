@@ -268,6 +268,8 @@ export const en = {
 
   'draft.tooLarge': 'The draft exceeds 5 MiB of UTF-8 text. The last stored copy is kept; save or shorten the current buffer.',
   'draft.title': 'Recover unsaved drafts',
+  'draft.prompt': 'Unsaved drafts were found. Open a draft in the editor to recover it, or skip for now.',
+  'draft.skip': 'Skip for now',
   'draft.available': 'An unsaved draft is available. Restore or discard it before editing.',
   'draft.restore': 'Restore draft',
   'draft.open': 'Open editor',

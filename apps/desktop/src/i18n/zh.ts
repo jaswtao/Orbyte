@@ -270,6 +270,8 @@ export const zh: Record<MessageKey, string> = {
 
   'draft.tooLarge': '草稿超过 5 MiB UTF-8 字节，已保留上次落盘的副本；请保存源文件或缩短当前内容。',
   'draft.title': '恢复未保存草稿',
+  'draft.prompt': '检测到未保存的草稿，是否恢复？请选择草稿打开编辑器，或暂不恢复。',
+  'draft.skip': '暂不恢复',
   'draft.available': '此文件有未保存草稿，请先恢复或丢弃再编辑。',
   'draft.restore': '恢复草稿',
   'draft.open': '打开编辑器',

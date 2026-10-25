@@ -13,6 +13,8 @@ const drafts = ref<EditorDraft[]>([]), show = ref(false), selected = ref<EditorD
 watch(show, (visible) => emit('visibility', visible), { flush: 'sync' })
 function rootChanged(draft: EditorDraft) { return props.projects.find((p) => p.id === draft.projectId)?.path.toLowerCase() !== draft.projectPath.toLowerCase() }
 async function refresh() { try { drafts.value = await fileApi.drafts() } catch { emit('error', t('draft.failed')) } }
+async function open() { selected.value = null; await refresh(); show.value = true }
+defineExpose({ open })
 async function discard(draft: EditorDraft) {
   busy.value = true
   try {
@@ -25,8 +27,8 @@ async function copy(draft: EditorDraft) { try { await invoke('write_clipboard_te
 onMounted(async () => { await refresh(); show.value = drafts.value.length > 0 })
 </script>
 <template>
-  <button @click="refresh(); show = true">{{ t('draft.title') }}</button>
   <NModal v-model:show="show" preset="card" :title="t('draft.title')" class="form-modal">
+    <p v-if="drafts.length">{{ t('draft.prompt') }}</p>
     <p>{{ t('draft.hint') }}</p>
     <p v-if="!drafts.length">{{ t('draft.empty') }}</p>
     <div class="draft-recovery-list">
@@ -42,5 +44,8 @@ onMounted(async () => { await refresh(); show.value = drafts.value.length > 0 })
     </div>
     </div>
     <textarea v-if="selected" :value="selected.content" readonly :aria-label="t('draft.view')" class="draft-preview" />
+    <template #footer>
+      <div class="dialog-actions"><NButton @click="show = false">{{ t('draft.skip') }}</NButton></div>
+    </template>
   </NModal>
 </template>
