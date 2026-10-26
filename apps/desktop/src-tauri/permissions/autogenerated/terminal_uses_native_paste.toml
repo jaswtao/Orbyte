@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-terminal-uses-native-paste"
+description = "Enables the terminal_uses_native_paste command without any pre-configured scope."
+commands.allow = ["terminal_uses_native_paste"]
+
+[[permission]]
+identifier = "deny-terminal-uses-native-paste"
+description = "Denies the terminal_uses_native_paste command without any pre-configured scope."
+commands.deny = ["terminal_uses_native_paste"]

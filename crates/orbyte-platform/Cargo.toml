@@ -15,4 +15,4 @@ serde.workspace = true
 log.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true, features = ["Win32_UI_Shell"] }
+windows-sys = { workspace = true, features = ["Win32_UI_Shell", "Wdk_System_Threading"] }

@@ -47,6 +47,7 @@ const COMMANDS: &[&str] = &[
     "subscribe_terminal",
     "ack_terminal",
     "write_terminal",
+    "terminal_uses_native_paste",
     "set_active_terminal",
     "resize_terminal",
     "stop_terminal",

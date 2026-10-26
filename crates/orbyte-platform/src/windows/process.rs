@@ -10,6 +10,28 @@ use windows_sys::Win32::System::Threading::{
 
 const STILL_ACTIVE: u32 = 259;
 
+/// Query the console host without attaching the application to another console.
+/// Unsupported queries, inaccessible processes and detached processes return None.
+pub fn process_console_host(pid: u32) -> Option<usize> {
+    use windows_sys::Wdk::System::Threading::NtQueryInformationProcess;
+
+    // ProcessConsoleHostProcess (49) returns an ULONG_PTR. This native information
+    // class is also named ProcessOwnerInformation in the Windows bindings.
+    const PROCESS_CONSOLE_HOST_PROCESS: i32 = 49;
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() { return None; }
+        let mut host: usize = 0;
+        let status = NtQueryInformationProcess(handle, PROCESS_CONSOLE_HOST_PROCESS,
+            (&mut host as *mut usize).cast(), std::mem::size_of::<usize>() as u32,
+            std::ptr::null_mut());
+        CloseHandle(handle);
+        // The low two bits are flags rather than part of the process ID.
+        host &= !3;
+        (status >= 0 && host != 0).then_some(host)
+    }
+}
+
 /// 查询可执行文件路径；不读取或暴露进程命令行参数。
 pub fn process_image(pid: u32) -> std::io::Result<std::path::PathBuf> {
     use std::os::windows::ffi::OsStringExt;

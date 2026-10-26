@@ -222,6 +222,7 @@ pub fn run() {
             commands::terminal::subscribe_terminal,
             commands::terminal::ack_terminal,
             commands::terminal::write_terminal,
+            commands::terminal::terminal_uses_native_paste,
             commands::terminal::set_active_terminal,
             commands::terminal::resize_terminal,
             commands::terminal::stop_terminal,

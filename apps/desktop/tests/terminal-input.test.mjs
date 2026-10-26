@@ -318,7 +318,7 @@ const registrySource = await readFile(new URL('../src/services/terminal/registry
 const shortcuts = await loadService('workspace/shortcuts')
 const appearance = await loadService('appearance')
 const recovery = await loadService('terminal/recovery')
-const clipboard = { read: async () => [], readText: async () => '', writeText: async () => {} }
+const clipboard = { read: async () => [], readText: async () => '', writeText: async () => {}, nativePaste: async () => false }
 // Node 的 EventTarget 没有 DOM 父子传播；分开调度捕获和冒泡以覆盖宿主拦截。
 class TerminalHost extends EventTarget {
   capture = new EventTarget()
@@ -357,6 +357,7 @@ const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
     readClipboardText: () => clipboard.readText(),
     writeClipboardText: (text) => clipboard.writeText(text),
     saveClipboardImage: () => clipboard.read(),
+    terminalUsesNativePaste: (id) => clipboard.nativePaste(id),
   } }
   if (name === 'vue') return { markRaw: (value) => value, shallowReactive: (value) => value }
   if (name === '../workspace/shortcuts') return shortcuts
@@ -375,6 +376,7 @@ function keyboardFixture(custom = true, readText = async () => '', errors = [], 
   clipboard.readText = readText
   clipboard.read = async () => null
   clipboard.writeText = async () => {}
+  clipboard.nativePaste = async () => false
   const entry = custom ? new TerminalRegistry(() => 'dark', () => settings, () => blocked).create({}, (message) => errors.push(message)) : null
   const term = entry ? entry.client.term : new xterm.Terminal()
   const core = term._core
@@ -384,7 +386,7 @@ function keyboardFixture(custom = true, readText = async () => '', errors = [], 
   core._showCursor = () => {}
   const sent = []
   term.onData((data) => sent.push(data))
-  return { term, sent, host: entry?.host, key: (overrides = {}) => {
+  return { term, sent, client: entry?.client, host: entry?.host, key: (overrides = {}) => {
     const event = { type: 'keydown', key: 'Process', code: 'Escape', keyCode: 229,
       ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, isComposing: false,
       preventDefault() { this.defaultPrevented = true },
@@ -435,6 +437,41 @@ test('Ctrl+V 与 Ctrl+Shift+V 均粘贴文本，保留多行和括号粘贴且�
     assert.equal(event.defaultPrevented, true)
     fixture.term.dispose()
   }
+})
+
+test('Windows Codex pastes Chinese and multiline clipboard text with one native shortcut', async () => {
+  for (const text of ['是否本年就业应届毕业生', '是否本年就业应届毕\n业生\n', '中文😀\t“引号”'.repeat(1000)]) {
+    for (const method of ['ctrl-v', 'ctrl-shift-v', 'contextmenu']) {
+      const fixture = keyboardFixture(true, async () => text)
+      fixture.client.id = 'codex-session'
+      clipboard.nativePaste = async (id) => { assert.equal(id, 'codex-session'); return true }
+      fixture.term._core.coreService.decPrivateModes.bracketedPasteMode = true
+      if (method === 'contextmenu') fixture.host.dispatchEvent(new Event('contextmenu', { cancelable: true }))
+      else fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true, shiftKey: method === 'ctrl-shift-v' })
+      await flush()
+      assert.deepEqual(fixture.sent, ['\x16'])
+      fixture.term.dispose()
+    }
+  }
+})
+
+test('non-Codex terminals retain bracketed paste and a replaced session receives no stale paste', async () => {
+  const fixture = keyboardFixture(true, async () => '是否本年就业应届毕\n业生')
+  fixture.client.id = 'shell-session'
+  fixture.term._core.coreService.decPrivateModes.bracketedPasteMode = true
+  fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true })
+  await flush()
+  assert.deepEqual(fixture.sent, ['\x1b[200~是否本年就业应届毕\r业生\x1b[201~'])
+  fixture.sent.length = 0
+  let finish
+  clipboard.nativePaste = () => new Promise((resolve) => { finish = resolve })
+  fixture.key({ key: 'v', code: 'KeyV', keyCode: 86, ctrlKey: true })
+  await flush()
+  fixture.client.id = 'replacement-session'
+  finish(true)
+  await flush()
+  assert.deepEqual(fixture.sent, [])
+  fixture.term.dispose()
 })
 
 test('剪贴板无文本和图片时不发送控制字符，Ctrl+Shift+V 只粘贴文本', async () => {

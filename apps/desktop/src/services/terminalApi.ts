@@ -85,6 +85,7 @@ export const terminalApi = {
   ackTerminal: (terminalId: string, seq: number) => invoke<void>('ack_terminal', { terminalId, seq }),
 
   writeTerminal: (terminalId: string, data: string) => invoke<void>('write_terminal', { terminalId, data }),
+  terminalUsesNativePaste: (terminalId: string) => invoke<boolean>('terminal_uses_native_paste', { terminalId }),
 
   resizeTerminal: (terminalId: string, size: TerminalSize, nudge = false) =>
     invoke<void>('resize_terminal', nudge

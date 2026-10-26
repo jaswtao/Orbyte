@@ -28,6 +28,79 @@ fn channel() -> Channel<InvokeResponseBody> {
 }
 
 #[tokio::test]
+async fn ordinary_shell_does_not_use_native_clipboard_paste() {
+    let (app, _, project) = fixture().await;
+    let created = create_terminal(app.state(), app.state(), project.id, project.workspace_id,
+        "cmd".into(), None, None, 120, 30, channel()).await.unwrap();
+    assert!(!terminal_uses_native_paste(app.state(), created.terminal_id).await.unwrap());
+    assert!(terminal_uses_native_paste(app.state(), "unknown-session".into()).await.is_err());
+    app.state::<AppState>().terminals.stop_all();
+}
+
+#[tokio::test]
+async fn native_paste_only_detects_codex_in_the_session_console() {
+    use orbyte_platform::windows::process::process_image;
+    use std::time::{Duration, Instant};
+
+    struct Cleanup {
+        terminals: std::sync::Arc<orbyte_terminal::TerminalManager>,
+        directory: std::path::PathBuf,
+    }
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            self.terminals.stop_all();
+            let _ = std::fs::remove_dir_all(&self.directory);
+        }
+    }
+
+    for (mode, expected) in [("separate", false), ("shared", true), ("detached", false)] {
+        let (app, _, project) = fixture().await;
+        let directory = std::env::temp_dir().join(format!("orbyte-native-paste-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let cleanup = Cleanup { terminals: app.state::<AppState>().terminals.clone(), directory };
+        // A renamed cmd stays alive without depending on a Codex installation.
+        let probe = cleanup.directory.join("codex.exe");
+        std::fs::copy(std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32/cmd.exe"), &probe).unwrap();
+        let ready = cleanup.directory.join("ready.txt");
+        let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let captured = output.clone();
+        let created = create_terminal(app.state(), app.state(), project.id, project.workspace_id,
+            "cmd".into(), None, None, 120, 30, Channel::new(move |body| {
+                if let InvokeResponseBody::Raw(frame) = body {
+                    if frame.first() == Some(&orbyte_terminal::output::FRAME_OUTPUT) {
+                        captured.lock().unwrap().extend_from_slice(&frame[orbyte_terminal::output::FRAME_HEADER_LEN..]);
+                    }
+                }
+                Ok(())
+            })).await.unwrap();
+        cleanup.terminals.write(&created.terminal_id, b"\x1b[1;1R".to_vec()).unwrap();
+        let probe_path = probe.to_string_lossy().replace('\'', "''");
+        let ready_path = ready.to_string_lossy().replace('\'', "''");
+        let launch = match mode {
+            "shared" => format!("$p = Start-Process '{probe_path}' -ArgumentList '/D /Q /C ping.exe -n 120 127.0.0.1 >NUL' -NoNewWindow -PassThru"),
+            "separate" => format!("$p = Start-Process '{probe_path}' -ArgumentList '/D /Q /C ping.exe -n 120 127.0.0.1 >NUL' -WindowStyle Hidden -PassThru"),
+            _ => format!("$s = New-Object System.Diagnostics.ProcessStartInfo; $s.FileName = '{probe_path}'; $s.Arguments = '/D /Q /C ping.exe -n 120 127.0.0.1 >NUL'; $s.UseShellExecute = $false; $s.CreateNoWindow = $true; $p = [System.Diagnostics.Process]::Start($s)"),
+        };
+        cleanup.terminals.write(&created.terminal_id, format!(
+            "powershell.exe -NoLogo -NoProfile -Command \"{launch}; $p.Id | Set-Content -LiteralPath '{ready_path}'\"\r"
+        ).into_bytes()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let pid = loop {
+            if let Some(pid) = std::fs::read_to_string(&ready).ok().and_then(|text| text.trim().parse::<u32>().ok()) {
+                break pid;
+            }
+            assert!(Instant::now() < deadline, "{mode}: probe did not start: {}", String::from_utf8_lossy(&output.lock().unwrap()));
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        };
+        let session = cleanup.terminals.get(&created.terminal_id).unwrap();
+        assert!(session.job_process_ids().contains(&pid), "{mode}: probe must remain in the session Job");
+        assert_eq!(process_image(pid).unwrap(), probe);
+        assert_eq!(terminal_uses_native_paste(app.state(), created.terminal_id).await.unwrap(), expected, "{mode}");
+    }
+}
+
+#[tokio::test]
 async fn active_terminal_limits_window_activation_to_its_own_live_processes() {
     let (app, _, project) = fixture().await;
     let mut sessions = Vec::new();

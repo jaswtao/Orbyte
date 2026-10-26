@@ -275,6 +275,30 @@ pub async fn ack_terminal(state: State<'_, AppState>, terminal_id: String, seq: 
 }
 
 #[tauri::command]
+pub async fn terminal_uses_native_paste(state: State<'_, AppState>, terminal_id: String) -> CmdResult<bool> {
+    let terminals = state.terminals.clone();
+    blocking(move || {
+        let session = terminals.get(&terminal_id).map_err(err_text)?;
+        // Windows Codex reads Ctrl+V from the clipboard as one paste. Sending
+        // text through ConPTY instead falls back to timing-based key bursts.
+        #[cfg(windows)]
+        {
+            use orbyte_platform::windows::process::{process_console_host, process_image};
+            let Some(host) = session.pid().and_then(process_console_host) else { return Ok(false); };
+            Ok(session.job_process_ids().into_iter().any(|pid| {
+                process_image(pid).ok().is_some_and(|image| {
+                    image.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("codex.exe"))
+                        // Job descendants can use a separate console (Start-Process/start).
+                        && process_console_host(pid) == Some(host)
+                })
+            }))
+        }
+        #[cfg(not(windows))]
+        { let _ = session; Ok(false) }
+    }).await
+}
+
+#[tauri::command]
 pub async fn write_terminal(state: State<'_, AppState>, terminal_id: String, data: String) -> CmdResult<()> {
     state.terminals.write(&terminal_id, data.into_bytes()).map_err(err_text)
 }

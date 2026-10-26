@@ -375,6 +375,17 @@ fn unicode_punctuation_reaches_raw_console_without_modifiers() {
 }
 
 #[test]
+fn native_clipboard_shortcut_reaches_raw_console_as_ctrl_v() {
+    let text = probe_console_input(console_input_probe(0x98, 1, false), &["\x16"]);
+    let key = text.lines().find_map(|line| line.find("key:0016:").map(|index| &line[index..]))
+        .unwrap_or_else(|| panic!("Ctrl+V was not received: {text}"));
+    let state: u32 = key.split(':').nth(2).unwrap().parse().unwrap();
+    // LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED, without Alt modifiers.
+    assert_ne!(state & 0x0c, 0, "{text}");
+    assert_eq!(state & 0x03, 0, "{text}");
+}
+
+#[test]
 fn unicode_paste_reaches_vt_input_without_protocol_leaking() {
     let input = "\x1b[200~甲“乙”\r‘丙’\"丁\"\x1b[201~";
     let text = probe_console_input(console_input_probe(0x298, input.len(), true), &[input]);

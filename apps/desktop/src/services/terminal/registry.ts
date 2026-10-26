@@ -132,7 +132,16 @@ export class TerminalRegistry {
     }
     const paste = async (forwardWithoutText = false) => {
       try {
+        const id = entry.client.id
         const text = await terminalApi.readClipboardText()
+        if (entry.client.id !== id) return
+        if (text && id && await terminalApi.terminalUsesNativePaste(id)) {
+          // Let native Windows Codex consume the clipboard atomically, including
+          // embedded newlines, rather than reconstructing a paste from key timing.
+          if (entry.client.id === id) entry.client.term.input('\x16', true)
+          return
+        }
+        if (entry.client.id !== id) return
         if (text) entry.client.term.paste(text)
         else if (forwardWithoutText) {
           // Native clipboard access also works when WebView denies browser clipboard reads.

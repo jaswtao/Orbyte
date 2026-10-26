@@ -58,6 +58,7 @@
     "allow-subscribe-terminal",
     "allow-ack-terminal",
     "allow-write-terminal",
+    "allow-terminal-uses-native-paste",
     "allow-set-active-terminal",
     "allow-resize-terminal",
     "allow-stop-terminal",
