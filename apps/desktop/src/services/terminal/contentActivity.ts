@@ -10,8 +10,17 @@ interface PromptRegion {
 
 export class ContentActivity {
   private previous = ''
+  private lastRead = ''
   private prompts: PromptRegion[] = []
   private pending: PromptRegion | null = null
+
+  get unread(): boolean {
+    return this.previous !== this.lastRead
+  }
+
+  markRead(): void {
+    this.lastRead = this.previous
+  }
 
   /** 在解析 OSC 的位置记录区域，marker 随滚动与软换行重排移动。 */
   promptStart(term: Terminal): void {
@@ -77,6 +86,7 @@ export class ContentActivity {
     this.pending = null
     this.previous = ''
     if (buffer) this.changed(buffer)
+    this.markRead()
   }
 
   private textToCursor(term: Terminal, start: number): string {

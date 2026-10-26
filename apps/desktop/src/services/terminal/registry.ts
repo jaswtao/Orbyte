@@ -87,7 +87,10 @@ export class TerminalRegistry {
         entry.status = status
         if (status.state === 'exited' && !exitedAlready && !entry.intentionalStop) onExit?.(status.exitCode)
       },
-      onOutput: () => { if (!entry.visible && !entry.unread) entry.unread = true },
+      onOutput: (unread) => {
+        if (entry.visible) entry.client.markContentRead()
+        entry.unread = !entry.visible && unread
+      },
       onShell: (event) => {
         const shell = { ...entry.shell, integrated: true }
         if (event.type === 'cwd') shell.cwd = event.path

@@ -128,7 +128,10 @@ watch(() => [props.active, layout.value], () => {
       entry.host.dispatchEvent(new Event('terminal-session-hidden', { bubbles: true }))
     }
     entry.visible = props.active && tab.id === layout.value.activeTabId
-    if (entry.visible) entry.unread = false
+    if (entry.visible) {
+      entry.client.markContentRead()
+      entry.unread = false
+    }
   }
 }, { flush: 'post' })
 watch(() => activity(layout.value.tabs.flatMap(tabEntries)), (state) => emit('activity', props.project.id, state), { immediate: true })

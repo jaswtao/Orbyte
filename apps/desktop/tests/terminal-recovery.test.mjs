@@ -12,6 +12,7 @@ const flush = () => new Promise(setImmediate)
 const { InputQueue } = await loadService('terminal/inputQueue')
 const frameModule = await loadService('terminal/frame')
 const recoveryModule = await loadService('terminal/recovery')
+const contentModule = await loadService('terminal/contentActivity')
 
 test('停止期间丢弃后续输入，旧写入失败不再误报到新会话', async () => {
   const errors = []
@@ -43,12 +44,13 @@ function clientFixture(t) {
     transformCallback(callback) { callbacks.set(++next, callback); return next }, unregisterCallback(id) { callbacks.delete(id) },
   } }
   const statuses = []
+  const outputActivity = []
   const diagnostics = []
   const api = { reportDiagnostic: async (...args) => diagnostics.push(args), ackTerminal: async () => {}, resizeTerminal: async () => {}, writeTerminal: async () => {} }
   class Terminal {
     writes = []
     options = {}
-    buffer = { active: {} }
+    buffer = { active: { type: 'normal', length: 0, getLine: () => undefined } }
     parser = { registerOscHandler() {} }
     loadAddon() {} open() {} onResize() {} onWriteParsed() {} onData(callback) { this.data = callback }
     write(data, callback) { if (this.failWrite) throw new Error('parser failed'); this.writes.push(new TextDecoder().decode(data)); callback?.() }
@@ -69,13 +71,13 @@ function clientFixture(t) {
       if (name === './ime') return { bindTerminalIme: () => ({ dispose() {}, reset() {} }) }
       if (name === './selection') return { bindTerminalSelection: () => ({ dispose() {} }) }
       if (name === './shellIntegration') return { ShellIntegration: class { reset() {} input() {} } }
-      if (name === './contentActivity') return { ContentActivity: class { reset() {} resized() {} } }
+      if (name === './contentActivity') return contentModule
       if (name === '../../i18n/translate') return { t: (key) => key }
       throw new Error(name)
     },
   })
   const container = { dataset: {}, offsetWidth: 0, offsetHeight: 0, contains: () => false }
-  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status) })
+  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status), onOutput: (unread) => outputActivity.push(unread) })
   const channel = client.createChannel()
   client.attach('session')
   let index = 0
@@ -88,8 +90,78 @@ function clientFixture(t) {
     callbacks.get(channel.id)({ index: index++, message: fallback ? Array.from(new Uint8Array(frame)) : frame })
   }
   t.after(() => { client.dispose(); globalThis.window = previous })
-  return { client, deliver, statuses, diagnostics, api, callbacks, channel, container, document }
+  return { client, deliver, statuses, outputActivity, diagnostics, api, callbacks, channel, container, document }
 }
+
+test('终端回传恢复已读内容的状态，真实输出保持未读直到查看', (t) => {
+  const f = clientFixture(t)
+  let text = 'Codex waiting for input'
+  f.client.term.buffer.active = { type: 'normal', length: 1, getLine: () => ({ translateToString: () => text }) }
+  f.client.flushContentActivity()
+  f.client.markContentRead()
+  text = ''
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), true)
+  text = 'Codex waiting for input'
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), false)
+  text += '\nnew output'
+  f.client.flushContentActivity()
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), true)
+  f.client.markContentRead()
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), false)
+})
+
+test('reconnecting after hiding preserves unread output received while subscribing', async (t) => {
+  const f = clientFixture(t)
+  f.container.offsetWidth = 800
+  f.container.offsetHeight = 600
+  let text = 'seen output'
+  f.client.term.buffer.active = { type: 'normal', length: 1, getLine: () => ({ translateToString: () => text }) }
+  f.client.flushContentActivity()
+  f.client.markContentRead()
+  f.deliver(2, '{"state":"running"}')
+  f.api.listTerminalSessions = async () => [{ terminalId: 'session', status: { state: 'running' } }]
+  let releaseSubscribe
+  f.api.subscribeTerminal = async (_id, channel) => {
+    await new Promise((resolve) => { releaseSubscribe = resolve })
+    channel.onmessage(outputFrame(1, 'redraw'))
+  }
+
+  const pending = f.client.reconnect()
+  await flush()
+  assert.equal(typeof releaseSubscribe, 'function')
+  f.container.offsetWidth = 0
+  text += '\nbackground result'
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), true)
+  releaseSubscribe()
+  await pending
+  assert.equal(f.client.connection, 'connected')
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), true)
+
+  text = 'seen output'
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), false)
+  text += '\nnew result'
+  f.client.flushContentActivity()
+  f.client.markContentRead()
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), false)
+})
+
+test('attaching a new session resets the previous unread baseline', (t) => {
+  const f = clientFixture(t)
+  f.client.term.buffer.active = { type: 'normal', length: 1, getLine: () => ({ translateToString: () => 'old output' }) }
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), true)
+  f.client.attach('new-session')
+  f.client.flushContentActivity()
+  assert.equal(f.outputActivity.at(-1), false)
+})
 
 test('真实 Tauri 有序 Channel 中，坏 JSON 后仍能接收退出状态', (t) => {
   const f = clientFixture(t)

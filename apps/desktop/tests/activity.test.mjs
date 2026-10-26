@@ -133,6 +133,38 @@ test('空闲终端的光标、颜色、标题及相同内容重绘不触发未�
   assert.equal(f.changed(), false)
 })
 
+test('后台分批清屏重绘恢复已读内容后撤销未读', async (t) => {
+  const f = contentFixture(t)
+  await f.write('Codex waiting for input')
+  f.changed()
+  f.detector.markRead()
+  await f.write('\x1b[2J\x1b[H')
+  f.changed()
+  assert.equal(f.detector.unread, true)
+  await f.write('Codex waiting for input')
+  f.changed()
+  assert.equal(f.detector.unread, false)
+})
+
+test('未读与最后已读内容比较，重复检查不会吞掉真实输出', async (t) => {
+  const f = contentFixture(t)
+  await f.write('seen output')
+  f.changed()
+  f.detector.markRead()
+  await f.write('\r\nnew output')
+  f.changed()
+  assert.equal(f.detector.unread, true)
+  assert.equal(f.changed(), false)
+  assert.equal(f.detector.unread, true)
+  f.detector.markRead()
+  assert.equal(f.detector.unread, false)
+  await f.write('\r\nmore output')
+  f.changed()
+  assert.equal(f.detector.unread, true)
+  f.detector.reset(f.term.buffer.active)
+  assert.equal(f.detector.unread, false)
+})
+
 test('新增输出、原位修改、删除和清屏均识别为内容变化', async (t) => {
   const f = contentFixture(t)
   for (const text of ['处理中', '\r处理完成', '\r\x1b[K', '新内容\r\n下一行', '\x1b[2J\x1b[H']) {

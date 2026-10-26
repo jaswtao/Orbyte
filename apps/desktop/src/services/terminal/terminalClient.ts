@@ -26,7 +26,7 @@ const CONTENT_CHECK_MS = 200
 export const INITIAL_SIZE: TerminalSize = { cols: 120, rows: 30 }
 
 export interface TerminalClientEvents {
-  onOutput?: () => void
+  onOutput?: (unread: boolean) => void
   onShell?: (event: ShellEvent) => void
   onStatus?: (status: TerminalStatus) => void
   onError?: (message: string) => void
@@ -123,6 +123,7 @@ export class TerminalClient {
   attach(terminalId: string): void {
     if (this.terminalId !== terminalId) {
       this.recovery.reset()
+      this.contentActivity.reset(this.term.buffer.active)
       this.status = { state: 'starting' }
       this.operationPaused = false
       this.awaitingStatus = false
@@ -131,7 +132,6 @@ export class TerminalClient {
     this.ack.reset()
     this.ackFailures = 0
     this.integration.reset()
-    this.contentActivity.reset(this.term.buffer.active)
     window.clearTimeout(this.ackTimer)
     this.ackTimer = undefined
     this.processedSeq = null
@@ -181,7 +181,12 @@ export class TerminalClient {
   flushContentActivity(): void {
     window.clearTimeout(this.contentTimer)
     this.contentTimer = undefined
-    if (this.contentActivity.changed(this.term.buffer.active)) this.events.onOutput?.()
+    this.contentActivity.changed(this.term.buffer.active)
+    this.events.onOutput?.(this.contentActivity.unread)
+  }
+
+  markContentRead(): void {
+    this.contentActivity.markRead()
   }
 
   dispose(): void {
