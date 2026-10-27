@@ -89,15 +89,18 @@ function refresh() {
     if (leaf.type === 'terminal') props.registry.byConfig.get(leaf.terminalConfigId)?.client.refreshSize()
   }
 }
-function restoreFocus() {
+function restoreFocus(preferTerminal = false) {
   if (disposed || !ready.value || !props.active || props.shortcutsBlocked || confirmation.value || rename.value || quickOpen.value || tabMenu.value) return
   if (Array.from(props.editors.entries.values()).some((entry) => entry.dialog)) return
-  const panes = activeTab.value ? leaves(activeTab.value.root) : []
+  const panes = (activeTab.value ? leaves(activeTab.value.root) : []).filter((leaf) => !preferTerminal || leaf.type === 'terminal')
   const pane = panes.find((leaf) => (leaf.type === 'terminal' ? leaf.terminalConfigId : leaf.id) === focused.value) ?? panes[0]
   if (!pane) return
   focused.value = pane.type === 'terminal' ? pane.terminalConfigId : pane.id
   if (pane.type === 'terminal') props.registry.byConfig.get(pane.terminalConfigId)?.client.focus()
   else props.editors.entries.get(pane.id)?.view.focus()
+}
+function focusTerminal() {
+  if (document.hasFocus()) restoreFocus(true)
 }
 function newEntry() {
   const entry = props.registry.create({ fontFamily: props.settings.font_family, fontSize: props.settings.font_size, scrollback: props.settings.scrollback }, error, (duration, exitCode) => {
@@ -404,7 +407,7 @@ async function renamed(from: string, to: string) {
     await commit(next)
   })
 }
-defineExpose({ openFile, renamed, busy, ready })
+defineExpose({ openFile, renamed, busy, ready, focusTerminal })
 function saveRename() {
   const target = rename.value
   if (!target?.title.trim() || busy.value || !ready.value) return
@@ -457,11 +460,16 @@ function keydown(event: KeyboardEvent) {
   else if (command === 'splitVertical') void create('vertical')
 }
 watch(() => props.active, (active) => { if (!active) tabMenu.value = null; void activate() }, { flush: 'post' })
-watch(() => [props.active, ready.value], async () => {
+watch(() => [props.active, ready.value], async (_, previous) => {
   if (!props.active || !ready.value) return
   // 等待窗格挂载及可见性更新，再恢复输入焦点；异步返回后重新检查激活状态。
+  const firstReady = !previous?.[1]
   await nextTick()
-  restoreFocus()
+  if (firstReady) {
+    if (!document.hasFocus()) return
+    const hasTerminal = activeTab.value ? leaves(activeTab.value.root).some((leaf) => leaf.type === 'terminal') : false
+    restoreFocus(hasTerminal)
+  } else restoreFocus()
 }, { flush: 'post' })
 watch(() => props.settings.show_workspace_header, async () => { await nextTick(); refresh() })
 onMounted(() => { document.addEventListener('keydown', keydown, true); void load() })

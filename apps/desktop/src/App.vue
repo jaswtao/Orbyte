@@ -47,7 +47,11 @@ const activities = reactive(new Map<string, Activity>())
 const worktreeDialog = ref(false)
 const worktreeProject = ref<Project | null>(null)
 function openWorktree(project: Project) { worktreeProject.value = project; worktreeDialog.value = true }
-function windowFocus() { if (store.active) git.schedule(store.active.id) }
+async function windowFocus() {
+  if (store.active) git.schedule(store.active.id)
+  await nextTick()
+  if (!disposed && document.hasFocus()) deck.value?.focusTerminal()
+}
 const settingsDialog = ref(false)
 const closeDialog = ref(false)
 const closeBusy = ref(false)

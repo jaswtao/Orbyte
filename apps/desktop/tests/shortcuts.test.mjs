@@ -592,7 +592,7 @@ test('Ctrl+F4 关闭激活的整个分屏页签，保留关闭确认并阻断长
 })
 
 const focusNodes = workspaceAst.statements.filter((node) =>
-  (ts.isFunctionDeclaration(node) && node.name?.text === 'restoreFocus') ||
+  (ts.isFunctionDeclaration(node) && ['restoreFocus', 'focusTerminal'].includes(node.name?.text)) ||
   (ts.isExpressionStatement(node) && node.getText(workspaceAst).startsWith('watch(') && node.getText(workspaceAst).includes('restoreFocus()')))
 const focusJs = ts.transpileModule(focusNodes.map((node) => node.getText(workspaceAst)).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
@@ -601,7 +601,7 @@ function workspaceFocusFixture(t) {
   const terminal = { type: 'terminal', terminalConfigId: 'terminal' }
   const editor = { type: 'editor', id: 'editor', path: 'file.txt' }
   const context = {
-    nextTick, leaves, disposed: false,
+    nextTick, leaves, disposed: false, document: { hasFocus: () => true },
     watch: (...args) => { const stop = watch(...args); t.after(stop); return stop },
     props: reactive({ active: false, shortcutsBlocked: false,
       registry: { byConfig: new Map([['terminal', { client: { focus: () => calls.push('terminal') } }]]) },
@@ -674,6 +674,122 @@ for (const cancelled of ['inactive', 'disposed']) {
     assert.deepEqual(calls, [])
   })
 }
+
+test('窗口激活优先聚焦当前页终端，即使之前选中编辑器', async (t) => {
+  const { context, calls, flush } = workspaceFocusFixture(t)
+  context.props.active = true
+  await flush()
+  calls.length = 0
+  context.focusTerminal()
+  assert.deepEqual(calls, ['terminal'])
+  assert.equal(context.focused.value, 'terminal')
+})
+
+test('多终端分屏保留当前选中的终端', async (t) => {
+  const { context, calls, flush } = workspaceFocusFixture(t)
+  context.props.active = true
+  await flush()
+  context.activeTab.value.root.children.push({ type: 'terminal', terminalConfigId: 'second' })
+  context.props.registry.byConfig.set('second', { client: { focus: () => calls.push('second') } })
+  context.focused.value = 'second'
+  calls.length = 0
+  context.focusTerminal()
+  assert.deepEqual(calls, ['second'])
+})
+
+test('纯编辑器页面激活时保留原焦点，不选择其他标签页', async (t) => {
+  const { context, calls, flush } = workspaceFocusFixture(t)
+  context.props.active = true
+  await flush()
+  context.activeTab.value.root = { type: 'editor', id: 'editor', path: 'file.txt' }
+  context.focused.value = 'editor'
+  calls.length = 0
+  context.focusTerminal()
+  assert.deepEqual(calls, [])
+  assert.equal(context.focused.value, 'editor')
+})
+
+test('首次加载纯编辑器标签页时恢复输入焦点，等待期间窗口失焦则不聚焦', async (t) => {
+  for (const hasFocus of [true, false]) {
+    const { context, calls, flush } = workspaceFocusFixture(t)
+    context.ready.value = false
+    context.activeTab.value.root = { type: 'editor', id: 'editor', path: 'file.txt' }
+    context.props.active = true
+    await flush()
+    context.ready.value = true
+    await nextTick()
+    context.document.hasFocus = () => hasFocus
+    await flush()
+    assert.deepEqual(calls, hasFocus ? ['editor'] : [])
+    assert.equal(context.focused.value, 'editor')
+  }
+})
+
+test('首次加载就绪时优先终端，等待期间窗口失焦则不聚焦', async (t) => {
+  for (const hasFocus of [true, false]) {
+    const { context, calls, flush } = workspaceFocusFixture(t)
+    context.ready.value = false
+    context.props.active = true
+    await flush()
+    context.ready.value = true
+    await nextTick()
+    context.document.hasFocus = () => hasFocus
+    await flush()
+    assert.deepEqual(calls, hasFocus ? ['terminal'] : [])
+  }
+})
+
+for (const blocked of ['shortcutsBlocked', 'confirmation', 'rename', 'quickOpen', 'tabMenu', 'editorDialog', 'inactive', 'disposed', 'unready', 'blurred']) {
+  test(`窗口激活聚焦终端时检查保护条件：${blocked}`, async (t) => {
+    const { context, calls, flush } = workspaceFocusFixture(t)
+    context.props.active = true
+    await flush()
+    calls.length = 0
+    if (blocked === 'shortcutsBlocked') context.props.shortcutsBlocked = true
+    else if (blocked === 'editorDialog') context.props.editors.entries.get('editor').dialog = { kind: 'conflict' }
+    else if (blocked === 'inactive') context.props.active = false
+    else if (blocked === 'disposed') context.disposed = true
+    else if (blocked === 'unready') context.ready.value = false
+    else if (blocked === 'blurred') context.document.hasFocus = () => false
+    else context[blocked].value = true
+    context.focusTerminal()
+    assert.deepEqual(calls, [])
+  })
+}
+
+test('窗口 focus 事件等待 DOM 更新后仅转发当前项目，并保留 Git 刷新', async () => {
+  const ast = ts.createSourceFile('App.ts', appSource.split('<script setup lang="ts">')[1].split('</script>')[0], ts.ScriptTarget.Latest, true)
+  const handler = ast.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'windowFocus')
+  const deckSource = await readFile(new URL('../src/components/workspace/WorkspaceDeck.vue', import.meta.url), 'utf8')
+  const deckAst = ts.createSourceFile('Deck.ts', deckSource.split('<script setup lang="ts">')[1].split('</script>')[0], ts.ScriptTarget.Latest, true)
+  const forward = deckAst.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'focusTerminal')
+  const calls = []
+  const deckContext = vm.createContext({ props: { activeId: 'active' }, views: new Map([
+    ['active', { focusTerminal: () => calls.push('active') }],
+    ['background', { focusTerminal: () => calls.push('background') }],
+  ]) })
+  vm.runInContext(ts.transpileModule(forward.getText(deckAst), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, deckContext)
+  const context = vm.createContext({ nextTick, disposed: false, document: { hasFocus: () => true },
+    store: { active: { id: 'active' } }, git: { schedule: (id) => calls.push(`git:${id}`) },
+    deck: { value: { focusTerminal: () => deckContext.focusTerminal() } } })
+  vm.runInContext(ts.transpileModule(handler.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const pending = context.windowFocus()
+  assert.deepEqual(calls, ['git:active'])
+  await pending
+  assert.deepEqual(calls, ['git:active', 'active'])
+  for (const cancelled of ['blurred', 'disposed', 'noProject']) {
+    calls.length = 0
+    context.disposed = false
+    context.document.hasFocus = () => true
+    deckContext.props.activeId = 'active'
+    const pending = context.windowFocus()
+    if (cancelled === 'blurred') context.document.hasFocus = () => false
+    if (cancelled === 'disposed') context.disposed = true
+    if (cancelled === 'noProject') deckContext.props.activeId = null
+    await pending
+    assert.deepEqual(calls, ['git:active'])
+  }
+})
 
 test('工作区新绑定只执行一次，保留数字 Tab 定位并阻断后台、弹窗和长按', () => {
   const calls = []
