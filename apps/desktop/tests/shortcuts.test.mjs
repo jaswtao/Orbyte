@@ -8,6 +8,7 @@ import { loadService } from './load-service.mjs'
 import { nextTick, reactive, ref, watch } from 'vue'
 
 const { matchShortcut, bindings, shortcutConflicts, shortcutHint, validShortcut, setLocale } = await loadService('workspace/shortcuts')
+const { filterProjects } = await loadService('sidebar/filter')
 const tabShortcutIndex = (event) => { const id = matchShortcut(event); return /^tab[1-9]$/.test(id ?? '') ? Number(id.slice(3)) - 1 : -1 }
 const key = (code, modifiers = {}) => ({ altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, code, ...modifiers })
 
@@ -259,7 +260,7 @@ function projectNavigation(visible) {
   // 原始数组顺序与分组显示顺序故意不同。
   const projects = [{ id: 'b', groupId: 'second' }, { id: 'u', groupId: null }, { id: 'a', groupId: 'first' }, { id: 'c', groupId: 'second' }]
   const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => selected.push(id) }
-  const context = { matchShortcut, store, sidebar: { value: visible === undefined ? undefined : { getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
+  const context = { matchShortcut, filterProjects, store, sidebar: { value: visible === undefined ? undefined : { getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
   for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(handlerJs, context)
@@ -301,6 +302,19 @@ test('左右键保留原始顺序，上下键忽略长按和额外修饰键', ()
   assert.deepEqual(nav.selected, ['u', 'c'])
 })
 
+test('侧栏未挂载时所有项目切换快捷键遵守隐藏开关', () => {
+  const nav = projectNavigation()
+  nav.store.projects.find((p) => p.id === 'b').hidden = true
+  nav.store.projects.find((p) => p.id === 'c').hidden = true
+  nav.press('ArrowDown')
+  nav.press('ArrowRight')
+  assert.deepEqual(nav.selected, ['u', 'u'])
+  nav.store.settings = { show_hidden_projects: true }
+  nav.press('ArrowDown')
+  nav.press('ArrowRight')
+  assert.deepEqual(nav.selected, ['u', 'u', 'b', 'c'])
+})
+
 const clampJs = ts.transpileModule(
   ast.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'clampSidebarWidth').getText(ast),
   { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
@@ -317,7 +331,7 @@ function sidebarResize(innerWidth = 1200) {
   const sidebarWidth = { value: 280 }
   const store = { projects, groups: [], active: projects[0], settings: { shortcuts: {} }, activate: (id) => { selected.push(id); store.active = projects.find((project) => project.id === id) } }
   const context = {
-    matchShortcut, store, sidebarWidth, sidebar: { value: undefined },
+    matchShortcut, filterProjects, store, sidebarWidth, sidebar: { value: undefined },
     SIDEBAR_MIN: 220, SIDEBAR_MAX: 640, window: { innerWidth },
     localStorage: { setItem: (name, value) => stored.set(name, value) },
   }

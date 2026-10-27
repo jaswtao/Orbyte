@@ -1,5 +1,9 @@
 /** English UI copy. Author: jaswtao · Date: 2026-10-16 */
 export const en = {
+  'sidebar.showHiddenProjects': 'Show hidden projects',
+  'sidebar.hideProject': 'Hide project',
+  'sidebar.unhideProject': 'Unhide project',
+  'sidebar.hiddenProject': 'Hidden',
   'terminal.reconnect': 'Reconnect output',
   'terminal.reconnecting': 'Reconnecting…',
   'terminal.reconnected': 'Output connection restored. Some output may be missing.',

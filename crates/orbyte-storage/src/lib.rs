@@ -87,6 +87,7 @@ impl Database {
                 name: r.get("name"),
                 path: r.get("path"),
                 favorite: r.get("favorite"),
+                hidden: r.get("hidden"),
                 sort_order: r.get("sort_order"),
                 workspace_id: r.get("workspace_id"),
             })
@@ -109,6 +110,25 @@ impl Database {
             .map_err(db_error)?;
         tx.commit().await.map_err(db_error)?;
         Ok(id)
+    }
+
+    pub async fn set_project_hidden(&self, id: &str, hidden: bool, replacement_id: Option<&str>) -> Result<()> {
+        let mut tx = self.pool.begin().await.map_err(db_error)?;
+        let result = sqlx::query("UPDATE t_project SET hidden = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(hidden).bind(id).execute(&mut *tx).await.map_err(db_error)?;
+        require_changed(result.rows_affected())?;
+        let active: Option<String> = sqlx::query_scalar("SELECT value_json FROM t_app_setting WHERE key = 'active_project_id'")
+            .fetch_optional(&mut *tx).await.map_err(db_error)?;
+        if hidden && active.as_deref().and_then(|value| serde_json::from_str::<Value>(value).ok()) == Some(Value::String(id.into())) {
+            if let Some(replacement) = replacement_id {
+                let valid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM t_project WHERE id = ? AND id != ? AND hidden = 0)")
+                    .bind(replacement).bind(id).fetch_one(&mut *tx).await.map_err(db_error)?;
+                if !valid { return Err("替代项目不存在或已隐藏".into()); }
+            }
+            sqlx::query("INSERT INTO t_app_setting(key, value_json) VALUES ('active_project_id', ?) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json")
+                .bind(serde_json::json!(replacement_id).to_string()).execute(&mut *tx).await.map_err(db_error)?;
+        }
+        tx.commit().await.map_err(db_error)
     }
 
     pub async fn update_project(&self, id: &str, input: ProjectInput) -> Result<()> {
@@ -205,6 +225,7 @@ impl Database {
 
     pub async fn get_settings(&self) -> Result<BTreeMap<String, Value>> {
         let mut settings = default_settings();
+        let mut explicitly_empty = false;
         let mut tx = self.pool.begin().await.map_err(db_error)?;
         let rows = sqlx::query("SELECT key, value_json FROM t_app_setting")
             .fetch_all(&mut *tx)
@@ -216,6 +237,7 @@ impl Database {
             let value: Value =
                 serde_json::from_str(&raw).map_err(|e| format!("设置 {key} 无法读取：{e}"))?;
             validate_setting(&key, &value)?;
+            if key == "active_project_id" && value.is_null() { explicitly_empty = true; }
             settings.insert(key, value);
         }
         let active = settings["active_project_id"].as_str();
@@ -225,9 +247,10 @@ impl Database {
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(db_error)?;
-        if !exists {
+        if !exists && !explicitly_empty {
             let first: Option<String> =
-                sqlx::query_scalar("SELECT id FROM t_project ORDER BY sort_order, id LIMIT 1")
+                sqlx::query_scalar("SELECT id FROM t_project WHERE hidden = 0 OR ? ORDER BY sort_order, id LIMIT 1")
+                    .bind(settings["show_hidden_projects"].as_bool().unwrap_or(false))
                     .fetch_optional(&mut *tx)
                     .await
                     .map_err(db_error)?;

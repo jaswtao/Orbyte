@@ -5,6 +5,7 @@ import { NButton, NInput, NSwitch } from 'naive-ui'
 import { projectApi, type Project, type ProjectGroup } from '../../services/projectApi'
 import { useProjects } from '../../stores/projects'
 import { buildMenuOptions } from '../../services/sidebar/menu'
+import { filterProjects, firstVisibleProject } from '../../services/sidebar/filter'
 import { dragPayload, parseDragPayload, reorderGroupIds, reorderProjectEntries } from '../../services/sidebar/reorder'
 import { useGit } from '../../stores/git'
 import type { Activity } from '../../services/workspace/activity'
@@ -23,15 +24,29 @@ const sections = computed(() => [
   ...store.groups,
   { id: '', name: t('sidebar.ungrouped'), sortOrder: 0 },
 ])
-const visibleProjects = (id: string) =>
-  store.projects.filter(
-    (p) =>
-      (p.groupId ?? '') === id &&
-      (!favoritesOnly.value || p.favorite) &&
-      `${p.name} ${p.path}`
-        .toLocaleLowerCase()
-        .includes(search.value.toLocaleLowerCase()),
-  )
+const filteredProjects = computed(() => filterProjects(store.projects, store.settings?.show_hidden_projects ?? false, favoritesOnly.value, search.value))
+const visibleProjects = (id: string) => filteredProjects.value.filter((p) => (p.groupId ?? '') === id)
+
+function replacementProject(excludedId: string) {
+  return firstVisibleProject(store.projects, sections.value.map((group) => group.id), excludedId, favoritesOnly.value, search.value)
+}
+async function toggleHidden(project: Project) {
+  const replacement = !project.hidden && store.active?.id === project.id ? replacementProject(project.id) : undefined
+  if (await store.run(() => projectApi.setProjectHidden(project.id, !project.hidden, replacement?.id ?? null))) {
+    if (replacement) collapsed.delete(replacement.groupId ?? '')
+  }
+}
+async function setShowHidden(show: boolean) {
+  const active = store.active
+  const switchProject = !show && !!active?.hidden
+  const replacement = switchProject ? replacementProject(active.id) : undefined
+  if (await store.run(() => projectApi.setSettings({
+    show_hidden_projects: show,
+    ...(switchProject ? { active_project_id: replacement?.id ?? null } : {}),
+  }))) {
+    if (replacement) collapsed.delete(replacement.groupId ?? '')
+  }
+}
 const dragging = ref<{ kind: 'project' | 'group'; id: string } | null>(null)
 const dropHint = ref<{ groupId: string; beforeId: string | null } | null>(null)
 let swallowClick = false
@@ -60,6 +75,7 @@ function onMenuSelect(key: string) {
     if (key === 'worktree') emit('worktree', project)
     else if (key === 'edit') emit('editProject', project)
     else if (key === 'favorite') void toggleFavorite(project)
+    else if (key === 'hidden') void toggleHidden(project)
     else if (key === 'delete') emit('deleteItem', { kind: 'project', id: project.id, name: project.name })
     else if (key === 'toggle-header' && store.settings) {
       const show = !store.settings.show_workspace_header
@@ -187,6 +203,10 @@ defineExpose({
             ><NSwitch v-model:value="favoritesOnly" size="small" />
             {{ t('sidebar.favoritesOnly') }}</label
           >
+          <label class="favorites-filter">
+            <NSwitch :value="store.settings?.show_hidden_projects ?? false" size="small" :disabled="!store.ready || store.busy" @update:value="setShowHidden" />
+            {{ t('sidebar.showHiddenProjects') }}
+          </label>
           <div class="project-list">
             <section
               v-for="group in sections"
@@ -244,7 +264,7 @@ defineExpose({
                     @dragstart.stop="startDrag($event, 'project', project.id)"
                     @dragend="endDrag"
                   >
-                    <span>{{ project.name }} <i v-if="activities.get(project.id) && !(store.active?.id === project.id && activities.get(project.id) === 'unread')" class="activity-dot" :class="activities.get(project.id)" /></span
+                    <span>{{ project.name }} <small v-if="project.hidden" class="hidden-project-label">{{ t('sidebar.hiddenProject') }}</small> <i v-if="activities.get(project.id) && !(store.active?.id === project.id && activities.get(project.id) === 'unread')" class="activity-dot" :class="activities.get(project.id)" /></span
                     ><small v-if="git.statuses.get(project.id)?.isRepo" :title="git.statuses.get(project.id)?.truncated ? t('sidebar.changesTruncated') : ''">{{ git.statuses.get(project.id)?.branch ?? 'detached' }} · {{ git.statuses.get(project.id)?.files.length }}{{ git.statuses.get(project.id)?.truncated ? '+' : '' }} <template v-if="git.statuses.get(project.id)?.ahead">↑{{ git.statuses.get(project.id)?.ahead }}</template> <template v-if="git.statuses.get(project.id)?.behind">↓{{ git.statuses.get(project.id)?.behind }}</template></small><small>{{ project.path }}</small>
                   </button>
                   <NButton
@@ -259,7 +279,7 @@ defineExpose({
                 </div>
                 <p v-if="!visibleProjects(group.id).length" class="empty-group">
                   {{
-                    search || favoritesOnly
+                    search || favoritesOnly || store.projects.some((p) => (p.groupId ?? '') === group.id)
                       ? t('sidebar.noMatch')
                       : t('sidebar.empty')
                   }}

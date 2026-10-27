@@ -60,6 +60,16 @@ pub async fn list_projects(state: State<'_, StorageState>) -> CmdResult<Vec<Proj
     state.database()?.list_projects().await
 }
 #[tauri::command]
+pub async fn set_project_hidden(
+    state: State<'_, StorageState>,
+    id: String,
+    hidden: bool,
+    replacement_id: Option<String>,
+) -> CmdResult<()> {
+    state.database()?.set_project_hidden(&id, hidden, replacement_id.as_deref()).await
+}
+
+#[tauri::command]
 pub async fn create_project(
     state: State<'_, StorageState>,
     mut input: ProjectInput,

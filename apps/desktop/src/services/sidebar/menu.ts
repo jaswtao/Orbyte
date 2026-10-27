@@ -12,6 +12,7 @@ export function buildMenuOptions(target: { kind: 'group' | 'project'; id: string
         { key: 'toggle-header', label: settings?.show_workspace_header ? t('sidebar.hideHeader') : t('sidebar.showHeader') },
         { key: 'edit', label: t('sidebar.editProject') },
         { key: 'favorite', label: projects.find((p) => p.id === target.id)?.favorite ? t('sidebar.unfavorite') : t('sidebar.favorite') },
+        { key: 'hidden', label: projects.find((p) => p.id === target.id)?.hidden ? t('sidebar.unhideProject') : t('sidebar.hideProject') },
         { key: 'delete', label: t('sidebar.deleteProject') },
       ]
   return options.map((option) => ({ ...option, disabled }))

@@ -12,7 +12,7 @@ import { shellLabel, t } from '../i18n'
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [show: boolean] }>()
 const store = useProjects()
-const draft = reactive<Settings>({ shortcuts: {}, active_project_id: null, show_workspace_header: false, shell_integration: true, confirm_close_terminal: true, notify_command_seconds: 30, theme: 'dark', font_family: '', font_size: 14, scrollback: 5000, default_shell: 'powershell', default_directory: null, language: 'en' })
+const draft = reactive<Settings>({ shortcuts: {}, active_project_id: null, show_workspace_header: false, show_hidden_projects: false, shell_integration: true, confirm_close_terminal: true, notify_command_seconds: 30, theme: 'dark', font_family: '', font_size: 14, scrollback: 5000, default_shell: 'powershell', default_directory: null, language: 'en' })
 const error = ref('')
 const saving = ref(false)
 const shortcutsDialog = ref(false)

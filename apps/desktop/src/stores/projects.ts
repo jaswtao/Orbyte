@@ -49,7 +49,9 @@ export const useProjects = defineStore('projects', () => {
   }
 
   function activate(id: string) {
-    return run(() => projectApi.setSetting('active_project_id', id))
+    return run(() => projects.value.find((project) => project.id === id)?.hidden
+      ? projectApi.setSettings({ active_project_id: id, show_hidden_projects: true })
+      : projectApi.setSetting('active_project_id', id))
   }
 
   return {

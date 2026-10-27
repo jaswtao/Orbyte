@@ -19,6 +19,100 @@ async fn memory() -> Database {
 }
 
 #[tokio::test]
+async fn hiding_projects_switches_atomically_and_preserves_other_fields() {
+    let db = memory().await;
+    let a = db.create_project(input("C:/hidden-a", None)).await.unwrap();
+    let b = db.create_project(input("C:/hidden-b", None)).await.unwrap();
+    assert!(db.list_projects().await.unwrap().iter().all(|p| !p.hidden));
+    assert_eq!(db.get_settings().await.unwrap()["show_hidden_projects"], json!(false));
+    db.set_setting("active_project_id", json!(a)).await.unwrap();
+    for replacement in ["missing", a.as_str()] {
+        assert!(db.set_project_hidden(&a, true, Some(replacement)).await.is_err());
+        assert!(!db.list_projects().await.unwrap()[0].hidden);
+        assert_eq!(db.get_settings().await.unwrap()["active_project_id"], json!(a));
+    }
+    db.set_project_hidden(&b, true, None).await.unwrap();
+    assert!(db.set_project_hidden(&a, true, Some(&b)).await.is_err());
+    assert!(!db.list_projects().await.unwrap()[0].hidden);
+    db.set_project_hidden(&b, false, None).await.unwrap();
+    db.set_project_hidden(&a, true, Some(&b)).await.unwrap();
+    assert_eq!(db.get_settings().await.unwrap()["active_project_id"], json!(b));
+    let before = db.list_projects().await.unwrap()[0].clone();
+    let mut edit = input("C:/hidden-a", None);
+    edit.name = "Edited".into();
+    edit.favorite = false;
+    db.update_project(&a, edit).await.unwrap();
+    db.reorder_projects(vec![(b.clone(), None), (a.clone(), None)]).await.unwrap();
+    let after = db.list_projects().await.unwrap().into_iter().find(|p| p.id == a).unwrap();
+    assert!(after.hidden);
+    assert_eq!(after.workspace_id, before.workspace_id);
+    assert_eq!(after.path, before.path);
+    assert!(!after.favorite);
+    db.set_project_hidden(&a, false, None).await.unwrap();
+    assert_eq!(db.get_settings().await.unwrap()["active_project_id"], json!(b));
+    assert!(db.set_project_hidden("missing", true, None).await.is_err());
+}
+
+#[tokio::test]
+async fn empty_workspace_and_visibility_survive_reopening() {
+    let directory = std::env::temp_dir().join(format!("orbyte-hidden-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("hidden.db");
+    let db = Database::open(&path).await.unwrap();
+    let a = db.create_project(input("C:/only-hidden", None)).await.unwrap();
+    let b = db.create_project(input("C:/filtered-out", None)).await.unwrap();
+    db.set_setting("active_project_id", json!(a)).await.unwrap();
+    // No replacement can also mean other projects do not match the sidebar filters.
+    db.set_project_hidden(&a, true, None).await.unwrap();
+    assert!(db.get_settings().await.unwrap()["active_project_id"].is_null());
+    db.set_setting("show_hidden_projects", json!(true)).await.unwrap();
+    db.pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    let settings = db.get_settings().await.unwrap();
+    assert!(settings["active_project_id"].is_null());
+    assert_eq!(settings["show_hidden_projects"], json!(true));
+    assert!(db.list_projects().await.unwrap().iter().find(|p| p.id == a).unwrap().hidden);
+    db.set_setting("active_project_id", json!(a)).await.unwrap();
+    assert!(db.set_settings(BTreeMap::from([
+        ("show_hidden_projects".into(), json!(false)),
+        ("active_project_id".into(), json!("missing")),
+    ])).await.is_err());
+    assert_eq!(db.get_settings().await.unwrap()["show_hidden_projects"], json!(true));
+    db.set_settings(BTreeMap::from([
+        ("show_hidden_projects".into(), json!(false)),
+        ("active_project_id".into(), json!(b)),
+    ])).await.unwrap();
+    assert_eq!(db.get_settings().await.unwrap()["active_project_id"], json!(b));
+    db.set_project_hidden(&b, true, None).await.unwrap();
+    assert!(db.get_settings().await.unwrap()["active_project_id"].is_null());
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn hidden_migration_preserves_existing_projects() {
+    let directory = std::env::temp_dir().join(format!("orbyte-hidden-migration-{}", Uuid::new_v4()));
+    let migrations = directory.join("migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    std::fs::write(migrations.join("0001_initial.sql"), include_str!("../migrations/0001_initial.sql")).unwrap();
+    std::fs::write(migrations.join("0002_launch_preset.sql"), include_str!("../migrations/0002_launch_preset.sql")).unwrap();
+    std::fs::write(migrations.join("0003_editor_drafts.sql"), include_str!("../migrations/0003_editor_drafts.sql")).unwrap();
+    let path = directory.join("old.db");
+    let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true)).await.unwrap();
+    sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
+    sqlx::raw_sql("INSERT INTO t_project(id,name,path,favorite) VALUES ('p','existing','C:/existing',1); INSERT INTO t_workspace(id,project_id) VALUES ('w','p');").execute(&pool).await.unwrap();
+    pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    let project = &db.list_projects().await.unwrap()[0];
+    assert!(!project.hidden);
+    assert!(project.favorite);
+    assert_eq!(project.workspace_id, "w");
+    assert!(sqlx::query("UPDATE t_project SET hidden = 2 WHERE id = 'p'").execute(&db.pool).await.is_err());
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
 async fn launch_preset_migration_upgrades_existing_database() {
     let directory = std::env::temp_dir().join(format!("orbyte-migration-{}", Uuid::new_v4()));
     let migrations = directory.join("migrations");
@@ -109,7 +203,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 3);
+            assert_eq!(count, 4);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();

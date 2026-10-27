@@ -17,6 +17,7 @@ const COMMANDS: &[&str] = &[
     "list_projects",
     "create_project",
     "update_project",
+    "set_project_hidden",
     "delete_project",
     "list_groups",
     "create_group",

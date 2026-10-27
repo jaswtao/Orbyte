@@ -4,10 +4,67 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import ts from 'typescript'
 import vm from 'node:vm'
+import { computed, ref } from 'vue'
+import { createPinia, defineStore, setActivePinia } from 'pinia'
 const source = await readFile(new URL('../src/services/editor/drafts.ts', import.meta.url), 'utf8')
 const { outputText } = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext } })
 const { DraftSync } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`)
 const deferred = () => { let resolve; const promise = new Promise((done) => { resolve = done }); return { promise, resolve } }
+
+const projectsSource = await readFile(new URL('../src/stores/projects.ts', import.meta.url), 'utf8')
+const projectsAst = ts.createSourceFile('projects.ts', projectsSource, ts.ScriptTarget.Latest, true)
+const projectsCode = ts.transpileModule(
+  projectsAst.statements.filter((node) => !ts.isImportDeclaration(node)).map((node) => node.getText(projectsAst)).join('\n'),
+  { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } },
+).outputText
+
+test('activating a hidden draft project persists visibility and selection together, including failure and retry', async () => {
+  const projects = [{ id: 'visible', hidden: false }, { id: 'hidden', hidden: true }]
+  let saved = { active_project_id: 'visible', show_hidden_projects: false }, fail = true
+  const calls = [], exports = {}
+  const projectApi = {
+    async listProjects() { return projects },
+    async listGroups() { return [] },
+    async getSettings() { return { ...saved } },
+    async setSetting(key, value) { calls.push({ [key]: value }); saved[key] = value },
+    async setSettings(input) {
+      calls.push(structuredClone(input))
+      if (fail) throw Error('storage unavailable')
+      saved = { ...saved, ...input }
+    },
+  }
+  vm.runInNewContext(projectsCode, { exports, computed, ref, defineStore, projectApi })
+  setActivePinia(createPinia())
+  const store = exports.useProjects()
+  await store.refresh()
+  assert.equal(await store.activate('hidden'), false)
+  assert.equal(store.active.id, 'visible')
+  assert.equal(store.settings.show_hidden_projects, false)
+  assert.equal(saved.active_project_id, 'visible')
+  assert.equal(saved.show_hidden_projects, false)
+  assert.match(store.error, /storage unavailable/)
+
+  fail = false
+  assert.equal(await store.activate('hidden'), true)
+  assert.equal(store.active.id, 'hidden')
+  assert.equal(store.settings.show_hidden_projects, true)
+  assert.deepEqual(calls, [
+    { active_project_id: 'hidden', show_hidden_projects: true },
+    { active_project_id: 'hidden', show_hidden_projects: true },
+  ])
+  setActivePinia(createPinia())
+  const reopened = exports.useProjects()
+  await reopened.refresh()
+  assert.equal(reopened.active.id, 'hidden')
+  assert.equal(reopened.settings.show_hidden_projects, true)
+
+  saved.show_hidden_projects = false
+  await reopened.refresh()
+  assert.equal(await reopened.activate('visible'), true)
+  assert.equal(reopened.active.id, 'visible')
+  assert.equal(reopened.settings.show_hidden_projects, false)
+  assert.deepEqual(calls.at(-1), { active_project_id: 'visible' })
+})
 
 const workspaceComponent = await readFile(new URL('../src/components/workspace/WorkspaceView.vue', import.meta.url), 'utf8')
 const workspaceScript = workspaceComponent.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1]

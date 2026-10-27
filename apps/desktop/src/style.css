@@ -247,6 +247,12 @@ button:focus-visible, select:focus-visible {
   font-size: 12px;
 }
 
+.hidden-project-label {
+  color: var(--muted);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
 .project-list {
   overflow: auto;
   flex: 1;

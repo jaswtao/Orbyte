@@ -19,6 +19,7 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub favorite: bool,
+    pub hidden: bool,
     pub sort_order: i64,
     pub workspace_id: String,
 }
@@ -52,6 +53,7 @@ pub fn default_settings() -> BTreeMap<String, Value> {
     [
         ("active_project_id", Value::Null),
         ("show_workspace_header", json!(false)),
+        ("show_hidden_projects", json!(false)),
         ("theme", json!("dark")),
         ("shortcuts", json!({})),
         ("shell_integration", json!(true)),
@@ -76,7 +78,7 @@ pub fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
             value.is_null() || value.as_str().is_some_and(|v| !v.is_empty())
         }
         "theme" => matches!(value.as_str(), Some("dark" | "light" | "system")),
-        "show_workspace_header" | "shell_integration" | "confirm_close_terminal" => value.is_boolean(),
+        "show_workspace_header" | "show_hidden_projects" | "shell_integration" | "confirm_close_terminal" => value.is_boolean(),
         "notify_command_seconds" => value.as_u64().is_some_and(|v| v <= 3600),
         "font_family" => value
             .as_str()
@@ -97,6 +99,13 @@ pub fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn validates_hidden_project_setting() {
+        assert_eq!(default_settings()["show_hidden_projects"], json!(false));
+        for value in [json!(true), json!(false)] { validate_setting("show_hidden_projects", &value).unwrap(); }
+        for value in [Value::Null, json!(1), json!("true")] { assert!(validate_setting("show_hidden_projects", &value).is_err()); }
+    }
+
     #[test]
     fn validates_shell_and_notification_settings() {
         assert_eq!(default_settings()["shell_integration"], json!(true));

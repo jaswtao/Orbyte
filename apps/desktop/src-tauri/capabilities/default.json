@@ -34,6 +34,7 @@
     "allow-list-projects",
     "allow-create-project",
     "allow-update-project",
+    "allow-set-project-hidden",
     "allow-delete-project",
     "allow-list-groups",
     "allow-create-group",

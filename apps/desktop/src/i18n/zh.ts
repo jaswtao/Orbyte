@@ -2,6 +2,10 @@
 import type { MessageKey } from './en'
 
 export const zh: Record<MessageKey, string> = {
+  'sidebar.showHiddenProjects': '显示隐藏项目',
+  'sidebar.hideProject': '隐藏项目',
+  'sidebar.unhideProject': '取消隐藏',
+  'sidebar.hiddenProject': '已隐藏',
   'terminal.reconnect': '重连输出',
   'terminal.reconnecting': '正在重连…',
   'terminal.reconnected': '输出连接已恢复，部分输出可能缺失。',

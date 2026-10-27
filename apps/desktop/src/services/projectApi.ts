@@ -11,6 +11,7 @@ export interface ProjectInput {
   favorite: boolean
 }
 export interface Project extends ProjectInput {
+  hidden: boolean
   id: string
   sortOrder: number
   workspaceId: string
@@ -24,6 +25,7 @@ export interface Settings {
   shortcuts: ShortcutOverrides
   active_project_id: string | null
   show_workspace_header: boolean
+  show_hidden_projects: boolean
   shell_integration: boolean
   confirm_close_terminal: boolean
   notify_command_seconds: number
@@ -52,6 +54,8 @@ export const projectApi = {
   updateProject: (id: string, input: ProjectInput) =>
     invoke<void>('update_project', { id, input: projectInput(input) }),
   deleteProject: (id: string) => invoke<void>('delete_project', { id }),
+  setProjectHidden: (id: string, hidden: boolean, replacementId: string | null) =>
+    invoke<void>('set_project_hidden', { id, hidden, replacementId }),
   listGroups: () => invoke<ProjectGroup[]>('list_groups'),
   createGroup: (name: string) => invoke<string>('create_group', { name }),
   updateGroup: (id: string, name: string) =>
@@ -63,7 +67,7 @@ export const projectApi = {
   getSettings: () => invoke<Settings>('get_settings'),
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) =>
     invoke<void>('set_setting', { key, value }),
-  setSettings: (input: Omit<Settings, 'active_project_id' | 'show_workspace_header'>) =>
+  setSettings: (input: Partial<Settings>) =>
     invoke<void>('set_settings', { input }),
   chooseDirectory: (defaultPath?: string) =>
     open({

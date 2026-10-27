@@ -1,6 +1,7 @@
 <!-- Author: jaswtao · Date: 2026-10-12 -->
 <script setup lang="ts">
 import { matchShortcut } from './services/workspace/shortcuts'
+import { filterProjects } from './services/sidebar/filter'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch, watchEffect } from 'vue'
 import {
@@ -169,8 +170,8 @@ function workspaceShortcut(event: KeyboardEvent) {
     if (event.repeat || !store.projects.length) return
     const vertical = command === 'projectUp' || command === 'projectDown'
     const projects = vertical
-      ? sidebar.value?.getNavigationProjects() ?? [...store.groups.map((group) => group.id), ''].flatMap((id) => store.projects.filter((project) => (project.groupId ?? '') === id))
-      : store.projects
+      ? sidebar.value?.getNavigationProjects() ?? [...store.groups.map((group) => group.id), ''].flatMap((id) => filterProjects(store.projects, store.settings?.show_hidden_projects ?? false).filter((project) => (project.groupId ?? '') === id))
+      : filterProjects(store.projects, store.settings?.show_hidden_projects ?? false)
     if (!projects.length) return
     const index = projects.findIndex((project) => project.id === store.active?.id)
     const delta = command === 'projectPrevious' || command === 'projectUp' ? -1 : 1

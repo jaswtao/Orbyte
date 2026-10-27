@@ -199,6 +199,7 @@ pub fn run() {
             commands::project::list_projects,
             commands::project::create_project,
             commands::project::update_project,
+            commands::project::set_project_hidden,
             commands::project::delete_project,
             commands::project::list_groups,
             commands::project::create_group,
