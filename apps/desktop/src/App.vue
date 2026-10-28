@@ -140,7 +140,7 @@ const theme = computed(() => appearance.value === 'dark' ? darkTheme : null)
 const themeOverrides = computed(() => componentTheme(appearance.value))
 watchEffect(() => {
   // 根节点上的变量同时覆盖 Teleport 到 body 的弹窗和菜单。
-  for (const [name, value] of Object.entries(appearanceVariables(appearance.value))) document.documentElement.style.setProperty(name, value)
+  for (const [name, value] of Object.entries(appearanceVariables(appearance.value, store.settings?.workspace_border_color, store.settings?.workspace_border_intensity))) document.documentElement.style.setProperty(name, value)
   document.documentElement.style.colorScheme = appearance.value
 })
 const sidebar = ref<InstanceType<typeof ProjectSidebar>>()

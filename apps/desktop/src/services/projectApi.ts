@@ -30,6 +30,8 @@ export interface Settings {
   confirm_close_terminal: boolean
   notify_command_seconds: number
   theme: 'dark' | 'light' | 'system'
+  workspace_border_color: string | null
+  workspace_border_intensity: number
   font_family: string
   font_size: number
   scrollback: number

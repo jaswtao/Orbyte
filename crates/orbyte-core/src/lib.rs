@@ -55,6 +55,8 @@ pub fn default_settings() -> BTreeMap<String, Value> {
         ("show_workspace_header", json!(false)),
         ("show_hidden_projects", json!(false)),
         ("theme", json!("dark")),
+        ("workspace_border_color", Value::Null),
+        ("workspace_border_intensity", json!(100)),
         ("shortcuts", json!({})),
         ("shell_integration", json!(true)),
         ("confirm_close_terminal", json!(true)),
@@ -78,6 +80,10 @@ pub fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
             value.is_null() || value.as_str().is_some_and(|v| !v.is_empty())
         }
         "theme" => matches!(value.as_str(), Some("dark" | "light" | "system")),
+        "workspace_border_color" => value.is_null() || value.as_str().is_some_and(|v| {
+            v.len() == 7 && v.starts_with('#') && v.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
+        }),
+        "workspace_border_intensity" => value.as_u64().is_some_and(|v| v <= 100),
         "show_workspace_header" | "show_hidden_projects" | "shell_integration" | "confirm_close_terminal" => value.is_boolean(),
         "notify_command_seconds" => value.as_u64().is_some_and(|v| v <= 3600),
         "font_family" => value
@@ -99,6 +105,23 @@ pub fn validate_setting(key: &str, value: &Value) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn validates_workspace_border_settings() {
+        assert_eq!(default_settings()["workspace_border_color"], Value::Null);
+        assert_eq!(default_settings()["workspace_border_intensity"], json!(100));
+        for value in [Value::Null, json!("#0A84FF"), json!("#aabbcc")] {
+            validate_setting("workspace_border_color", &value).unwrap();
+        }
+        for value in [json!(""), json!("#ABC"), json!("#AABBCCDD"), json!("#GGGGGG"), json!("AABBCC"), json!(12), json!("#蓝色")] {
+            assert!(validate_setting("workspace_border_color", &value).is_err());
+        }
+        for value in [json!(0), json!(45), json!(100)] {
+            validate_setting("workspace_border_intensity", &value).unwrap();
+        }
+        for value in [Value::Null, json!(-1), json!(101), json!(45.5), json!("45")] {
+            assert!(validate_setting("workspace_border_intensity", &value).is_err());
+        }
+    }
     #[test]
     fn validates_hidden_project_setting() {
         assert_eq!(default_settings()["show_hidden_projects"], json!(false));

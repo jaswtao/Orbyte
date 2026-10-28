@@ -23,8 +23,18 @@ export function resolveAppearance(preference: string | undefined, system: string
   return preference === 'light' || (preference === 'system' && system === 'light') ? 'light' : 'dark'
 }
 
-export function appearanceVariables(mode: AppearanceMode) {
-  return Object.fromEntries(Object.entries(palettes[mode]).map(([key, value]) => [`--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, value]))
+export function workspaceBorderColor(mode: AppearanceMode, color: string | null = null, intensity = 100): string {
+  const accent = color ?? palettes[mode].accent
+  if (intensity === 100) return accent
+  if (intensity === 0) return palettes[mode].border
+  return `color-mix(in srgb, ${accent} ${intensity}%, ${palettes[mode].border})`
+}
+
+export function appearanceVariables(mode: AppearanceMode, borderColor: string | null = null, borderIntensity = 100) {
+  return {
+    ...Object.fromEntries(Object.entries(palettes[mode]).map(([key, value]) => [`--${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`, value])),
+    '--workspace-border': workspaceBorderColor(mode, borderColor, borderIntensity),
+  }
 }
 
 export function componentTheme(mode: AppearanceMode): GlobalThemeOverrides {

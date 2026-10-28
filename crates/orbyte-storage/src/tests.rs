@@ -516,6 +516,21 @@ async fn settings_batch_is_atomic_and_preserves_active_project_validation() {
 }
 
 #[tokio::test]
+async fn legacy_settings_receive_workspace_border_defaults() {
+    let db = memory().await;
+    db.set_setting("theme", json!("light")).await.unwrap();
+    let settings = db.get_settings().await.unwrap();
+    assert_eq!(settings["workspace_border_color"], Value::Null);
+    assert_eq!(settings["workspace_border_intensity"], json!(100));
+    assert_eq!(settings["theme"], json!("light"));
+    assert!(db.set_settings(std::collections::BTreeMap::from([
+        ("workspace_border_color".into(), json!("#AABBCC")),
+        ("workspace_border_intensity".into(), json!(101)),
+    ])).await.is_err());
+    assert_eq!(db.get_settings().await.unwrap(), settings);
+}
+
+#[tokio::test]
 async fn settings_and_projects_survive_reopening() {
     let path = std::env::temp_dir().join(format!("orbyte-test-{}.db", Uuid::new_v4()));
     let db = Database::open(&path).await.unwrap();
@@ -549,6 +564,10 @@ async fn settings_and_projects_survive_reopening() {
     db.set_setting("active_project_id", json!(b)).await.unwrap();
     db.set_setting("font_size", json!(18)).await.unwrap();
     db.set_setting("theme", json!("light")).await.unwrap();
+    db.set_settings(std::collections::BTreeMap::from([
+        ("workspace_border_color".into(), json!("#AABBCC")),
+        ("workspace_border_intensity".into(), json!(45)),
+    ])).await.unwrap();
     let shortcuts = json!({"newTerminal": [], "terminalPasteAuto": [{"code":"KeyY","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false}]});
     db.set_setting("shortcuts", shortcuts.clone()).await.unwrap();
     db.pool.close().await;
@@ -564,6 +583,17 @@ async fn settings_and_projects_survive_reopening() {
     assert_eq!(settings["confirm_close_terminal"], json!(false));
     assert_eq!(settings["theme"], json!("light"));
     assert_eq!(settings["shortcuts"], shortcuts);
+    assert_eq!(settings["workspace_border_color"], json!("#AABBCC"));
+    assert_eq!(settings["workspace_border_intensity"], json!(45));
+    reopened.set_settings(std::collections::BTreeMap::from([
+        ("workspace_border_color".into(), Value::Null),
+        ("workspace_border_intensity".into(), json!(100)),
+    ])).await.unwrap();
+    let reset = reopened.get_settings().await.unwrap();
+    assert_eq!(reset["workspace_border_color"], Value::Null);
+    assert_eq!(reset["workspace_border_intensity"], json!(100));
+    assert_eq!(reset["theme"], settings["theme"]);
+    assert_eq!(reset["font_size"], settings["font_size"]);
     reopened.set_setting("shortcuts", json!({})).await.unwrap();
     assert_eq!(reopened.get_settings().await.unwrap()["shortcuts"], json!({}));
     reopened.pool.close().await;

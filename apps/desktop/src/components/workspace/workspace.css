@@ -140,7 +140,7 @@
 }
 
 .terminal-pane.focused {
-  border-color: var(--accent);
+  border-color: var(--workspace-border, var(--accent));
 }
 
 .pane-heading {

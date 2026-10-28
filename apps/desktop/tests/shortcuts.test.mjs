@@ -9,6 +9,7 @@ import { nextTick, reactive, ref, watch } from 'vue'
 
 const { matchShortcut, bindings, shortcutConflicts, shortcutHint, validShortcut, setLocale } = await loadService('workspace/shortcuts')
 const { filterProjects } = await loadService('sidebar/filter')
+const { appearanceVariables, palettes, resolveAppearance } = await loadService('appearance')
 const tabShortcutIndex = (event) => { const id = matchShortcut(event); return /^tab[1-9]$/.test(id ?? '') ? Number(id.slice(3)) - 1 : -1 }
 const key = (code, modifiers = {}) => ({ altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, code, ...modifiers })
 
@@ -211,7 +212,11 @@ async function settingsDialogFixture(name, store, projectApi) {
     defineProps: () => props, defineEmits: () => (...args) => emitted.push(args),
     useProjects: () => store, projectApi, terminalApi: { listAvailableShells: async () => [] },
     shortcutConflicts, t, shellLabel: (shell) => shell.description, ref: (value) => ({ value }), reactive: (value) => value,
-    computed: (get) => ({ get value() { return get() } }), watch: (_, callback) => watchers.push(callback),
+    useOsTheme: () => ({ value: 'dark' }), appearanceVariables, palettes, resolveAppearance,
+    computed: (options) => ({
+      get value() { return typeof options === 'function' ? options() : options.get() },
+      set value(value) { options.set(value) },
+    }), watch: (_, callback) => watchers.push(callback),
   })
   vm.runInContext(ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   return {
@@ -223,7 +228,7 @@ async function settingsDialogFixture(name, store, projectApi) {
 
 function settingsStoreFixture() {
   return {
-    settings: { shortcuts: {}, theme: 'dark', font_family: 'monospace', font_size: 14, scrollback: 5000,
+    settings: { shortcuts: {}, theme: 'dark', workspace_border_color: null, workspace_border_intensity: 100, font_family: 'monospace', font_size: 14, scrollback: 5000,
       default_shell: 'powershell', shell_integration: true, confirm_close_terminal: true, notify_command_seconds: 30, default_directory: null },
     busy: false, error: '',
     async run(action) {
@@ -246,15 +251,19 @@ test('快捷键独立保存，主设置保存采用最新绑定且保留其他�
   const child = await settingsDialogFixture('ShortcutSettingsDialog', store, api)
   await main.show()
   main.evaluate('draft.font_size = 20')
+  main.evaluate("borderColor.value = '#AABBCC'")
+  assert.equal(main.evaluate("borderPreview.value['--workspace-border']"), '#AABBCC')
   await child.show()
   child.evaluate('draft.value = { newTerminal: [] }')
   await child.evaluate('save()')
   assert.deepEqual(store.settings.shortcuts, { newTerminal: [] })
   assert.equal(store.settings.font_size, 14)
+  assert.equal(store.settings.workspace_border_color, null)
   assert.deepEqual(child.emitted, [['update:show', false]])
   await main.evaluate('save()')
   assert.deepEqual(store.settings.shortcuts, { newTerminal: [] })
   assert.equal(store.settings.font_size, 20)
+  assert.equal(store.settings.workspace_border_color, '#AABBCC')
 })
 
 test('关闭确认设置保存后生效，取消编辑并重新打开恢复已保存值', async () => {

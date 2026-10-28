@@ -3,7 +3,8 @@
 import ShortcutSettingsDialog from './ShortcutSettingsDialog.vue'
 import UiIcon from './UiIcon.vue'
 import { computed, reactive, ref, watch } from 'vue'
-import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSwitch, NTooltip } from 'naive-ui'
+import { NAlert, NButton, NColorPicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, NTooltip, useOsTheme } from 'naive-ui'
+import { appearanceVariables, palettes, resolveAppearance } from '../services/appearance'
 import { projectApi, type Settings } from '../services/projectApi'
 import { terminalApi, type ShellInfo } from '../services/terminalApi'
 import { useProjects } from '../stores/projects'
@@ -12,7 +13,18 @@ import { shellLabel, t } from '../i18n'
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ 'update:show': [show: boolean] }>()
 const store = useProjects()
-const draft = reactive<Settings>({ shortcuts: {}, active_project_id: null, show_workspace_header: false, show_hidden_projects: false, shell_integration: true, confirm_close_terminal: true, notify_command_seconds: 30, theme: 'dark', font_family: '', font_size: 14, scrollback: 5000, default_shell: 'powershell', default_directory: null, language: 'en' })
+const draft = reactive<Settings>({ shortcuts: {}, active_project_id: null, show_workspace_header: false, show_hidden_projects: false, shell_integration: true, confirm_close_terminal: true, notify_command_seconds: 30, theme: 'dark', workspace_border_color: null, workspace_border_intensity: 100, font_family: '', font_size: 14, scrollback: 5000, default_shell: 'powershell', default_directory: null, language: 'en' })
+const osTheme = useOsTheme()
+const draftAppearance = computed(() => resolveAppearance(draft.theme, osTheme.value))
+const borderColor = computed({
+  get: () => draft.workspace_border_color ?? palettes[draftAppearance.value].accent,
+  set: (value: string) => { draft.workspace_border_color = value },
+})
+const borderPreview = computed(() => appearanceVariables(draftAppearance.value, draft.workspace_border_color, draft.workspace_border_intensity))
+function resetWorkspaceBorder() {
+  draft.workspace_border_color = null
+  draft.workspace_border_intensity = 100
+}
 const error = ref('')
 const saving = ref(false)
 const shortcutsDialog = ref(false)
@@ -43,9 +55,9 @@ async function save() {
   saving.value = true
   error.value = ''
   try {
-    const { theme, font_family, font_size, scrollback, default_shell, shell_integration, confirm_close_terminal, notify_command_seconds, language } = draft
+    const { theme, workspace_border_color, workspace_border_intensity, font_family, font_size, scrollback, default_shell, shell_integration, confirm_close_terminal, notify_command_seconds, language } = draft
     const shortcuts = store.settings.shortcuts
-    if (!await store.run(() => projectApi.setSettings({ shortcuts, theme, font_family, font_size, scrollback, default_shell, shell_integration, confirm_close_terminal, notify_command_seconds, language, default_directory: draft.default_directory?.trim() || null }))) {
+    if (!await store.run(() => projectApi.setSettings({ shortcuts, theme, workspace_border_color, workspace_border_intensity, font_family, font_size, scrollback, default_shell, shell_integration, confirm_close_terminal, notify_command_seconds, language, default_directory: draft.default_directory?.trim() || null }))) {
       error.value = store.error
       return
     }
@@ -60,6 +72,9 @@ async function save() {
       <NFormItem :label="t('settings.language')"><NSelect v-model:value="draft.language" :options="[{ label: 'English', value: 'en' }, { label: '中文', value: 'zh' }]" /></NFormItem>
       </fieldset><fieldset class="settings-section"><legend>{{ t('settings.appearance') }}</legend>
       <NFormItem :label="t('settings.theme')"><NSelect v-model:value="draft.theme" :options="themeOptions" /></NFormItem>
+      <NFormItem :label="t('settings.workspaceBorderColor')"><NColorPicker v-model:value="borderColor" :modes="['hex']" :show-alpha="false" /></NFormItem>
+      <NFormItem :label="t('settings.workspaceBorderIntensity')"><div class="border-intensity"><NSlider v-model:value="draft.workspace_border_intensity" :min="0" :max="100" :step="1" :aria-label="t('settings.workspaceBorderIntensity')" /><span>{{ draft.workspace_border_intensity }}%</span></div></NFormItem>
+      <NFormItem :label="t('settings.workspaceBorderPreview')"><div class="border-controls"><div class="border-preview" :style="borderPreview">{{ t('settings.workspaceBorderPreview') }}</div><NButton @click="resetWorkspaceBorder">{{ t('settings.workspaceBorderReset') }}</NButton><span class="border-hint">{{ t('settings.workspaceBorderHint') }}</span></div></NFormItem>
       <NFormItem :label="t('settings.font')"><NInput v-model:value="draft.font_family" :maxlength="500" /></NFormItem>
       <NFormItem :label="t('settings.fontSize')"><NInputNumber v-model:value="draft.font_size" :min="8" :max="40" :precision="0" /></NFormItem>
       </fieldset><fieldset class="settings-section"><legend>{{ t('settings.terminal') }}</legend>
@@ -96,6 +111,11 @@ async function save() {
   <ShortcutSettingsDialog v-model:show="shortcutsDialog" />
 </template>
 <style scoped>
+.border-intensity { display: flex; align-items: center; gap: 12px; width: 100%; }
+.border-intensity > span { min-width: 40px; text-align: right; }
+.border-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; width: 100%; }
+.border-preview { flex: 1; min-width: 100px; padding: 12px; border: 1px solid var(--workspace-border); border-radius: 9px; color: var(--text); background: var(--content); text-align: center; }
+.border-hint { flex-basis: 100%; color: var(--muted); font-size: 12px; }
 .shell-integration-label { display: inline-flex; align-items: center; gap: 4px; }
 .shell-integration-help { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 2px; border: 0; border-radius: 3px; background: transparent; color: var(--muted); cursor: help; }
 .shell-integration-help:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
