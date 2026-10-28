@@ -79,7 +79,7 @@ export class TerminalClient {
     options: ITerminalOptions,
     private readonly events: TerminalClientEvents = {},
   ) {
-    this.term = new Terminal({ scrollback: 5000, allowProposedApi: false, wordSeparator: ' ()[]{}\',"`\\/:>-', ...options })
+    this.term = new Terminal({ scrollback: 5000, cursorBlink: true, allowProposedApi: false, wordSeparator: ' ()[]{}\',"`\\/:>-', ...options })
     this.term.loadAddon(this.fit)
     this.term.open(container)
     this.term.onResize(() => this.safe(() => this.contentActivity.resized(this.term.buffer.active)))

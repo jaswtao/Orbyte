@@ -672,7 +672,11 @@ button:focus-visible, select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition: none !important;
-    animation: none !important;
     scroll-behavior: auto !important;
+  }
+
+  /* Keep the terminal input cursor visible through its normal blink cycle. */
+  *:not(.xterm-cursor-blink), *::before, *::after {
+    animation: none !important;
   }
 }
