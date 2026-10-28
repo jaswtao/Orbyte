@@ -21,7 +21,7 @@ Rust, Node.js and Visual Studio are not required to use the installer. Install G
 1. Open Orbyte and select **Add project**. Choose an existing local directory, confirm its name and save. Use a local path such as `C:\projects\demo`; UNC and WSL network directories are unsupported.
 2. Select **New terminal**, or use the default `Ctrl+Shift+T` shortcut. Run `Get-Location` to check the current directory.
 3. Use `Ctrl+Shift+H` to split left/right, or `Ctrl+Shift+J` to split top/bottom. Run commands in separate panes.
-4. Use `Ctrl+Shift+P` to find a file by name, or open it from the file tree. Save edits with `Ctrl+S`. If you have customized shortcuts, check **Settings → Keyboard shortcuts** for your bindings.
+4. Use `Ctrl+P` to find a file by name while respecting ignore rules, or `Ctrl+Shift+P` to include ignored files. You can also open files from the file tree. Save edits with `Ctrl+S`. If you have customized shortcuts, check **Settings → Keyboard shortcuts** for your bindings.
 5. Add a second project, switch to it, then return. The original project's terminal sessions remain available while the app and terminals stay open.
 
 ## Launch an AI coding CLI

@@ -125,6 +125,7 @@ pub async fn search_files(
     runtime: State<'_, AppState>,
     project_id: String,
     query: String,
+    include_ignored: Option<bool>,
 ) -> FileResult<SearchResult> {
     // 项目句柄必须在锁内获取，避免项目移除后又登记旧根目录的监听。
     let project = {
@@ -136,7 +137,7 @@ pub async fn search_files(
         let files = runtime.files.clone();
         blocking(move || files.project(&project_id, &root)).await?
     };
-    blocking(move || project.search(&query)).await
+    blocking(move || project.search_with_ignored(&query, include_ignored.unwrap_or(false))).await
 }
 #[tauri::command]
 pub async fn watch_project_files(

@@ -12,6 +12,76 @@ const { filterProjects } = await loadService('sidebar/filter')
 const tabShortcutIndex = (event) => { const id = matchShortcut(event); return /^tab[1-9]$/.test(id ?? '') ? Number(id.slice(3)) - 1 : -1 }
 const key = (code, modifiers = {}) => ({ altKey: false, ctrlKey: false, shiftKey: false, metaKey: false, code, ...modifiers })
 
+test('Changing file search scope clears old results and discards responses from the previous scope', async (t) => {
+  const source = await readFile(new URL('../src/components/files/QuickOpen.vue', import.meta.url), 'utf8')
+  const ast = ts.createSourceFile('QuickOpen.ts', source.split('<script setup lang="ts">')[1].split('</script>')[0], ts.ScriptTarget.Latest, true)
+  const nodes = ast.statements.filter((node) =>
+    (ts.isFunctionDeclaration(node) && node.name?.text === 'search') ||
+    (ts.isExpressionStatement(node) && ts.isCallExpression(node.expression) && node.expression.expression.getText(ast) === 'watch'))
+  const requests = [], timers = new Map()
+  let timerId = 0
+  const context = vm.createContext({
+    props: reactive({ show: false, projectId: 'project', includeIgnored: false }),
+    query: ref('file'), paths: ref([]), incomplete: ref(false), busy: ref(false), selected: ref(0), input: ref(),
+    timer: undefined, generation: 0, nextTick,
+    watch: (...args) => { const stop = watch(...args); t.after(stop); return stop },
+    setTimeout: (fn) => { timers.set(++timerId, fn); return timerId }, clearTimeout: (id) => timers.delete(id),
+    fileApi: { search: (...args) => new Promise((resolve) => requests.push({ args, resolve })) },
+    emit: () => assert.fail('Unexpected search error'), fileError: (reason) => reason,
+  })
+  vm.runInContext(ts.transpileModule(nodes.map((node) => node.getText(ast)).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const runTimer = () => { const pending = [...timers.values()]; timers.clear(); pending.forEach((fn) => fn()) }
+  context.props.show = true
+  await nextTick()
+  runTimer()
+  assert.deepEqual(requests[0].args, ['project', 'file', false])
+  requests[0].resolve({ paths: ['file.txt'], incomplete: false })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(Array.from(context.paths.value), ['file.txt'])
+  context.props.includeIgnored = true
+  await nextTick()
+  assert.deepEqual(Array.from(context.paths.value), [])
+  runTimer()
+  assert.deepEqual(requests[1].args, ['project', 'file', true])
+  context.props.includeIgnored = false
+  await nextTick()
+  runTimer()
+  requests[1].resolve({ paths: ['ignored/file.txt'], incomplete: true })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(Array.from(context.paths.value), [])
+  assert.equal(context.incomplete.value, false)
+  requests[2].resolve({ paths: ['file.txt'], incomplete: false })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(Array.from(context.paths.value), ['file.txt'])
+  context.props.show = false
+  await nextTick()
+  assert.deepEqual(Array.from(context.paths.value), [])
+  assert.equal(timers.size, 0)
+})
+
+test('File shortcuts select separate commands and respect custom or disabled bindings', () => {
+  const custom = key('KeyO', { ctrlKey: true })
+  for (const shiftKey of [false, true]) {
+    const event = key('KeyP', { ctrlKey: true, shiftKey })
+    const command = shiftKey ? 'quickOpen' : 'openFile'
+    assert.equal(matchShortcut(event), command)
+    assert.equal(matchShortcut(event, {}, ['workspace']), command)
+    assert.equal(matchShortcut(event, { [command]: [custom] }), undefined)
+    assert.equal(matchShortcut(event, { [command]: [] }), undefined)
+    assert.equal(matchShortcut(custom, { [command]: [custom] }), command)
+    assert.ok(shortcutConflicts({ newTerminal: [event] }).length)
+    assert.equal(matchShortcut({ ...event, isComposing: true }), undefined)
+  }
+  assert.equal(matchShortcut(custom, { quickOpen: [custom] }), 'quickOpen')
+  assert.equal(shortcutHint('openFile'), 'Ctrl+P')
+  assert.equal(shortcutHint('quickOpen'), 'Ctrl+Shift+P')
+  assert.deepEqual(shortcutConflicts({}), [])
+  const migrated = { quickOpen: [key('KeyP', { ctrlKey: true })], openFile: [] }
+  assert.deepEqual(shortcutConflicts(migrated), [])
+  assert.equal(matchShortcut(key('KeyP', { ctrlKey: true }), migrated), 'quickOpen')
+  assert.equal(shortcutHint('openFile', migrated), '')
+})
+
 const appSource = await readFile(new URL('../src/App.vue', import.meta.url), 'utf8')
 const appScript = appSource.split('<script setup lang="ts">')[1].split('</script>')[0]
 const appAst = ts.createSourceFile('App.ts', appScript, ts.ScriptTarget.Latest, true)
@@ -580,6 +650,40 @@ const workspaceScript = workspaceSource.split('<script setup lang="ts">')[1].spl
 const workspaceAst = ts.createSourceFile('WorkspaceView.ts', workspaceScript, ts.ScriptTarget.Latest, true)
 const workspaceHandler = workspaceAst.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === 'keydown')
 const workspaceJs = ts.transpileModule(workspaceHandler.getText(workspaceAst), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+
+test('File shortcuts pass the search scope to the picker and prevent default input', () => {
+  let opened = 0
+  let selectedMode
+  const context = vm.createContext({ matchShortcut,
+    props: { active: true, shortcutsBlocked: false, settings: { shortcuts: {} } },
+    tabMenu: { value: null }, confirmation: { value: null }, rename: { value: null }, quickOpen: { value: false },
+    chooseFile(direction, withIgnored) { opened++; selectedMode = withIgnored; context.quickOpen.value = true },
+  })
+  vm.runInContext(workspaceJs, context)
+  for (const shiftKey of [false, true]) {
+    context.quickOpen.value = false
+    const event = { ...key('KeyP', { ctrlKey: true, shiftKey }),
+      preventDefault() { this.prevented = true }, stopPropagation() { this.stopped = true } }
+    const before = opened
+    context.keydown({ ...event, repeat: true })
+    assert.equal(opened, before)
+    context.keydown(event)
+    assert.equal(opened, before + 1)
+    assert.equal(selectedMode, shiftKey)
+    assert.equal(event.prevented, true)
+    assert.equal(event.stopped, true)
+    context.keydown(event)
+    assert.equal(opened, before + 1)
+    context.quickOpen.value = false
+    context.props.active = false
+    context.keydown(event)
+    context.props.active = true
+    context.props.shortcutsBlocked = true
+    context.keydown(event)
+    context.props.shortcutsBlocked = false
+    assert.equal(opened, before + 1)
+  }
+})
 const { leaves } = await loadService('workspace/layout')
 
 test('关闭页签默认 Ctrl+F4，精确匹配修饰键并支持覆盖、禁用和冲突校验', () => {

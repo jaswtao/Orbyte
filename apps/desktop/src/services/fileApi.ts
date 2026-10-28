@@ -19,7 +19,7 @@ export const fileApi = {
   create: (projectId: string, path: string, directory: boolean) => invoke<void>(directory ? 'create_directory' : 'create_file', { projectId, path }),
   rename: (projectId: string, from: string, to: string) => invoke<void>('rename_path', { projectId, from, to }),
   delete: (projectId: string, path: string) => invoke<void>('delete_path', { projectId, path }),
-  search: (projectId: string, query: string) => invoke<{ paths: string[]; incomplete: boolean }>('search_files', { projectId, query }),
+  search: (projectId: string, query: string, includeIgnored = false) => invoke<{ paths: string[]; incomplete: boolean }>('search_files', { projectId, query, includeIgnored }),
   async watch(projectId: string, callback: (event: FileChange) => void) {
     const channel = new Channel<FileChange>()
     channel.onmessage = callback

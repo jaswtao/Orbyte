@@ -27,6 +27,7 @@ import { presetLabel, shellLabel, t } from '../../i18n'
 const props = defineProps<{ tabsTarget: string; project: Project; settings: Settings; active: boolean; registry: TerminalRegistry; editors: EditorRegistry; shortcutsBlocked: boolean }>()
 const emit = defineEmits<{ recoverDrafts: []; error: [message: string]; filesChanged: [projectId: string, change: FileChange]; activity: [projectId: string, state: Activity] }>()
 const quickOpen = ref(false)
+const includeIgnored = ref(false)
 const openDirection = ref<Direction | undefined>()
 let watchChannel: Awaited<ReturnType<typeof fileApi.watch>> | undefined
 const layout = ref<Layout>(emptyLayout())
@@ -46,7 +47,7 @@ const addMenu = computed<DropdownOption[]>(() => [
   { type: 'divider', key: 'ai-divider' },
   { type: 'group', key: 'ai', label: t('workspace.aiCli'), children: presets.value.map((p) => ({ key: p.preset, label: presetLabel(p), disabled: busy.value || !ready.value || !p.available || !shells.value.some((s) => s.shellType === 'powershell' && s.available) })) },
   { type: 'divider', key: 'divider' },
-  { key: 'open-file', label: t('workspace.openFileMenu', { hint: hint('quickOpen') }), disabled: busy.value || !ready.value },
+  { key: 'open-file', label: t('workspace.openFileMenu', { hint: hint('openFile') }), disabled: busy.value || !ready.value },
   { key: 'open-file-horizontal', label: t('workspace.fileSplitHorizontal'), disabled: busy.value || !ready.value || !activeTab.value || !focused.value },
   { key: 'open-file-vertical', label: t('workspace.fileSplitVertical'), disabled: busy.value || !ready.value || !activeTab.value || !focused.value },
   { type: 'divider', key: 'draft-divider' },
@@ -371,7 +372,7 @@ async function confirmAction(saveFiles = false) {
   confirmation.value = null
   void perform(pending.action)
 }
-function chooseFile(direction?: Direction) { openDirection.value = direction; quickOpen.value = true }
+function chooseFile(direction?: Direction, withIgnored = false) { openDirection.value = direction; includeIgnored.value = withIgnored; quickOpen.value = true }
 function onAddSelect(key: string) {
   if (key === 'recover-drafts') { emit('recoverDrafts'); return }
   if (busy.value || !ready.value) return
@@ -453,7 +454,7 @@ function keydown(event: KeyboardEvent) {
     const tab = layout.value.tabs[Number(command.slice(3)) - 1]
     if (tab && tab.id !== layout.value.activeTabId) void selectTab(tab.id)
   } else if (command === 'newTerminal') void create()
-  else if (command === 'quickOpen') chooseFile()
+  else if (command === 'openFile' || command === 'quickOpen') chooseFile(undefined, command === 'quickOpen')
   else if (command === 'closePane' && focused.value) closePane(focused.value)
   else if (command === 'closeTab' && activeTab.value) closeTab(activeTab.value)
   else if (command === 'splitHorizontal') void create('horizontal')
@@ -486,7 +487,7 @@ onBeforeUnmount(() => {
 <template>
   <section v-show="active" class="project-workspace">
     <div v-if="settings.show_workspace_header" class="workspace-toolbar">
-      <NButton :disabled="busy || !ready" :title="hint('quickOpen')" @click="chooseFile()">{{ t('workspace.openFile') }}</NButton>
+      <NButton :disabled="busy || !ready" :title="hint('openFile')" @click="chooseFile()">{{ t('workspace.openFile') }}</NButton>
       <NButton :disabled="busy || !activeTab || !focused" @click="chooseFile('horizontal')">{{ t('workspace.fileSplitHorizontalButton') }}</NButton>
       <NButton :disabled="busy || !activeTab || !focused" @click="chooseFile('vertical')">{{ t('workspace.fileSplitVerticalButton') }}</NButton>
       <NButton :disabled="busy || !activeTab || !focused" :title="hint('splitHorizontal')" @click="create('horizontal')">{{ t('workspace.splitHorizontal') }}</NButton>
@@ -504,11 +505,11 @@ onBeforeUnmount(() => {
     </div>
     </Teleport>
     <p v-if="!ready" class="workspace-message">{{ failed ? t('workspace.loadFailed') : t('workspace.restoring') }} <NButton v-if="failed" @click="load">{{ t('common.retry') }}</NButton></p>
-    <div v-else-if="!layout.tabs.length" class="workspace-message"><UiIcon name="terminal" :size="32" /><h2>{{ t('workspace.emptyTitle') }}</h2><p>{{ t('workspace.emptyBody') }}</p><NButton :disabled="busy" @click="create()">{{ t('workspace.newTerminal') }}</NButton><p>{{ t('workspace.emptyHints', { terminal: hint('newTerminal'), file: hint('quickOpen') }) }}</p></div>
+    <div v-else-if="!layout.tabs.length" class="workspace-message"><UiIcon name="terminal" :size="32" /><h2>{{ t('workspace.emptyTitle') }}</h2><p>{{ t('workspace.emptyBody') }}</p><NButton :disabled="busy" @click="create()">{{ t('workspace.newTerminal') }}</NButton><p>{{ t('workspace.emptyHints', { terminal: hint('newTerminal'), file: hint('openFile') }) }}</p></div>
     <div v-for="tab in layout.tabs" v-show="tab.id === layout.activeTabId" :key="tab.id" class="tab-content">
       <LayoutPane :node="tab.root" :path="[]" :registry="registry" :editors="editors" :configs="configs" :focused="focused" :visible="active && tab.id === layout.activeTabId" @focus="focused = $event" @close="closePane" @restart="(id) => perform(() => start(id))" @stop="stop" @export="exportOutput" @ratio="(path, value) => ratio(tab.id, path, value)" />
     </div>
-    <QuickOpen v-model:show="quickOpen" :project-id="project.id" @open="(path) => openFile(path, openDirection)" @error="error" />
+    <QuickOpen v-model:show="quickOpen" :project-id="project.id" :include-ignored="includeIgnored" @open="(path) => openFile(path, openDirection)" @error="error" />
     <NModal :show="!!confirmation" preset="card" :title="t('workspace.confirmClose')" class="form-modal" @update:show="(show) => { if (!show && !confirmSaving) confirmation = null }">
       <p>{{ confirmation?.text }}</p>
       <div class="dialog-actions"><NButton :disabled="confirmSaving" @click="confirmation = null">{{ t('common.cancel') }}</NButton><NButton v-if="confirmation?.dirtyIds.length" :loading="confirmSaving" @click="confirmAction(true)">{{ t('workspace.saveAndClose') }}</NButton><NButton type="error" :disabled="confirmSaving" @click="confirmAction(false)">{{ confirmation?.dirtyIds.length ? t('workspace.discardAndClose') : t('common.confirm') }}</NButton></div>

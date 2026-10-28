@@ -86,7 +86,8 @@ export const en = {
   'shortcut.command.closeTab': 'Close current tab',
   'shortcut.command.splitHorizontal': 'Split left/right',
   'shortcut.command.splitVertical': 'Split top/bottom',
-  'shortcut.command.quickOpen': 'Quick open file',
+  'shortcut.command.openFile': 'Open file',
+  'shortcut.command.quickOpen': 'Quick open file (including ignored files)',
   'shortcut.command.previousTab': 'Previous tab',
   'shortcut.command.nextTab': 'Next tab',
   'shortcut.command.tab1': 'Open tab 1',
@@ -251,6 +252,7 @@ export const en = {
   'message.errorTitle': 'Action not completed',
 
   'quickOpen.title': 'Quick open {hint}',
+  'quickOpen.ignoredTitle': 'Quick open (including ignored files) {hint}',
   'quickOpen.placeholder': 'Type part of a file name',
   'quickOpen.searching': 'Searching…',
   'quickOpen.incomplete': 'The index is incomplete, so some files are missing.',

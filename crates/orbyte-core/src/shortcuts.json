@@ -168,8 +168,22 @@
     ]
   },
   {
+    "id": "openFile",
+    "label": "打开文件",
+    "scope": "workspace",
+    "defaults": [
+      {
+        "code": "KeyP",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": false,
+        "metaKey": false
+      }
+    ]
+  },
+  {
     "id": "quickOpen",
-    "label": "快速打开文件",
+    "label": "快速打开文件（包含忽略文件）",
     "scope": "workspace",
     "defaults": [
       {

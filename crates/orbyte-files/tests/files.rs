@@ -131,18 +131,31 @@ fn rejects_oversize_binary_bad_encoding_missing_parent_and_unsafe_paths() {
     assert!(listing.entries.iter().all(|e| e.name != ".git"));
 }
 #[test]
-fn index_obeys_gitignore_and_matches_filename_subsequence() {
+fn index_includes_ignored_files_and_matches_filename_subsequence() {
     let fixture = Fixture::new();
     fs::write(fixture.0.join(".gitignore"), "ignored/\n").unwrap();
     fs::create_dir(fixture.0.join("ignored")).unwrap();
     fs::write(fixture.0.join("ignored/hidden.rs"), "").unwrap();
-    fs::create_dir(fixture.0.join(".git")).unwrap();
+    fs::write(fixture.0.join(".ignore"), "local.txt\n").unwrap();
+    fs::write(fixture.0.join("local.txt"), "local").unwrap();
+    fs::create_dir_all(fixture.0.join(".git/info")).unwrap();
+    fs::write(fixture.0.join(".git/info/exclude"), "excluded.txt\n").unwrap();
+    fs::write(fixture.0.join("excluded.txt"), "excluded").unwrap();
     fs::write(fixture.0.join(".git/config"), "").unwrap();
+    fs::write(fixture.0.join(".orbyte-save.tmp"), "temporary").unwrap();
+    fs::write(fixture.0.join(".hidden.txt"), "hidden").unwrap();
     fs::write(fixture.0.join("MainFile.rs"), "").unwrap();
-    let index = FileIndex::build(&fixture.0).unwrap();
-    assert_eq!(index.search("mfr").paths, ["MainFile.rs"]);
-    assert!(index.search("hidden").paths.is_empty());
-    assert!(index.search("config").paths.is_empty());
+    for include_ignored in [false, true] {
+        let index = FileIndex::build_with_ignored(&fixture.0, include_ignored).unwrap();
+        assert_eq!(index.search("mfr").paths, ["MainFile.rs"]);
+        for (query, path) in [("hidden.rs", "ignored/hidden.rs"), ("local.txt", "local.txt"), ("excluded.txt", "excluded.txt")] {
+            assert_eq!(index.search(query).paths, if include_ignored { vec![path] } else { vec![] });
+        }
+        assert_eq!(index.search(".hidden.txt").paths, [".hidden.txt"]);
+        assert!(index.search("config").paths.is_empty());
+        assert!(index.search(".orbyte-save.tmp").paths.is_empty());
+    }
+    assert_eq!(read(&fixture.0, "ignored/hidden.rs", None).unwrap().content, "");
 }
 #[test]
 fn watcher_reports_external_writes_invalidates_index_and_replaces_subscription() {
@@ -180,6 +193,40 @@ fn watcher_reports_external_writes_invalidates_index_and_replaces_subscription()
 }
 
 #[test]
+fn watcher_refreshes_files_inside_ignored_directories() {
+    let fixture = Fixture::new();
+    fs::write(fixture.0.join(".gitignore"), "ignored/\n").unwrap();
+    fs::create_dir(fixture.0.join("ignored")).unwrap();
+    let files = FileManager::default();
+    let project = files.project("ignored", &fixture.0).unwrap();
+    assert!(project.search("tracked").unwrap().paths.is_empty());
+    assert!(project.search_with_ignored("tracked", true).unwrap().paths.is_empty());
+    assert_eq!(project.rebuild_count(), 2);
+    project.search("tracked").unwrap();
+    project.search_with_ignored("tracked", true).unwrap();
+    assert_eq!(project.rebuild_count(), 2);
+    let (tx, rx) = mpsc::channel();
+    files.watch("ignored", &fixture.0, move |event| { let _ = tx.send(event); }).unwrap();
+
+    fs::write(fixture.0.join("ignored/tracked.txt"), "content").unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(project.search("tracked").unwrap().paths.is_empty());
+    assert_eq!(project.search_with_ignored("tracked", true).unwrap().paths, ["ignored/tracked.txt"]);
+    assert_eq!(project.rebuild_count(), 4);
+
+    fs::rename(fixture.0.join("ignored/tracked.txt"), fixture.0.join("ignored/renamed.txt")).unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(project.search_with_ignored("tracked", true).unwrap().paths.is_empty());
+    assert_eq!(project.search_with_ignored("renamed", true).unwrap().paths, ["ignored/renamed.txt"]);
+    assert!(project.search("renamed").unwrap().paths.is_empty());
+
+    fs::remove_file(fixture.0.join("ignored/renamed.txt")).unwrap();
+    rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert!(project.search_with_ignored("renamed", true).unwrap().paths.is_empty());
+    assert!(project.search("renamed").unwrap().paths.is_empty());
+}
+
+#[test]
 fn watcher_keeps_content_saves_cached_and_refreshes_ignore_rules() {
     let fixture = Fixture::new();
     fs::create_dir_all(fixture.0.join(".git/info")).unwrap();
@@ -202,13 +249,18 @@ fn watcher_keeps_content_saves_cached_and_refreshes_ignore_rules() {
     rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(project.search("existing").unwrap().paths.is_empty());
     assert_eq!(project.rebuild_count(), 2);
+    assert_eq!(project.search_with_ignored("existing", true).unwrap().paths, ["existing.txt"]);
+    assert_eq!(project.rebuild_count(), 3);
     fs::remove_file(fixture.0.join(".ignore")).unwrap();
     rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(project.search("existing").unwrap().paths, ["existing.txt"]);
-    assert_eq!(project.rebuild_count(), 3);
+    assert_eq!(project.rebuild_count(), 4);
+    assert_eq!(project.search_with_ignored("existing", true).unwrap().paths, ["existing.txt"]);
+    assert_eq!(project.rebuild_count(), 5);
     fs::remove_file(fixture.0.join("existing.txt")).unwrap();
     rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert!(project.search("existing").unwrap().paths.is_empty());
+    assert!(project.search_with_ignored("existing", true).unwrap().paths.is_empty());
 }
 #[cfg(windows)]
 #[test]

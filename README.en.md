@@ -58,8 +58,9 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/ by default
 - PowerShell/CMD shell integration, background activity indicators and configurable notifications.
 - UTF-8 and GBK editing, disk conflict detection, recycle-bin deletion and Git status/worktree helpers.
 - Chinese/English interface, light/dark themes and configurable shortcuts. Ctrl+F4 closes a tab; Ctrl+Shift+W closes a pane.
+- Ctrl+P opens files by name while respecting `.gitignore`, `.ignore` and Git exclude rules. Ctrl+Shift+P also includes ignored files. Both modes exclude `.git` and application temporary files, with separate indexes of at most 100,000 files each.
 - Restart restores projects, layouts and file paths and offers local draft recovery. Processes, terminal output and editor undo history are not restored.
-- Filename content writes, Git internals and atomic saves reuse the search index. Structure changes and in-project ignore rules invalidate it after the watcher batch. Worktree gitdir excludes and global `core.excludesFile` changes require reopening the project or another structural change.
+- Filename content writes, Git internals and atomic saves reuse the search index. Structure changes and in-project ignore rules invalidate it after the watcher batch. Ignore rules affect the normal open mode; the mode that includes ignored files still finds them.
 - Clipboard screenshots remain in the application cache until manually removed.
 - Windows managed child processes stop with their terminal. WSL detached processes and services have different lifetime limits.
 - No UNC/WSL network project directories. The text editor has a 5 MiB file limit.

@@ -1,4 +1,4 @@
-//! 遵守忽略规则的文件名索引。Author: jaswtao · Date: 2026-10-13
+//! Filename index with optional ignore filtering. Author: jaswtao · Date: 2026-10-13
 use crate::{path_guard::resolve, FileResult};
 use serde::Serialize;
 use std::{collections::HashSet, path::Path};
@@ -17,9 +17,14 @@ pub struct SearchResult {
 }
 impl FileIndex {
     pub fn build(root: &Path) -> FileResult<Self> {
+        Self::build_with_ignored(root, false)
+    }
+
+    pub fn build_with_ignored(root: &Path, include_ignored: bool) -> FileResult<Self> {
         let root = resolve(root, "", true)?;
         let mut index = Self::default();
         let walker = ignore::WalkBuilder::new(&root)
+            .standard_filters(!include_ignored)
             .hidden(false)
             .require_git(false)
             .follow_links(false)

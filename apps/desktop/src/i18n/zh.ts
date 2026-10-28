@@ -88,7 +88,8 @@ export const zh: Record<MessageKey, string> = {
   'shortcut.command.closeTab': '关闭当前页签',
   'shortcut.command.splitHorizontal': '左右分屏',
   'shortcut.command.splitVertical': '上下分屏',
-  'shortcut.command.quickOpen': '快速打开文件',
+  'shortcut.command.openFile': '打开文件',
+  'shortcut.command.quickOpen': '快速打开文件（包含忽略文件）',
   'shortcut.command.previousTab': '上一个 Tab',
   'shortcut.command.nextTab': '下一个 Tab',
   'shortcut.command.tab1': '打开第 1 个 Tab',
@@ -253,6 +254,7 @@ export const zh: Record<MessageKey, string> = {
   'message.errorTitle': '操作未完成',
 
   'quickOpen.title': '快速打开 {hint}',
+  'quickOpen.ignoredTitle': '快速打开（包含忽略文件）{hint}',
   'quickOpen.placeholder': '输入文件名片段',
   'quickOpen.searching': '正在搜索…',
   'quickOpen.incomplete': '索引不完整，部分文件未包含。',

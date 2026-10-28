@@ -25,7 +25,7 @@ type Sink = Arc<dyn Fn(FileChange) + Send + Sync>;
 pub struct ProjectFiles {
     root: PathBuf,
     dirty: Arc<AtomicBool>,
-    index: Arc<Mutex<Option<FileIndex>>>,
+    index: Arc<Mutex<[Option<FileIndex>; 2]>>,
     rebuilds: AtomicU64,
     sink: Arc<Mutex<Option<Sink>>>,
     stopped: Arc<AtomicBool>,
@@ -40,21 +40,29 @@ impl ProjectFiles {
     pub fn rebuild_count(&self) -> u64 { self.rebuilds.load(Ordering::Relaxed) }
 
     pub fn search(&self, query: &str) -> FileResult<SearchResult> {
-        self.search_with(query, || FileIndex::build(&self.root))
+        self.search_with_ignored(query, false)
     }
 
-    fn search_with(&self, query: &str, build: impl FnOnce() -> FileResult<FileIndex>) -> FileResult<SearchResult> {
+    pub fn search_with_ignored(&self, query: &str, include_ignored: bool) -> FileResult<SearchResult> {
+        self.search_with(query, include_ignored, || FileIndex::build_with_ignored(&self.root, include_ignored))
+    }
+
+    fn search_with(&self, query: &str, include_ignored: bool, build: impl FnOnce() -> FileResult<FileIndex>) -> FileResult<SearchResult> {
         let mut index = self.index.lock().unwrap();
-        if self.dirty.swap(false, Ordering::AcqRel) || index.is_none() {
+        if self.dirty.swap(false, Ordering::AcqRel) {
+            *index = [None, None];
+        }
+        let selected = &mut index[usize::from(include_ignored)];
+        if selected.is_none() {
             match build() {
-                Ok(next) => { *index = Some(next); self.rebuilds.fetch_add(1, Ordering::Relaxed); },
+                Ok(next) => { *selected = Some(next); self.rebuilds.fetch_add(1, Ordering::Relaxed); },
                 Err(error) => {
                     self.dirty.store(true, Ordering::Release);
                     return Err(error);
                 }
             }
         }
-        Ok(index.as_ref().unwrap().search(query))
+        Ok(selected.as_ref().unwrap().search(query))
     }
 }
 #[derive(Default)]
@@ -77,7 +85,7 @@ impl FileManager {
         let stopped = Arc::new(AtomicBool::new(false));
         let sink: Arc<Mutex<Option<Sink>>> = Arc::new(Mutex::new(None));
         let (tx, rx) = mpsc::sync_channel(2048);
-        let index = Arc::new(Mutex::new(None));
+        let index = Arc::new(Mutex::new([None, None]));
         let (mark, full) = (dirty.clone(), overflow.clone());
         let mut watcher =
             notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -138,8 +146,8 @@ impl FileManager {
                 rescan |= overflow.swap(false, Ordering::AcqRel);
                 let invalidate = match thread_index.try_lock() {
                     Ok(index) => invalidates_batch(&thread_root, &events,
-                        |path| index.as_ref().is_some_and(|i: &FileIndex| i.contains(path)),
-                        |path| index.as_ref().is_some_and(|i| i.contains_directory(path))),
+                        |path| index.iter().flatten().any(|i: &FileIndex| i.contains(path)),
+                        |path| index.iter().flatten().any(|i| i.contains_directory(path))),
                     // A build is in progress. Preserve structural events for the next search.
                     Err(_) => events.iter().any(|event| invalidates_index(&thread_root, event, |_| false)),
                 };
@@ -285,22 +293,27 @@ mod tests {
 
     #[test]
     fn event_during_build_survives_the_next_search() {
-        let root = std::env::temp_dir().join(format!("orbyte-build-race-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&root).unwrap();
-        let manager = FileManager::default();
-        let project = manager.project("race", &root).unwrap();
-        let first = project.search_with("during", || {
-            let old_snapshot = FileIndex::build(&root)?;
-            std::fs::write(root.join("during.txt"), "new file")?;
-            // Inject the watcher signal after walking, while the build still holds the index lock.
-            project.dirty.store(true, Ordering::Release);
-            Ok(old_snapshot)
-        }).unwrap();
-        assert!(first.paths.is_empty());
-        assert_eq!(project.search("during").unwrap().paths, ["during.txt"]);
-        assert_eq!(project.rebuild_count(), 2);
-        drop(project); manager.clear();
-        std::fs::remove_dir_all(root).unwrap();
+        for include_ignored in [false, true] {
+            let root = std::env::temp_dir().join(format!("orbyte-build-race-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let manager = FileManager::default();
+            let project = manager.project("race", &root).unwrap();
+            // Warm the other mode to ensure invalidation also discards its cached snapshot.
+            project.search_with_ignored("during", !include_ignored).unwrap();
+            let first = project.search_with("during", include_ignored, || {
+                let old_snapshot = FileIndex::build_with_ignored(&root, include_ignored)?;
+                std::fs::write(root.join("during.txt"), "new file")?;
+                // Inject the watcher signal after walking, while the build still holds the index lock.
+                project.dirty.store(true, Ordering::Release);
+                Ok(old_snapshot)
+            }).unwrap();
+            assert!(first.paths.is_empty());
+            assert_eq!(project.search_with_ignored("during", !include_ignored).unwrap().paths, ["during.txt"]);
+            assert_eq!(project.search_with_ignored("during", include_ignored).unwrap().paths, ["during.txt"]);
+            assert_eq!(project.rebuild_count(), 4);
+            drop(project); manager.clear();
+            std::fs::remove_dir_all(root).unwrap();
+        }
     }
 }
 

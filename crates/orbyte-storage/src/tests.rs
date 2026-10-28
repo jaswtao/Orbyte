@@ -203,7 +203,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 4);
+            assert_eq!(count, 5);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();
@@ -407,6 +407,79 @@ async fn group_restrictions_and_atomic_cross_group_sorting() {
         .unwrap();
     assert_eq!(db.list_groups().await.unwrap()[0].name, "产品");
     db.delete_group(&g1).await.unwrap();
+}
+
+#[tokio::test]
+async fn open_file_shortcut_migration_preserves_legacy_binding_on_reopen() {
+    let directory = std::env::temp_dir().join(format!("orbyte-shortcut-migration-{}", Uuid::new_v4()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("old.db");
+    let pool = SqlitePoolOptions::new().max_connections(1)
+        .connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true))
+        .await.unwrap();
+    let mut legacy = sqlx::migrate!("./migrations");
+    legacy.migrations.to_mut().retain(|migration| migration.version < 5);
+    legacy.run(&pool).await.unwrap();
+    let shortcuts = json!({
+        "quickOpen": [{"code":"KeyP","ctrlKey":true,"altKey":false,"shiftKey":false,"metaKey":false}],
+        "newTerminal": []
+    });
+    sqlx::query("INSERT INTO t_app_setting(key, value_json) VALUES ('shortcuts', ?)")
+        .bind(shortcuts.to_string()).execute(&pool).await.unwrap();
+    pool.close().await;
+
+    let db = Database::open(&path).await.unwrap();
+    let mut expected = shortcuts;
+    expected["openFile"] = json!([]);
+    assert_eq!(db.get_settings().await.unwrap()["shortcuts"], expected);
+    db.pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    assert_eq!(db.get_settings().await.unwrap()["shortcuts"], expected);
+    db.set_setting("shortcuts", expected.clone()).await.unwrap();
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn open_file_shortcut_migration_only_changes_conflicting_implicit_defaults() {
+    let db = memory().await;
+    // Exercise conflicting overrides from every shortcut scope.
+    let key = json!({"code":"KeyP","ctrlKey":true,"altKey":false,"shiftKey":false,"metaKey":false});
+    // Apply the migration to a separate table copy so each case can share one SQL batch.
+    sqlx::raw_sql("CREATE TEMP TABLE shortcut_cases (key TEXT, value_json TEXT);")
+        .execute(&db.pool).await.unwrap();
+    let mut values = Vec::new();
+    for command in ["quickOpen", "newTerminal", "terminalCopy", "editorSave"] {
+        let mut before = json!({});
+        before[command] = json!([key.clone()]);
+        let mut after = before.clone();
+        after["openFile"] = json!([]);
+        values.push((before, after));
+    }
+    for unchanged in [
+        json!({}),
+        json!({"quickOpen": []}),
+        json!({"quickOpen": [{"code":"KeyP","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false}]}),
+        json!({"openFile": []}),
+        json!({"openFile": [key.clone()]}),
+        json!({"openFile": [{"code":"KeyO","ctrlKey":true,"altKey":false,"shiftKey":false,"metaKey":false}], "quickOpen": [key]}),
+    ] {
+        values.push((unchanged.clone(), unchanged));
+    }
+    let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("INSERT INTO shortcut_cases(key, value_json) ");
+    query.push_values(&values, |mut row, (before, _)| {
+        row.push_bind("shortcuts").push_bind(before.to_string());
+    });
+    query.build().execute(&db.pool).await.unwrap();
+    let sql = include_str!("../migrations/0005_open_file_shortcut.sql").replace("t_app_setting", "shortcut_cases");
+    sqlx::raw_sql(&sql).execute(&db.pool).await.unwrap();
+    let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
+        .fetch_all(&db.pool).await.unwrap();
+    for (result, (_, expected)) in results.iter().zip(&values) {
+        let actual: Value = serde_json::from_str(result).unwrap();
+        assert_eq!(&actual, expected);
+        validate_setting("shortcuts", &actual).unwrap();
+    }
 }
 
 #[tokio::test]
