@@ -212,14 +212,16 @@ defineExpose({
             clearable
             :aria-label="t('sidebar.search')"
           ><template #prefix><UiIcon name="search" :size="15" /></template></NInput>
-          <label class="favorites-filter"
-            ><NSwitch v-model:value="favoritesOnly" size="small" />
-            {{ t('sidebar.favoritesOnly') }}</label
-          >
-          <label class="favorites-filter">
-            <NSwitch :value="store.settings?.show_hidden_projects ?? false" size="small" :disabled="!store.ready || store.busy" @update:value="setShowHidden" />
-            {{ t('sidebar.showHiddenProjects') }}
-          </label>
+          <div class="project-filters">
+            <label class="favorites-filter"
+              ><NSwitch v-model:value="favoritesOnly" size="small" />
+              {{ t('sidebar.favoritesOnly') }}</label
+            >
+            <label class="favorites-filter">
+              <NSwitch :value="store.settings?.show_hidden_projects ?? false" size="small" :disabled="!store.ready || store.busy" @update:value="setShowHidden" />
+              {{ t('sidebar.showHiddenProjects') }}
+            </label>
+          </div>
           <div ref="projectList" class="project-list">
             <section
               v-for="group in sections"
