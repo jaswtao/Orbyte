@@ -88,6 +88,7 @@ function selectionFixture(t, cols = 20) {
   const calls = []
   const model = { selectionStartLength: 0 }
   const service = { _model: model, _selectLineAt() {
+    model.selectionStart = [range.start.x, range.start.y]
     model.selectionStartLength = (range.end.y + 1) * cols
   } }
   const original = service._selectLineAt
@@ -115,17 +116,23 @@ function selectionFixture(t, cols = 20) {
     },
     triple() {
       service._selectLineAt(0)
-      calls.push(model.selectionStartLength ? [0, 0, model.selectionStartLength] : 'clear')
+      calls.push(model.selectionStartLength ? [...model.selectionStart, model.selectionStartLength] : 'clear')
       event('mouseup')
     },
   }
 }
 
-test('三击剔除行尾空白，保留缩进、折行及宽字符', async (t) => {
+test('三击剔除首尾空白，保留内部空白、折行及宽字符', async (t) => {
   const f = selectionFixture(t)
   for (const [text, expected] of [
     ['PS C:\\Orbyte> ', [0, 0, 13]],
-    ['  project   ', [0, 0, 9]],
+    ['  project   ', [2, 0, 7]],
+    ['\tproject   ', [8, 0, 7]],
+    ['  first  last   ', [2, 0, 11]],
+    ['  中文😀  ', [2, 0, 5]],
+    ['  e\u0301  ', [2, 0, 1]],
+    ['  ' + 'x'.repeat(23) + '   ', [2, 0, 23]],
+    [' '.repeat(23) + '中文😀   ', [3, 1, 5]],
     ['中文😀  ', [0, 0, 5]],
     ['e\u0301  ', [0, 0, 1]],
     ['x'.repeat(20), [0, 0, 20]],
@@ -133,6 +140,7 @@ test('三击剔除行尾空白，保留缩进、折行及宽字符', async (t) =
     ['x'.repeat(19) + '中文😀   ', [0, 0, 25]],
     ['x'.repeat(20) + ' '.repeat(24), [0, 0, 20]],
     ['    ', 'clear'],
+    ['\t  ', 'clear'],
   ]) {
     await f.write(text)
     f.calls.length = 0
@@ -179,23 +187,65 @@ test('四击仅响应无修饰键左键，遵循鼠标上报并在销毁时移�
   assert.deepEqual(f.calls, [])
 })
 
+test('三击后缓冲区裁剪，拖动锚点跟随当前行号且不恢复已清除的选区', async (t) => {
+  const source = await readFile(new URL('../node_modules/@xterm/xterm/src/browser/selection/SelectionModel.ts', import.meta.url), 'utf8')
+  const { SelectionModel } = loadCommonJs(source, () => ({}))
+  for (const [indent, trim] of [[2, 1], [23, 1], [23, 3]]) {
+    const term = new xterm.Terminal({ cols: 20, rows: 10 })
+    await new Promise((resolve) => term.write('first\r\nsecond\r\n' + ' '.repeat(indent) + 'project', resolve))
+    const model = new SelectionModel({ cols: 20 })
+    const document = new EventTarget()
+    const screen = new EventTarget()
+    const service = { _model: model, _selectLineAt() {
+      model.selectionStart = [0, 2]
+      model.selectionEnd = undefined
+      model.selectionStartLength = (Math.floor((indent + 6) / 20) + 1) * 20
+    } }
+    const binding = bindTerminalSelection({
+      element: { ownerDocument: document, querySelector: () => screen }, buffer: term.buffer, cols: 20,
+      _core: { _selectionService: service },
+      getSelectionPosition() {
+        const [x, y] = model.finalSelectionStart
+        const [endX, endY] = model.finalSelectionEnd
+        return { start: { x, y }, end: { x: endX, y: endY } }
+      },
+    })
+    t.after(() => { binding.dispose(); term.dispose() })
+    service._selectLineAt(2)
+    model.handleTrim(trim)
+    document.dispatchEvent(new Event('mousemove'))
+    assert.deepEqual([...model.selectionStart], [0, Math.max(0, 2 - trim)], `indent=${indent}, trim=${trim}`)
+    assert.equal(model.selectionStartLength, indent < 20 ? 20 : 40)
+    service._selectLineAt(2)
+    model.clearSelection()
+    document.dispatchEvent(new Event('mousemove'))
+    assert.equal(model.selectionStart, undefined)
+    assert.equal(model.selectionStartLength, 0)
+  }
+})
+
 test('三击按下时已收紧选区，拖动恢复原生锚点，松开与销毁释放适配', async (t) => {
   const f = selectionFixture(t)
-  await f.write('project  ')
+  await f.write('  project  ')
   f.service._selectLineAt(0)
+  assert.deepEqual(f.model.selectionStart, [2, 0])
   assert.equal(f.model.selectionStartLength, 7)
   f.event('mousemove')
+  assert.deepEqual(f.model.selectionStart, [0, 0])
   assert.equal(f.model.selectionStartLength, 20)
   f.service._selectLineAt(0)
   f.event('mouseup')
   f.event('mousemove')
+  assert.deepEqual(f.model.selectionStart, [2, 0])
   assert.equal(f.model.selectionStartLength, 7)
   f.service._selectLineAt(0)
   f.binding.dispose()
   assert.equal(f.service._selectLineAt, f.original)
   f.event('mousemove')
+  assert.deepEqual(f.model.selectionStart, [2, 0])
   assert.equal(f.model.selectionStartLength, 7)
   f.service._selectLineAt(0)
+  assert.deepEqual(f.model.selectionStart, [0, 0])
   assert.equal(f.model.selectionStartLength, 20)
 })
 
