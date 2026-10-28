@@ -18,6 +18,7 @@ defineProps<{ activities: Map<string, Activity> }>()
 const emit = defineEmits<{ worktree: [project: Project]; editProject: [project?: Project, groupId?: string]; editGroup: [group?: ProjectGroup]; deleteItem: [item: { kind: 'project' | 'group'; id: string; name: string }] }>()
 const search = ref('')
 const searchInput = ref<{ focus: () => void } | null>(null)
+const projectList = ref<HTMLElement | null>(null)
 const favoritesOnly = ref(false)
 const collapsed = reactive(new Set<string>())
 const sections = computed(() => [
@@ -172,7 +173,19 @@ async function drop(event: DragEvent, group: string, before?: string) {
     await store.run(() => projectApi.reorderProjects(ordered))
   }
 }
+function revealProject(id: string) {
+  const list = projectList.value
+  const row = Array.from(list?.querySelectorAll<HTMLElement>('.project-row') ?? []).find((element) => element.dataset.projectId === id)
+  if (!list || !row) return
+  const listRect = list.getBoundingClientRect()
+  const rowRect = row.getBoundingClientRect()
+  const top = listRect.top + list.clientTop
+  const bottom = top + list.clientHeight
+  if (rowRect.top < top) list.scrollTop += rowRect.top - top
+  else if (rowRect.bottom > bottom) list.scrollTop += rowRect.bottom - bottom
+}
 defineExpose({
+  revealProject,
   focusSearch: () => searchInput.value?.focus(),
   getNavigationProjects: () => sections.value.flatMap((group) => collapsed.has(group.id) ? [] : visibleProjects(group.id)),
 })
@@ -207,7 +220,7 @@ defineExpose({
             <NSwitch :value="store.settings?.show_hidden_projects ?? false" size="small" :disabled="!store.ready || store.busy" @update:value="setShowHidden" />
             {{ t('sidebar.showHiddenProjects') }}
           </label>
-          <div class="project-list">
+          <div ref="projectList" class="project-list">
             <section
               v-for="group in sections"
               :key="group.id"
@@ -243,6 +256,7 @@ defineExpose({
                   v-for="project in visibleProjects(group.id)"
                   :key="project.id"
                   class="project-row"
+                  :data-project-id="project.id"
                   @contextmenu.prevent.stop="openMenu($event, 'project', project.id)"
                   :class="{
                     selected: store.active?.id === project.id,

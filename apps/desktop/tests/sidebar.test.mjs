@@ -84,6 +84,21 @@ function sidebarFixture(activeId = 'visible', fail = false) {
   return { calls, store, evaluate: (code) => vm.runInContext(code, context) }
 }
 
+test('定位项目仅按超出列表可视区域的距离滚动', () => {
+  for (const [top, bottom, expected] of [[80, 130, 178], [70, 90, 168], [280, 330, 228], [320, 370, 268], [120, 170, 200], [102, 302, 200]]) {
+    const fixture = sidebarFixture()
+    const row = { dataset: { projectId: 'visible' }, getBoundingClientRect: () => ({ top, bottom }) }
+    const list = { scrollTop: 200, clientTop: 2, clientHeight: 200,
+      getBoundingClientRect: () => ({ top: 100 }), querySelectorAll: () => [row] }
+    fixture.store.list = list
+    fixture.evaluate('projectList.value = store.list; revealProject("visible")')
+    assert.equal(list.scrollTop, expected)
+    fixture.evaluate('revealProject("missing")')
+    assert.equal(list.scrollTop, expected)
+    fixture.evaluate('projectList.value = null; revealProject("visible")')
+  }
+})
+
 test('隐藏当前项目按筛选选择替代项目，成功后展开目标分组', async () => {
   const fixture = sidebarFixture()
   fixture.evaluate("collapsed.add('b')")

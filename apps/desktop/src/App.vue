@@ -153,7 +153,7 @@ const deleting = ref<{ kind: 'project' | 'group'; id: string; name: string } | n
 function editProject(project?: Project, groupId?: string) { editingProject.value = project ?? null; defaultGroupId.value = project ? '' : (groupId ?? ''); projectDialog.value = true }
 function editGroup(group?: ProjectGroup) { editingGroup.value = group ?? null; groupDialog.value = true }
 function confirmProjectChange(id: string) { return deck.value?.confirmProjectChange(id) ?? Promise.resolve(true) }
-function workspaceShortcut(event: KeyboardEvent) {
+async function workspaceShortcut(event: KeyboardEvent) {
   if (projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
   if (!command) return
@@ -167,8 +167,14 @@ function workspaceShortcut(event: KeyboardEvent) {
     sidebarWidth.value = clampSidebarWidth(sidebarWidth.value + (command === 'sidebarNarrow' ? -16 : 16))
     persistSidebarWidth()
   } else if (['projectPrevious', 'projectNext', 'projectUp', 'projectDown'].includes(command)) {
-    if (event.repeat || !store.projects.length) return
+    if (event.repeat || store.busy || !store.projects.length) return
     const vertical = command === 'projectUp' || command === 'projectDown'
+    if (vertical) {
+      setSidebarVisible(true)
+      sidebarView.value = 'projects'
+      await nextTick()
+      if (disposed || store.busy) return
+    }
     const projects = vertical
       ? sidebar.value?.getNavigationProjects() ?? [...store.groups.map((group) => group.id), ''].flatMap((id) => filterProjects(store.projects, store.settings?.show_hidden_projects ?? false).filter((project) => (project.groupId ?? '') === id))
       : filterProjects(store.projects, store.settings?.show_hidden_projects ?? false)
@@ -176,7 +182,15 @@ function workspaceShortcut(event: KeyboardEvent) {
     const index = projects.findIndex((project) => project.id === store.active?.id)
     const delta = command === 'projectPrevious' || command === 'projectUp' ? -1 : 1
     const project = projects[index < 0 ? (delta < 0 ? projects.length - 1 : 0) : (index + delta + projects.length) % projects.length]
-    if (project) void store.activate(project.id)
+    if (!project) return
+    if (!vertical) {
+      void store.activate(project.id)
+      return
+    }
+    if (await store.activate(project.id)) {
+      await nextTick()
+      if (!disposed && store.active?.id === project.id) sidebar.value?.revealProject(project.id)
+    }
   }
 }
 async function closeShortcut(event: KeyboardEvent) {

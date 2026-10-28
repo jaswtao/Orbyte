@@ -256,63 +256,117 @@ const handler = ast.statements.find((node) => ts.isFunctionDeclaration(node) && 
 const handlerJs = ts.transpileModule(handler.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
 function projectNavigation(visible) {
-  const selected = []
+  const selected = [], revealed = []
   // 原始数组顺序与分组显示顺序故意不同。
   const projects = [{ id: 'b', groupId: 'second' }, { id: 'u', groupId: null }, { id: 'a', groupId: 'first' }, { id: 'c', groupId: 'second' }]
-  const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => selected.push(id) }
-  const context = { matchShortcut, filterProjects, store, sidebar: { value: visible === undefined ? undefined : { getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
+  const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => { selected.push(id); return true } }
+  const context = { matchShortcut, filterProjects, store, nextTick, disposed: false, sidebarView: { value: 'projects' }, sidebarVisible: false, setSidebarVisible(value) { context.sidebarVisible = value }, sidebar: { value: visible === undefined ? undefined : { revealProject: (id) => revealed.push(id), getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
   for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(handlerJs, context)
-  return { store, selected, press(key, overrides = {}) { context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
+  return { store, selected, revealed, context, press(key, overrides = {}) { return context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
 }
 
-test('上下键按侧栏提供的可见顺序切换，跳过隐藏项目并首尾循环', () => {
+test('上下键按侧栏提供的可见顺序切换，跳过隐藏项目并首尾循环', async () => {
   const nav = projectNavigation(['a', 'c', 'u'])
-  nav.press('ArrowDown')
-  nav.press('ArrowUp')
+  await nav.press('ArrowDown')
+  await nav.press('ArrowUp')
   nav.store.active = { id: 'u' }
-  nav.press('ArrowDown')
+  await nav.press('ArrowDown')
   assert.deepEqual(nav.selected, ['c', 'u', 'a'])
 })
 
-test('侧栏未挂载时按分组顺序切换，未分组排最后', () => {
+test('侧栏未挂载时按分组顺序切换，未分组排最后', async () => {
   const nav = projectNavigation()
-  nav.press('ArrowDown')
-  nav.press('ArrowUp')
+  await nav.press('ArrowDown')
+  await nav.press('ArrowUp')
   assert.deepEqual(nav.selected, ['b', 'u'])
 })
 
-test('可见列表为空不切换，当前项目隐藏时下键从首项、上键从末项开始', () => {
+test('可见列表为空不切换，当前项目隐藏时下键从首项、上键从末项开始', async () => {
   const empty = projectNavigation([])
-  empty.press('ArrowDown')
+  await empty.press('ArrowDown')
   assert.deepEqual(empty.selected, [])
   const nav = projectNavigation(['c', 'u'])
-  nav.press('ArrowDown')
-  nav.press('ArrowUp')
+  await nav.press('ArrowDown')
+  await nav.press('ArrowUp')
   assert.deepEqual(nav.selected, ['c', 'u'])
 })
 
-test('左右键保留原始顺序，上下键忽略长按和额外修饰键', () => {
+test('左右键保留原始顺序，上下键忽略长按和额外修饰键', async () => {
   const nav = projectNavigation(['a', 'u'])
-  nav.press('ArrowLeft')
-  nav.press('ArrowRight')
-  nav.press('ArrowDown', { repeat: true })
-  nav.press('ArrowDown', { altKey: true })
+  await nav.press('ArrowLeft')
+  await nav.press('ArrowRight')
+  await nav.press('ArrowDown', { repeat: true })
+  await nav.press('ArrowDown', { altKey: true })
   assert.deepEqual(nav.selected, ['u', 'c'])
 })
 
-test('侧栏未挂载时所有项目切换快捷键遵守隐藏开关', () => {
+test('侧栏未挂载时所有项目切换快捷键遵守隐藏开关', async () => {
   const nav = projectNavigation()
   nav.store.projects.find((p) => p.id === 'b').hidden = true
   nav.store.projects.find((p) => p.id === 'c').hidden = true
-  nav.press('ArrowDown')
-  nav.press('ArrowRight')
+  await nav.press('ArrowDown')
+  await nav.press('ArrowRight')
   assert.deepEqual(nav.selected, ['u', 'u'])
   nav.store.settings = { show_hidden_projects: true }
-  nav.press('ArrowDown')
-  nav.press('ArrowRight')
+  await nav.press('ArrowDown')
+  await nav.press('ArrowRight')
   assert.deepEqual(nav.selected, ['u', 'u', 'b', 'c'])
+})
+
+test('上下切换先展示并恢复侧栏，再读取导航顺序，激活成功后定位', async () => {
+  const nav = projectNavigation(['a', 'c', 'u'])
+  const view = nav.context.sidebar.value
+  nav.context.sidebar.value = undefined
+  nav.context.sidebarView.value = 'files'
+  nav.context.nextTick = async () => {
+    assert.equal(nav.context.sidebarVisible, true)
+    assert.equal(nav.context.sidebarView.value, 'projects')
+    nav.context.sidebar.value = view
+  }
+  nav.store.activate = async (id) => {
+    nav.selected.push(id)
+    nav.store.active = nav.store.projects.find((project) => project.id === id)
+    assert.deepEqual(nav.revealed, [])
+    return true
+  }
+  await nav.press('ArrowDown')
+  assert.deepEqual(nav.selected, ['c'])
+  assert.deepEqual(nav.revealed, ['c'])
+})
+
+test('首尾循环后定位当前激活项，左右键保持侧栏状态', async () => {
+  const nav = projectNavigation(['a', 'c', 'u'])
+  nav.store.activate = async (id) => { nav.store.active = { id }; return true }
+  await nav.press('ArrowUp')
+  await nav.press('ArrowDown')
+  assert.deepEqual(nav.revealed, ['u', 'a'])
+  nav.context.sidebarVisible = false
+  nav.context.sidebarView.value = 'files'
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarVisible, false)
+  assert.equal(nav.context.sidebarView.value, 'files')
+  assert.deepEqual(nav.revealed, ['u', 'a'])
+})
+
+test('激活失败、忙碌或无候选时不定位，等待渲染时再次忙碌不激活', async () => {
+  const failed = projectNavigation(['a', 'c'])
+  failed.store.activate = async () => false
+  await failed.press('ArrowDown')
+  assert.deepEqual(failed.revealed, [])
+  const busy = projectNavigation(['a', 'c'])
+  busy.store.busy = true
+  await busy.press('ArrowDown')
+  assert.deepEqual(busy.selected, [])
+  assert.equal(busy.context.sidebarVisible, false)
+  busy.store.busy = false
+  busy.context.nextTick = async () => { busy.store.busy = true }
+  await busy.press('ArrowDown')
+  assert.deepEqual(busy.selected, [])
+  const empty = projectNavigation([])
+  await empty.press('ArrowDown')
+  assert.deepEqual(empty.revealed, [])
 })
 
 const clampJs = ts.transpileModule(
@@ -443,13 +497,13 @@ test('冲突检查包含未覆盖默认值，区分终端与编辑器，并拒�
   assert.equal(matchShortcut(custom, { terminalCopy: [custom], editorSave: [custom] }, ['editor']), 'editorSave')
 })
 
-test('项目自定义保存后读取最新组合，旧组合与组词事件不切换项目', () => {
+test('项目自定义保存后读取最新组合，旧组合与组词事件不切换项目', async () => {
   const nav = projectNavigation(['a', 'u'])
   nav.store.settings = { shortcuts: { projectDown: [key('KeyN', { altKey: true })] } }
-  nav.press('ArrowDown')
-  nav.press('n', { code: 'KeyN', ctrlKey: false, shiftKey: false, altKey: true, isComposing: true })
+  await nav.press('ArrowDown')
+  await nav.press('n', { code: 'KeyN', ctrlKey: false, shiftKey: false, altKey: true, isComposing: true })
   assert.deepEqual(nav.selected, [])
-  nav.press('n', { code: 'KeyN', ctrlKey: false, shiftKey: false, altKey: true })
+  await nav.press('n', { code: 'KeyN', ctrlKey: false, shiftKey: false, altKey: true })
   assert.deepEqual(nav.selected, ['u'])
 })
 
