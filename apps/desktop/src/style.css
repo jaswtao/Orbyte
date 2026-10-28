@@ -223,7 +223,6 @@ button:focus-visible, select:focus-visible {
   background: var(--selection);
   color: var(--accent);
   font-weight: 600;
-  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .sidebar-heading, .group-heading {
