@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-- Show the installed Orbyte version in Settings → About Orbyte and view bundled release highlights offline in Chinese or English.
-
 ## 0.3.0 — 2026-10-29
 
+- Show the installed Orbyte version in Settings → About Orbyte and view bundled release highlights offline in Chinese or English.
 - Add project hiding and a setting to show hidden projects; keep projects with recovered drafts visible.
 - Add separate file search modes: Ctrl+P respects ignore rules, while Ctrl+Shift+P includes ignored files. Preserve existing custom shortcuts during upgrades.
 - Add configurable workspace highlight border color and intensity, with preview and reset controls.

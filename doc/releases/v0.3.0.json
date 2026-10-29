@@ -3,6 +3,7 @@
   "date": "2026-10-29",
   "en": {
     "features": [
+      "View the installed version in Settings → About Orbyte and read bundled release highlights offline in Chinese or English.",
       "Hide projects from the sidebar and use the visibility toggle to show hidden projects. Projects with recovered editor drafts remain visible.",
       "Use Ctrl+P to search files with ignore rules, or Ctrl+Shift+P to include ignored files. Existing custom shortcuts are preserved during upgrades.",
       "Customize the workspace highlight border color and intensity, preview the result, or restore the theme default.",
@@ -16,6 +17,7 @@
   },
   "zh": {
     "features": [
+      "在设置 → 关于 Orbyte 中查看当前版本，并离线查看中英文更新说明。",
       "支持隐藏侧边栏项目，并通过显示开关查看隐藏项目；有恢复草稿的项目会保持可见。",
       "Ctrl+P 按忽略规则搜索文件，Ctrl+Shift+P 搜索时包含被忽略的文件；升级时保留已有自定义快捷键。",
       "支持自定义工作区高亮边框颜色和强度，可预览效果或恢复主题默认值。",
