@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-29
+
+- Add project hiding and a setting to show hidden projects; keep projects with recovered drafts visible.
+- Add separate file search modes: Ctrl+P respects ignore rules, while Ctrl+Shift+P includes ignored files. Preserve existing custom shortcuts during upgrades.
+- Add configurable workspace highlight border color and intensity, with preview and reset controls.
+- Arrange sidebar project filters in a wrapping row and reveal the active project during vertical shortcut navigation.
+- Restore terminal focus on window activation and initial load.
+- Trim trailing whitespace from terminal line selections and preserve drag anchors after scrollback trimming.
+- Restore terminal cursor blinking when reduced motion is enabled and remove the highlight border from active sidebar view buttons.
+- Native installation and desktop acceptance remain incomplete; see the [release notes](doc/releases/v0.3.0.md) for verification limits and known limitations.
+
 ## 0.2.0 — 2026-10-26
 
 - Persist local editor recovery drafts with revision-conditional cleanup, rename migration, startup discovery and editor restore/copy/discard actions.
