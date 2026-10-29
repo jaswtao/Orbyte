@@ -18,6 +18,13 @@ export const en = {
   'common.unknown': 'Unknown',
 
   'settings.title': 'Settings',
+  'settings.about': 'About Orbyte',
+  'settings.version': 'Current version',
+  'settings.releaseNotes': 'View changes in this version',
+  'release.title': 'What’s new',
+  'release.date': 'Released on {date}',
+  'release.features': 'New features and improvements',
+  'release.fixes': 'Fixes',
   'settings.language': 'Language',
   'settings.appearance': 'Appearance',
   'settings.theme': 'Theme',

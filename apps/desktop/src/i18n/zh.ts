@@ -20,6 +20,13 @@ export const zh: Record<MessageKey, string> = {
   'common.unknown': '未知',
 
   'settings.title': '设置',
+  'settings.about': '关于 Orbyte',
+  'settings.version': '当前版本',
+  'settings.releaseNotes': '查看本版本更新',
+  'release.title': '版本更新说明',
+  'release.date': '发布日期：{date}',
+  'release.features': '新增功能与改进',
+  'release.fixes': '问题修复',
   'settings.language': '语言',
   'settings.appearance': '外观',
   'settings.theme': '主题',

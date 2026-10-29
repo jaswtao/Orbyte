@@ -8,6 +8,7 @@ Author: jaswtao · Date: 2026-10-20
 
 - [ ] 从独立目录执行 `pnpm install --frozen-lockfile`。
 - [ ] `python scripts/check-release.py --tag v0.1.0`。
+- [ ] 维护目标版本的 `doc/releases/v<version>.json`，核对发布日期、中英文功能改进与修复摘要；应用会打包该文件供离线查看。允许某个分类为空，但每种语言至少保留一条更新内容。
 - [ ] `cargo +1.90.0 check --workspace --all-targets --locked` 验证最低 Rust 版本。
 - [ ] `pwsh scripts/release-check.ps1 -Gitleaks <gitleaks.exe>`。
 - [ ] 确认 RSA 审计豁免对应依赖未进入 Windows 实际构建；新漏洞和警告须重新评估，不盲目豁免。
@@ -22,6 +23,7 @@ Author: jaswtao · Date: 2026-10-20
 - [ ] 安装、首次启动、缺少 WebView2 时的引导。
 - [ ] PowerShell、CMD、已安装发行版的 WSL；中文和空格路径、中文输入与粘贴。
 - [ ] Tab 与分屏切换、窗口缩放、标题栏拖动和最大化、第二实例前置。
+- [ ] “设置 → 关于 Orbyte”显示安装版本；在断网、中英文、深浅主题下查看更新说明，验证长内容滚动、键盘关闭、设置草稿保留和焦点恢复。
 - [ ] 文件保存、外部修改冲突、未保存文件退出确认、回收站删除。
 - [ ] Shell/应用退出后的受管理子进程清理；保留 WSL 生命周期限制说明。
 - [ ] 安装版通知；真实 Codex / Claude Code 启动、退出与重启。

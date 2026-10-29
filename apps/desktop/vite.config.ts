@@ -1,10 +1,15 @@
 import { fileURLToPath, URL } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 const host = process.env.TAURI_DEV_HOST
+const { version } = JSON.parse(readFileSync(new URL('./src-tauri/tauri.conf.json', import.meta.url), 'utf8'))
+const releaseSummary = JSON.parse(readFileSync(new URL(`../../doc/releases/v${version}.json`, import.meta.url), 'utf8'))
+if (releaseSummary.version !== version) throw new Error('Release summary must match the application version.')
 
 export default defineConfig({
+  define: { __ORBYTE_RELEASE__: JSON.stringify(releaseSummary) },
   plugins: [vue()],
   clearScreen: false,
   resolve: {

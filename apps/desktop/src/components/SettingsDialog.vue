@@ -1,10 +1,12 @@
 <!-- Author: jaswtao · Date: 2026-10-13 -->
 <script setup lang="ts">
 import ShortcutSettingsDialog from './ShortcutSettingsDialog.vue'
+import ReleaseNotesDialog from './ReleaseNotesDialog.vue'
 import UiIcon from './UiIcon.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NColorPicker, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect, NSlider, NSwitch, NTooltip, useOsTheme } from 'naive-ui'
 import { appearanceVariables, palettes, resolveAppearance } from '../services/appearance'
+import { releaseSummary } from '../services/release'
 import { projectApi, type Settings } from '../services/projectApi'
 import { terminalApi, type ShellInfo } from '../services/terminalApi'
 import { useProjects } from '../stores/projects'
@@ -28,6 +30,8 @@ function resetWorkspaceBorder() {
 const error = ref('')
 const saving = ref(false)
 const shortcutsDialog = ref(false)
+const releaseDialog = ref(false)
+const childDialogOpen = computed(() => shortcutsDialog.value || releaseDialog.value)
 const shells = ref<ShellInfo[]>([])
 const shellHelpHovered = ref(false)
 const shellHelpFocused = ref(false)
@@ -38,6 +42,7 @@ const themeOptions = computed(() => [
   { label: t('settings.themeLight'), value: 'light' },
 ])
 watch(() => props.show, async (show) => {
+  if (!show) releaseDialog.value = false
   if (!show || !store.settings) return
   Object.assign(draft, store.settings)
   error.value = ''
@@ -51,7 +56,7 @@ async function chooseDirectory() {
   } catch (reason) { error.value = String(reason) }
 }
 async function save() {
-  if (saving.value || store.busy || shortcutsDialog.value || !store.settings) return
+  if (saving.value || store.busy || childDialogOpen.value || !store.settings) return
   saving.value = true
   error.value = ''
   try {
@@ -66,8 +71,8 @@ async function save() {
 }
 </script>
 <template>
-  <NModal :show="show" preset="card" :title="t('settings.title')" class="form-modal settings-modal" :mask-closable="!saving && !shortcutsDialog" :closable="!saving && !shortcutsDialog" :close-on-esc="!saving && !shortcutsDialog" @update:show="(value) => { if (!saving && !shortcutsDialog) emit('update:show', value) }">
-    <NForm class="settings-form" label-placement="left" :label-width="190" label-align="left" :show-feedback="false" :disabled="saving || shortcutsDialog" @submit.prevent="save">
+  <NModal :show="show" preset="card" :title="t('settings.title')" class="form-modal settings-modal" :mask-closable="!saving && !childDialogOpen" :closable="!saving && !childDialogOpen" :close-on-esc="!saving && !childDialogOpen" @update:show="(value) => { if (!saving && !childDialogOpen) emit('update:show', value) }">
+    <NForm class="settings-form" label-placement="left" :label-width="190" label-align="left" :show-feedback="false" :disabled="saving || childDialogOpen" @submit.prevent="save">
       <div class="settings-scroll"><fieldset class="settings-section"><legend>{{ t('settings.language') }}</legend>
       <NFormItem :label="t('settings.language')"><NSelect v-model:value="draft.language" :options="[{ label: 'English', value: 'en' }, { label: '中文', value: 'zh' }]" /></NFormItem>
       </fieldset><fieldset class="settings-section"><legend>{{ t('settings.appearance') }}</legend>
@@ -104,11 +109,16 @@ async function save() {
       <NFormItem :label="t('settings.confirmClose')"><div><NSwitch v-model:value="draft.confirm_close_terminal" /><div>{{ t('settings.confirmCloseHint') }}</div></div></NFormItem>
       <NFormItem :label="t('settings.defaultShell')"><NSelect v-model:value="draft.default_shell" :options="shellOptions" /></NFormItem>
       <NFormItem :label="t('settings.defaultDirectory')"><div class="path-picker"><NInput v-model:value="draft.default_directory" clearable :placeholder="t('settings.defaultDirectoryPlaceholder')" /><NButton @click="chooseDirectory">{{ t('common.browse') }}</NButton></div></NFormItem>
-      </fieldset><fieldset class="settings-section"><legend>{{ t('settings.shortcuts') }}</legend><NButton :disabled="saving || store.busy || shortcutsDialog" @click="shortcutsDialog = true">{{ t('settings.shortcutSettings') }}</NButton></fieldset><NAlert v-if="error" type="error">{{ error }}</NAlert></div>
-      <div class="dialog-actions"><NButton :disabled="saving || shortcutsDialog" @click="emit('update:show', false)">{{ t('common.cancel') }}</NButton><NButton attr-type="submit" type="primary" :loading="saving" :disabled="shortcutsDialog || !draft.font_family.trim() || draft.font_size == null || draft.scrollback == null || draft.notify_command_seconds == null || store.busy">{{ t('common.save') }}</NButton></div>
+      </fieldset><fieldset class="settings-section"><legend>{{ t('settings.shortcuts') }}</legend><NButton :disabled="saving || store.busy || childDialogOpen" @click="shortcutsDialog = true">{{ t('settings.shortcutSettings') }}</NButton></fieldset>
+      <fieldset class="settings-section"><legend>{{ t('settings.about') }}</legend>
+        <NFormItem :label="t('settings.version')"><span>Orbyte v{{ releaseSummary.version }}</span></NFormItem>
+        <NButton :disabled="saving || childDialogOpen" @click="releaseDialog = true">{{ t('settings.releaseNotes') }}</NButton>
+      </fieldset><NAlert v-if="error" type="error">{{ error }}</NAlert></div>
+      <div class="dialog-actions"><NButton :disabled="saving || childDialogOpen" @click="emit('update:show', false)">{{ t('common.cancel') }}</NButton><NButton attr-type="submit" type="primary" :loading="saving" :disabled="childDialogOpen || !draft.font_family.trim() || draft.font_size == null || draft.scrollback == null || draft.notify_command_seconds == null || store.busy">{{ t('common.save') }}</NButton></div>
     </NForm>
   </NModal>
   <ShortcutSettingsDialog v-model:show="shortcutsDialog" />
+  <ReleaseNotesDialog v-model:show="releaseDialog" />
 </template>
 <style scoped>
 .border-intensity { display: flex; align-items: center; gap: 12px; width: 100%; }

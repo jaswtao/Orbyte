@@ -3,9 +3,33 @@ import argparse
 import json
 import re
 import tomllib
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def check_release_summary(version):
+    path = ROOT / "doc" / "releases" / f"v{version}.json"
+    if not path.is_file():
+        raise ValueError(f"Missing bundled release summary: {path.name}")
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    if summary.get("version") != version:
+        raise ValueError("Release summary must match the application version.")
+    released = summary.get("date", "")
+    if not isinstance(released, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", released):
+        raise ValueError("Release summary date must use YYYY-MM-DD.")
+    date.fromisoformat(released)
+    for locale in ("en", "zh"):
+        notes = summary.get(locale)
+        if not isinstance(notes, dict):
+            raise ValueError(f"Release summary requires {locale} notes.")
+        for section in ("features", "fixes"):
+            items = notes.get(section)
+            if not isinstance(items, list) or any(not isinstance(item, str) or not item.strip() for item in items):
+                raise ValueError(f"Release summary {locale}.{section} must contain non-empty strings.")
+        if not notes["features"] and not notes["fixes"]:
+            raise ValueError(f"Release summary requires content for {locale}.")
 
 
 def check(tag=None):
@@ -20,6 +44,7 @@ def check(tag=None):
         raise ValueError("Root, frontend, Rust and Tauri versions must agree.")
     if tag and tag != f"v{version}":
         raise ValueError(f"Tag must be v{version}, received {tag}.")
+    check_release_summary(version)
     license_text = (ROOT / "LICENSE").read_text(encoding="utf-8")
     if "Copyright (c) 2026 jaswtao" not in license_text:
         raise ValueError("Unexpected copyright holder.")

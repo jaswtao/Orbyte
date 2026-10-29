@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Show the installed Orbyte version in Settings → About Orbyte and view bundled release highlights offline in Chinese or English.
+
 ## 0.3.0 — 2026-10-29
 
 - Add project hiding and a setting to show hidden projects; keep projects with recovered drafts visible.
