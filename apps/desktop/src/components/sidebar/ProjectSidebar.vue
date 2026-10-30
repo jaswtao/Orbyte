@@ -1,6 +1,6 @@
 <!-- Author: jaswtao · Date: 2026-10-14 -->
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { NButton, NInput, NSwitch } from 'naive-ui'
 import { projectApi, type Project, type ProjectGroup } from '../../services/projectApi'
 import { useProjects } from '../../stores/projects'
@@ -173,17 +173,60 @@ async function drop(event: DragEvent, group: string, before?: string) {
     await store.run(() => projectApi.reorderProjects(ordered))
   }
 }
-function revealProject(id: string) {
-  const list = projectList.value
-  const row = Array.from(list?.querySelectorAll<HTMLElement>('.project-row') ?? []).find((element) => element.dataset.projectId === id)
-  if (!list || !row) return
+const revealedProjectId = ref<string | null>(null)
+let revealObserver: ResizeObserver | undefined
+let revealFrame: number | undefined
+let revealScrollTop: number | undefined
+function stopRevealingProject() {
+  revealObserver?.disconnect()
+  revealObserver = undefined
+  if (revealFrame !== undefined) cancelAnimationFrame(revealFrame)
+  revealFrame = undefined
+  revealScrollTop = undefined
+  revealedProjectId.value = null
+}
+function onProjectListScroll() {
+  if (revealObserver && projectList.value?.scrollTop !== revealScrollTop) stopRevealingProject()
+}
+function scrollProjectIntoView(list: HTMLElement, row: HTMLElement) {
   const listRect = list.getBoundingClientRect()
   const rowRect = row.getBoundingClientRect()
   const top = listRect.top + list.clientTop
   const bottom = top + list.clientHeight
-  if (rowRect.top < top) list.scrollTop += rowRect.top - top
+  if (rowRect.top < top || rowRect.height > list.clientHeight) list.scrollTop += rowRect.top - top
   else if (rowRect.bottom > bottom) list.scrollTop += rowRect.bottom - bottom
+  // Scroll events from our own adjustments must keep resize tracking active.
+  revealScrollTop = list.scrollTop
 }
+function revealProject(id: string) {
+  stopRevealingProject()
+  const list = projectList.value
+  const row = Array.from(list?.querySelectorAll<HTMLElement>('.project-row') ?? []).find((element) => element.dataset.projectId === id)
+  if (!list || !row || !row.getClientRects().length || !list.clientHeight) return
+  revealedProjectId.value = id
+  scrollProjectIntoView(list, row)
+  // Git information can increase the row height after the initial reveal.
+  const observer = new ResizeObserver(() => {
+    if (revealObserver !== observer || revealFrame !== undefined) return
+    revealFrame = requestAnimationFrame(() => {
+      revealFrame = undefined
+      if (list.scrollTop !== revealScrollTop || store.active?.id !== id || !list.contains(row) || !row.getClientRects().length || !list.clientHeight) {
+        stopRevealingProject()
+        return
+      }
+      scrollProjectIntoView(list, row)
+    })
+  })
+  revealObserver = observer
+  observer.observe(list)
+  observer.observe(row, { box: 'border-box' })
+}
+watch(() => {
+  const id = revealedProjectId.value
+  const project = filteredProjects.value.find((project) => project.id === id)
+  return !!id && (store.active?.id !== id || !project || collapsed.has(project.groupId ?? ''))
+}, (invalid) => { if (invalid) stopRevealingProject() }, { flush: 'post' })
+onBeforeUnmount(stopRevealingProject)
 defineExpose({
   revealProject,
   focusSearch: () => searchInput.value?.focus(),
@@ -222,7 +265,7 @@ defineExpose({
               {{ t('sidebar.showHiddenProjects') }}
             </label>
           </div>
-          <div ref="projectList" class="project-list">
+          <div ref="projectList" class="project-list" @scroll.passive="onProjectListScroll">
             <section
               v-for="group in sections"
               :key="group.id"

@@ -187,6 +187,7 @@ pub fn run() {
             commands::drafts::delete_editor_draft,
             commands::drafts::rename_editor_drafts,
             commands::files::list_directory,
+            commands::files::reveal_path,
             commands::files::read_file,
             commands::files::write_file,
             commands::files::create_file,

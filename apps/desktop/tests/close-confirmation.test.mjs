@@ -8,7 +8,7 @@ import ts from 'typescript'
 const source = await readFile(new URL('../src/components/workspace/WorkspaceView.vue', import.meta.url), 'utf8')
 const script = source.split('<script setup lang="ts">')[1].split('</script>')[0]
 const ast = ts.createSourceFile('WorkspaceView.ts', script, ts.ScriptTarget.Latest, true)
-const names = new Set(['confirmIfRunning', 'closePane', 'closeTab', 'stop', 'confirmAction', 'reconcile'])
+const names = new Set(['confirmIfRunning', 'closePane', 'closeTab', 'middleTabDown', 'middleTabClick', 'stop', 'confirmAction', 'reconcile'])
 const body = ast.statements.filter((node) => ts.isFunctionDeclaration(node) && names.has(node.name?.text)).map((node) => node.getText(ast)).join('\n')
 const compiled = ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 
@@ -40,7 +40,7 @@ function fixture(enabled, state = 'running', dirty = false, runningTasks = false
   const confirmation = { value: null }
   const busy = { value: false }
   const context = vm.createContext({
-    props, confirmation, busy, disposed: false, confirmSaving: { value: false },
+    props, confirmation, busy, disposed: false, confirmSaving: { value: false }, tabMenu: { value: null },
     leaves: (root) => root,
     closeIds: async (ids) => { closed.push(...ids) },
     perform: async (action) => { await action() },
@@ -54,6 +54,50 @@ function fixture(enabled, state = 'running', dirty = false, runningTasks = false
   vm.runInContext(compiled, context)
   return { props, confirmation, busy, closed, stopped, discarded, errors, run: (code) => vm.runInContext(code, context) }
 }
+
+test('Middle button closes the clicked background tab once without activating it', async () => {
+  const f = fixture(false, 'exited')
+  f.run(`var event = { button: 1, prevented: 0, stopped: 0, preventDefault() { this.prevented++ }, stopPropagation() { this.stopped++ } }`)
+  f.run('middleTabDown(event)')
+  assert.deepEqual(f.closed, [])
+  await f.run("middleTabClick(event, { title: 'Background', root: [{ type: 'editor', id: 'background' }] })")
+  assert.deepEqual(f.closed, ['background'])
+  assert.equal(f.run('event.prevented'), 2)
+  assert.equal(f.run('event.stopped'), 1)
+  for (const button of [0, 2]) {
+    f.run(`event.button = ${button}; middleTabDown(event)`)
+    await f.run("middleTabClick(event, { title: 'Other', root: [{ type: 'editor', id: 'other' }] })")
+  }
+  assert.deepEqual(f.closed, ['background'])
+  assert.equal(f.run('event.prevented'), 2)
+  assert.match(source, /class="workspace-tab"[^\n]*@mousedown="middleTabDown" @auxclick="middleTabClick\(\$event, tab\)"/)
+})
+
+test('Middle button preserves mixed-tab save/discard confirmation and ignores busy or pending closes', async () => {
+  const tab = "{ title: 'Mixed', root: [{ type: 'terminal', terminalConfigId: 'terminal' }, { type: 'editor', id: 'file' }] }"
+  for (const save of [true, false]) {
+    const f = fixture(true, 'running', true)
+    await f.run(`middleTabClick({ button: 1, preventDefault() {}, stopPropagation() {} }, ${tab})`)
+    assert.deepEqual(Array.from(f.confirmation.value.dirtyIds), ['file'])
+    const confirmation = f.confirmation.value
+    await f.run(`middleTabClick({ button: 1, preventDefault() {}, stopPropagation() {} }, ${tab})`)
+    assert.equal(f.confirmation.value, confirmation)
+    assert.deepEqual(f.closed, [])
+    f.confirmation.value = null
+    f.busy.value = true
+    await f.run(`middleTabClick({ button: 1, preventDefault() {}, stopPropagation() {} }, ${tab})`)
+    assert.equal(f.confirmation.value, null)
+    f.busy.value = false
+    await f.run(`middleTabClick({ button: 1, preventDefault() {}, stopPropagation() {} }, ${tab})`)
+    await f.run(`confirmAction(${save})`)
+    assert.deepEqual(f.closed, ['terminal', 'file'])
+    assert.deepEqual(f.discarded, save ? [] : ['file'])
+  }
+  const terminal = fixture(true)
+  await terminal.run("middleTabClick({ button: 1, preventDefault() {}, stopPropagation() {} }, { title: 'Terminal', root: [{ type: 'terminal', terminalConfigId: 'terminal' }] })")
+  assert.ok(terminal.confirmation.value)
+  assert.deepEqual(terminal.closed, [])
+})
 
 test('开关控制页签和窗格，启动中和运行中的终端都遵循设置', async () => {
   for (const enabled of [true, false]) for (const state of ['starting', 'running', 'exited']) {

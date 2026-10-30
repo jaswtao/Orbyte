@@ -9,6 +9,7 @@ export interface DirectoryEntry { name: string; path: string; isDirectory: boole
 export type FileChange = { paths: string[] } | { rescan: true }
 export const fileError = (reason: unknown): FileError => typeof reason === 'object' && reason !== null && 'kind' in reason ? reason as FileError : { kind: 'message', message: String(reason) }
 export const fileApi = {
+  reveal: (projectId: string, path: string) => invoke<void>('reveal_path', { projectId, path }),
   drafts: () => invoke<EditorDraft[]>('list_editor_drafts'),
   putDraft: (draft: EditorDraft) => invoke<void>('put_editor_draft', { draft }),
   deleteDraft: (projectId: string, path: string, revision: string) => invoke<void>('delete_editor_draft', { projectId, path, revision }),

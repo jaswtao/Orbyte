@@ -4,7 +4,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
-import { computed, reactive, ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { loadService } from './load-service.mjs'
 const { buildMenuOptions, setLocale } = await loadService('sidebar/menu')
 const { dragPayload, parseDragPayload, reorderGroupIds, reorderProjectEntries } = await loadService('sidebar/reorder')
@@ -63,15 +63,28 @@ const sidebarJs = ts.transpileModule(sidebarScript, { compilerOptions: { target:
 
 function sidebarFixture(activeId = 'visible', fail = false) {
   const calls = []
+  const observers = [], frames = new Map(), cleanup = []
+  let frameId = 0
   const projects = structuredClone(visibilityProjects)
-  const store = {
+  const store = reactive({
     projects, groups: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }],
     active: projects.find((p) => p.id === activeId), settings: { show_hidden_projects: true },
     busy: false, ready: true,
     async run(action) { try { await action(); return true } catch { return false } },
-  }
+  })
   const context = {
     computed, reactive, ref, t: (key) => key, filterProjects, firstVisibleProject,
+    watch: (...args) => { const stop = watch(...args); cleanup.push(stop); return stop },
+    onBeforeUnmount: (fn) => cleanup.push(fn),
+    ResizeObserver: class {
+      targets = []
+      disconnected = false
+      constructor(callback) { this.notify = callback; observers.push(this) }
+      observe(target) { this.targets.push(target) }
+      disconnect() { this.disconnected = true }
+    },
+    requestAnimationFrame: (fn) => { frames.set(++frameId, fn); return frameId },
+    cancelAnimationFrame: (id) => frames.delete(id),
     useProjects: () => store, useGit: () => ({ available: false }),
     defineProps() {}, defineEmits: () => () => {}, defineExpose() {},
     projectApi: {
@@ -81,13 +94,15 @@ function sidebarFixture(activeId = 'visible', fail = false) {
   }
   vm.createContext(context)
   vm.runInContext(sidebarJs, context)
-  return { calls, store, evaluate: (code) => vm.runInContext(code, context) }
+  return { calls, store, observers, frames, unmount: () => cleanup.forEach((fn) => fn()),
+    flushFrames() { const pending = [...frames.values()]; frames.clear(); pending.forEach((fn) => fn()) },
+    evaluate: (code) => vm.runInContext(code, context) }
 }
 
 test('定位项目仅按超出列表可视区域的距离滚动', () => {
   for (const [top, bottom, expected] of [[80, 130, 178], [70, 90, 168], [280, 330, 228], [320, 370, 268], [120, 170, 200], [102, 302, 200]]) {
     const fixture = sidebarFixture()
-    const row = { dataset: { projectId: 'visible' }, getBoundingClientRect: () => ({ top, bottom }) }
+    const row = { dataset: { projectId: 'visible' }, getClientRects: () => [1], getBoundingClientRect: () => ({ top, bottom, height: bottom - top }) }
     const list = { scrollTop: 200, clientTop: 2, clientHeight: 200,
       getBoundingClientRect: () => ({ top: 100 }), querySelectorAll: () => [row] }
     fixture.store.list = list
@@ -97,6 +112,128 @@ test('定位项目仅按超出列表可视区域的距离滚动', () => {
     assert.equal(list.scrollTop, expected)
     fixture.evaluate('projectList.value = null; revealProject("visible")')
   }
+})
+
+function revealFixture(t) {
+  const fixture = sidebarFixture()
+  t.after(fixture.unmount)
+  const rows = ['visible', 'other'].map((id, index) => ({
+    dataset: { projectId: id }, top: 250 + index * 60, height: 50, shown: true,
+    getClientRects() { return this.shown ? [1] : [] },
+    getBoundingClientRect() { const top = this.top - list.scrollTop; return { top, bottom: top + this.height, height: this.height } },
+  }))
+  const list = { scrollTop: 0, clientTop: 0, clientHeight: 200,
+    getBoundingClientRect: () => ({ top: 100 }), querySelectorAll: () => rows, contains: (row) => rows.includes(row) }
+  fixture.store.list = list
+  fixture.evaluate('projectList.value = store.list; revealProject("visible")')
+  return { ...fixture, rows, list }
+}
+
+test('Selected project stays fully visible when async Git information increases its height', (t) => {
+  const fixture = revealFixture(t)
+  const { rows, list, observers, frames } = fixture
+  assert.equal(list.scrollTop, 0)
+  rows[0].height += 20
+  observers[0].notify()
+  observers[0].notify()
+  assert.equal(frames.size, 1)
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 20)
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 20)
+  list.clientHeight -= 30
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 50)
+  assert.equal(rows[0].getBoundingClientRect().bottom, 100 + list.clientHeight)
+})
+
+for (const pendingResize of [false, true]) {
+  test(`Manual scrolling stops reveal tracking with pending resize: ${pendingResize}`, (t) => {
+    const fixture = revealFixture(t)
+    const { rows, list, observers, frames } = fixture
+    if (pendingResize) observers[0].notify()
+    list.scrollTop = 200
+    if (!pendingResize) fixture.evaluate('onProjectListScroll()')
+    rows[0].height += 20
+    list.clientHeight -= 30
+    observers[0].notify()
+    fixture.flushFrames()
+    assert.equal(list.scrollTop, 200)
+    assert.equal(observers[0].disconnected, true)
+    assert.equal(frames.size, 0)
+    fixture.evaluate('revealProject("visible")')
+    assert.equal(list.scrollTop, 150)
+    assert.equal(observers.at(-1).disconnected, false)
+  })
+}
+
+test('Programmatic reveal scroll events preserve tracking for later Git updates', (t) => {
+  const fixture = revealFixture(t)
+  const { rows, list, observers } = fixture
+  rows[0].height += 20
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 20)
+  fixture.evaluate('onProjectListScroll()')
+  assert.equal(observers[0].disconnected, false)
+  rows[0].height += 20
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 40)
+})
+
+test('Switching targets cancels old callbacks and reveals rows above or below the viewport', async (t) => {
+  const fixture = revealFixture(t)
+  const { list, observers, frames } = fixture
+  observers[0].notify()
+  fixture.store.active = fixture.store.projects.find((project) => project.id === 'other')
+  fixture.evaluate('revealProject("other")')
+  await nextTick()
+  assert.equal(observers[0].disconnected, true)
+  assert.equal(frames.size, 0)
+  assert.equal(list.scrollTop, 60)
+  observers[0].notify()
+  assert.equal(frames.size, 0)
+  fixture.store.active = fixture.store.projects.find((project) => project.id === 'visible')
+  fixture.evaluate('revealProject("visible")')
+  fixture.rows[0].top = 150
+  observers.at(-1).notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 50)
+})
+
+for (const reason of ['active', 'filter', 'collapse', 'unmount']) {
+  test(`Reveal tracking is cleaned up after ${reason}`, async (t) => {
+    const fixture = revealFixture(t)
+    fixture.observers[0].notify()
+    if (reason === 'active') fixture.store.active = fixture.store.projects[0]
+    else if (reason === 'filter') fixture.evaluate('search.value = "missing"')
+    else if (reason === 'collapse') fixture.evaluate('collapsed.add("a")')
+    else fixture.unmount()
+    await nextTick()
+    assert.equal(fixture.observers[0].disconnected, true)
+    assert.equal(fixture.frames.size, 0)
+    fixture.observers[0].notify()
+    assert.equal(fixture.frames.size, 0)
+  })
+}
+
+test('Oversized rows align at the top without oscillation; hidden rows stop tracking', (t) => {
+  const fixture = revealFixture(t)
+  const { rows, list, observers } = fixture
+  rows[0].height = 250
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 150)
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(list.scrollTop, 150)
+  rows[0].shown = false
+  observers[0].notify()
+  fixture.flushFrames()
+  assert.equal(observers[0].disconnected, true)
 })
 
 test('隐藏当前项目按筛选选择替代项目，成功后展开目标分组', async () => {

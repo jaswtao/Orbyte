@@ -317,6 +317,16 @@ function closeTab(tab: WorkspaceTab) {
   const ids = leaves(tab.root).map((leaf) => leaf.type === 'terminal' ? leaf.terminalConfigId : leaf.id)
   return confirmIfRunning(ids, t('workspace.closeTab', { title: tab.title }), () => closeIds(ids, tab), props.settings.confirm_close_terminal)
 }
+function middleTabDown(event: MouseEvent) {
+  if (event.button === 1) event.preventDefault()
+}
+function middleTabClick(event: MouseEvent, tab: WorkspaceTab) {
+  if (event.button !== 1) return
+  event.preventDefault()
+  event.stopPropagation()
+  tabMenu.value = null
+  return closeTab(tab)
+}
 function stop(id: string) {
   confirmIfRunning([id], t('workspace.stopTerminal'), async () => {
     const entry = props.registry.byConfig.get(id)
@@ -495,7 +505,7 @@ onBeforeUnmount(() => {
     </div>
     <Teleport v-if="active" :to="tabsTarget">
     <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
-      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" :draggable="!busy" @dragstart="draggingTab = tab.id" @dragend="draggingTab = null" @dragover.prevent @drop.prevent="dropTab(tab.id)" @contextmenu.prevent.stop="openTabMenu($event, tab)">
+      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" :draggable="!busy" @mousedown="middleTabDown" @auxclick="middleTabClick($event, tab)" @dragstart="draggingTab = tab.id" @dragend="draggingTab = null" @dragover.prevent @drop.prevent="dropTab(tab.id)" @contextmenu.prevent.stop="openTabMenu($event, tab)">
         <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="rename = { id: tab.id, title: tab.title }"><span v-if="tabActivity(tab)" class="activity-dot" :class="tabActivity(tab)" :title="tabActivity(tab) === 'failed' ? t('workspace.activityFailed') : t('workspace.activityUnread')" />{{ tab.title }}{{ leaves(tab.root).some((leaf) => leaf.type === 'editor' && editors.entries.get(leaf.id)?.document.dirty) ? ' ●' : '' }}</button>
         <button :disabled="busy" :aria-label="t('workspace.closeTabButton', { title: tab.title })" @click="closeTab(tab)">×</button>
       </div>

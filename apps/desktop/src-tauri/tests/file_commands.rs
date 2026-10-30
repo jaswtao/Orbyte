@@ -39,6 +39,15 @@ async fn file_commands_use_project_root_reject_escape_and_track_unsaved_count() 
             .await
             .is_err()
     );
+    for (project, path) in [
+        (id.clone(), "../escape"),
+        (id.clone(), "missing-file.txt"),
+        ("missing-project".into(), ""),
+    ] {
+        assert!(reveal_path(app.state(), app.state(), project, path.into())
+            .await
+            .is_err());
+    }
     assert!(read_file(
         app.state(),
         app.state(),

@@ -4,6 +4,7 @@
 //! Date: 2026-10-09
 
 pub mod shell;
+pub mod file_manager;
 pub mod shell_integration;
 pub mod launch;
 pub mod path;

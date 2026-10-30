@@ -47,6 +47,21 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| FileError::from(e.to_string()))?
 }
 #[tauri::command]
+pub async fn reveal_path(
+    storage: State<'_, StorageState>,
+    runtime: State<'_, AppState>,
+    project_id: String,
+    path: String,
+) -> FileResult<()> {
+    let root = locked_root(&storage, &runtime, &project_id).await?;
+    blocking(move || {
+        let target = orbyte_files::path_guard::resolve(&root, &path, true)?;
+        orbyte_platform::file_manager::open(&target)?;
+        Ok(())
+    })
+    .await
+}
+#[tauri::command]
 pub async fn list_directory(
     storage: State<'_, StorageState>,
     runtime: State<'_, AppState>,

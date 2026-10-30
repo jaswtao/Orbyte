@@ -17,6 +17,7 @@
     "core:window:allow-close",
     "allow-resolve-close-request",
     "allow-list-directory",
+    "allow-reveal-path",
     "allow-read-file",
     "allow-write-file",
     "allow-create-file",

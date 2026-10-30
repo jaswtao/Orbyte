@@ -1,7 +1,7 @@
 <!-- Author: jaswtao · Date: 2026-10-13 -->
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { NButton, NInput, NModal } from 'naive-ui'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { NButton, NDropdown, NInput, NModal } from 'naive-ui'
 import { fileApi, fileError, type DirectoryEntry, type FileChange } from '../../services/fileApi'
 import { useGit } from '../../stores/git'
 import type { GitKind } from '../../services/gitApi'
@@ -39,6 +39,28 @@ const directories = reactive(new Map<string, { entries: DirectoryEntry[]; trunca
 const expanded = reactive(new Set(['']))
 const selected = ref<DirectoryEntry | null>(null)
 const menu = ref(false)
+const menuPosition = ref({ x: 0, y: 0 })
+const menuOptions = computed(() => [
+  { key: 'reveal', label: t('files.openInExplorer'), disabled: props.disabled || (selected.value !== null && !selected.value.accessible) },
+  { key: 'rename', label: t('files.rename'), disabled: props.disabled || !selected.value?.accessible },
+  { key: 'delete', label: t('files.trash'), disabled: props.disabled || !selected.value?.accessible },
+])
+function openMenu(event: MouseEvent, entry: DirectoryEntry | null = null) {
+  if (props.disabled) return
+  selected.value = entry
+  menuPosition.value = { x: event.clientX, y: event.clientY }
+  menu.value = true
+}
+async function selectMenu(key: string) {
+  menu.value = false
+  if (props.disabled) return
+  if (key === 'reveal') {
+    if (selected.value && !selected.value.accessible) return
+    try { await fileApi.reveal(props.projectId, selected.value?.path ?? '') }
+    catch (reason) { emit('error', fileError(reason).message) }
+  } else if ((key === 'rename' || key === 'delete') && selected.value?.accessible) action(key)
+}
+function escapeMenu(event: KeyboardEvent) { if (event.key === 'Escape') menu.value = false }
 const dialog = ref<{ operation: 'file' | 'directory' | 'rename' | 'delete'; path: string; original: string } | null>(null)
 const busy = ref(false)
 const rows = computed(() => {
@@ -91,14 +113,16 @@ watch(() => props.change, (change) => {
   const affected = Array.from(expanded).filter((directory) => change.paths.some((path) => !path || path.slice(0, path.lastIndexOf('/') < 0 ? 0 : path.lastIndexOf('/')).toLowerCase() === directory.toLowerCase() || directory.toLowerCase() === path.toLowerCase() || directory.toLowerCase().startsWith(`${path.toLowerCase()}/`)))
   void Promise.all(affected.map(load))
 })
-onMounted(() => { void load('') })
+watch(() => props.disabled, (disabled) => { if (disabled) menu.value = false })
+onMounted(() => { void load(''); document.addEventListener('keydown', escapeMenu) })
+onBeforeUnmount(() => document.removeEventListener('keydown', escapeMenu))
 </script>
 <template>
-  <div class="file-tree" @contextmenu.prevent="menu = true">
+  <div class="file-tree" @contextmenu.prevent="openMenu($event)" @scroll.capture="menu = false">
     <div class="file-actions"><NButton size="tiny" :disabled="disabled" @click="action('file')">{{ t('files.newFile') }}</NButton><NButton size="tiny" :disabled="disabled" @click="action('directory')">{{ t('files.newDirectory') }}</NButton><NButton size="tiny" @click="refresh">{{ t('files.refresh') }}</NButton></div>
     <p class="sidebar-tip">{{ t('files.hint') }}</p>
-    <div v-if="menu" class="file-actions"><NButton size="tiny" :disabled="!selected?.accessible" @click="action('rename')">{{ t('files.rename') }}</NButton><NButton size="tiny" :disabled="!selected?.accessible" @click="action('delete')">{{ t('files.trash') }}</NButton><NButton size="tiny" @click="menu = false">{{ t('common.cancel') }}</NButton></div>
-    <div class="file-rows"><button v-for="entry in rows" :key="entry.path" :style="{ paddingLeft: `${8 + entry.depth * 16}px` }" :class="[{ selected: selected?.path === entry.path }, gitClass(entry)]" :title="entry.accessible ? entry.path : t('files.inaccessible')" @click="toggle(entry)" @contextmenu.prevent.stop="selected = entry; menu = true">{{ entry.isDirectory ? expanded.has(entry.path) ? '▾' : '▸' : '·' }} {{ entry.name }}{{ !entry.accessible && !entry.truncated ? ' 🔒' : '' }}</button></div>
+    <NDropdown trigger="manual" placement="bottom-start" :show="menu" :x="menuPosition.x" :y="menuPosition.y" :options="menuOptions" @select="selectMenu" @clickoutside="menu = false" />
+    <div class="file-rows"><button v-for="entry in rows" :key="entry.path" :style="{ paddingLeft: `${8 + entry.depth * 16}px` }" :class="[{ selected: selected?.path === entry.path }, gitClass(entry)]" :title="entry.accessible ? entry.path : t('files.inaccessible')" @click="toggle(entry)" @contextmenu.prevent.stop="openMenu($event, entry)">{{ entry.isDirectory ? expanded.has(entry.path) ? '▾' : '▸' : '·' }} {{ entry.name }}{{ !entry.accessible && !entry.truncated ? ' 🔒' : '' }}</button></div>
     <NModal :show="!!dialog" preset="card" :title="dialog?.operation === 'delete' ? t('files.confirmTrash') : dialog?.operation === 'rename' ? t('files.rename') : t('files.createTitle')" class="form-modal" @update:show="(show) => { if (!show && !busy) dialog = null }"><template v-if="dialog"><p v-if="dialog.operation === 'delete'">{{ t('files.confirmTrashBody', { name: dialog.original }) }}</p><NInput v-else v-model:value="dialog.path" :placeholder="t('files.pathPlaceholder')" /><div class="dialog-actions"><NButton :disabled="busy" @click="dialog = null">{{ t('common.cancel') }}</NButton><NButton :loading="busy" :disabled="!dialog.path" @click="execute">{{ t('common.confirm') }}</NButton></div></template></NModal>
   </div>
 </template>

@@ -9,7 +9,7 @@ const COMMANDS: &[&str] = &[
     "save_clipboard_image",
     "resolve_close_request",
     "list_directory", "read_file", "write_file", "create_file", "create_directory",
-    "rename_path", "delete_path", "search_files", "watch_project_files", "set_unsaved_editor_count",
+    "rename_path", "delete_path", "reveal_path", "search_files", "watch_project_files", "set_unsaved_editor_count",
     "list_editor_drafts",
     "put_editor_draft",
     "delete_editor_draft",
