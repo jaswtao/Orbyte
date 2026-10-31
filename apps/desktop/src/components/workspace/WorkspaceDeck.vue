@@ -34,6 +34,7 @@ watch(() => [props.activeId, views.get(pendingDraft.value?.projectId ?? '')?.rea
   await views.get(draft.projectId)?.openFile(draft.path)
 })
 function focusTerminal() { if (props.activeId) views.get(props.activeId)?.focusTerminal() }
+function renameActiveTab(): boolean { return !props.shortcutsBlocked && !discard.value && !!props.activeId && (views.get(props.activeId)?.renameActiveTab() ?? false) }
 function openFile(path: string) { if (props.activeId) void views.get(props.activeId)?.openFile(path) }
 function renamed(from: string, to: string) { if (props.activeId) void views.get(props.activeId)?.renamed(from, to) }
 function confirmProjectChange(projectId: string) {
@@ -78,7 +79,7 @@ watch([
   editors.updateSettings(props.settings, props.appearance)
   registry.updateSettings(props.settings)
 }, { flush: 'post' })
-defineExpose({ openFile, renamed, confirmProjectChange, mutationBusy, saveAllEditors, focusTerminal, discardAllEditors: () => editors.discardAll() })
+defineExpose({ openFile, renamed, confirmProjectChange, mutationBusy, saveAllEditors, focusTerminal, renameActiveTab, discardAllEditors: () => editors.discardAll() })
 const retained = computed(() => props.projects.filter((project) => visited.has(project.id)))
 watch(() => props.activeId, (id) => { if (id) visited.add(id) }, { immediate: true })
 onMounted(async () => {

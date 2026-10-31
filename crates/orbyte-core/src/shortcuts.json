@@ -1,5 +1,11 @@
 [
   {
+    "id": "rename",
+    "label": "重命名项目或页签",
+    "scope": "project",
+    "defaults": [{ "code": "F2", "ctrlKey": false, "altKey": false, "shiftKey": false, "metaKey": false }]
+  },
+  {
     "id": "projectSearch",
     "label": "项目搜索",
     "scope": "project",

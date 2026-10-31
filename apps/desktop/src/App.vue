@@ -1,5 +1,6 @@
 <!-- Author: jaswtao · Date: 2026-10-12 -->
 <script setup lang="ts">
+import { createRenameTargetTracker } from './services/workspace/renameTarget'
 import { matchShortcut } from './services/workspace/shortcuts'
 import { filterProjects } from './services/sidebar/filter'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -35,6 +36,7 @@ import type { Activity } from './services/workspace/activity'
 import WorktreeDialog from './components/dialogs/WorktreeDialog.vue'
 import { lifecycleApi } from './services/lifecycleApi'
 import ProjectSidebar from './components/sidebar/ProjectSidebar.vue'
+import ProjectRenameDialog from './components/dialogs/ProjectRenameDialog.vue'
 import ProjectDialog from './components/dialogs/ProjectDialog.vue'
 import GroupDialog from './components/dialogs/GroupDialog.vue'
 import DeleteConfirmDialog from './components/dialogs/DeleteConfirmDialog.vue'
@@ -145,6 +147,8 @@ watchEffect(() => {
 })
 const sidebar = ref<InstanceType<typeof ProjectSidebar>>()
 const projectDialog = ref(false)
+const renamingProject = ref<Project | null>(null)
+const renameTarget = createRenameTargetTracker()
 const editingProject = ref<Project | null>(null)
 const defaultGroupId = ref('')
 const groupDialog = ref(false)
@@ -154,9 +158,9 @@ function editProject(project?: Project, groupId?: string) { editingProject.value
 function editGroup(group?: ProjectGroup) { editingGroup.value = group ?? null; groupDialog.value = true }
 function confirmProjectChange(id: string) { return deck.value?.confirmProjectChange(id) ?? Promise.resolve(true) }
 async function workspaceShortcut(event: KeyboardEvent) {
-  if (projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
+  if (renamingProject.value || projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
-  if (!command) return
+  if (!command || command === 'rename') return
   event.preventDefault()
   event.stopPropagation()
   if (command === 'projectSearch') {
@@ -193,6 +197,22 @@ async function workspaceShortcut(event: KeyboardEvent) {
     }
   }
 }
+function renameShortcut(event: KeyboardEvent) {
+  const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
+  renameTarget.keydown(event, command === 'rename')
+  if (command !== 'rename' || event.repeat || disposed || !store.ready || store.busy) return
+  if (renamingProject.value || projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
+  if (Array.from(document.querySelectorAll('[aria-modal="true"], .n-dropdown-menu')).some((element) => element.getClientRects().length)) return
+  const target = renameTarget.target
+  if (!target) return
+  if (target.kind === 'project') {
+    const project = store.projects.find((item) => item.id === target.id)
+    if (!project || !sidebarVisible.value || sidebarView.value !== 'projects') return
+    renamingProject.value = project
+  } else if (!deck.value?.renameActiveTab()) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}
 async function closeShortcut(event: KeyboardEvent) {
   if (event.code !== 'F4' || !event.altKey || event.ctrlKey || event.shiftKey || event.metaKey) return
   event.preventDefault()
@@ -205,6 +225,16 @@ async function closeShortcut(event: KeyboardEvent) {
 }
 // Child onMounted runs before the parent hook, so register here to capture Alt+F4 first.
 document.addEventListener('keydown', closeShortcut, true)
+document.addEventListener('keydown', renameShortcut, true)
+document.addEventListener('pointerdown', renameTarget.pointerdown, true)
+document.addEventListener('focusin', renameTarget.focusin, true)
+window.addEventListener('blur', renameTarget.reset)
+onBeforeUnmount(() => {
+  document.removeEventListener('keydown', renameShortcut, true)
+  document.removeEventListener('pointerdown', renameTarget.pointerdown, true)
+  document.removeEventListener('focusin', renameTarget.focusin, true)
+  window.removeEventListener('blur', renameTarget.reset)
+})
 async function resolveClose(action: 'save' | 'discard' | 'cancel') {
   if (closeBusy.value) return
   closeBusy.value = true
@@ -273,7 +303,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
           </div>
           <WorkspaceDeck @recovery-visibility="recoveryDialog = $event" @activate="store.activate($event)" ref="deck" v-if="store.ready && store.settings" v-show="!!store.active" tabs-target="#workspace-titlebar-tabs"
             :appearance="appearance" :projects="store.projects" :settings="store.settings" :active-id="store.active?.id ?? null"
-            :shortcuts-blocked="recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
+            :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
             @error="reportError" @activity="(id, state) => activities.set(id, state)"
             @files-changed="(id, change) => { fileChanges.set(id, change); git.schedule(id) }" />
         </main>
@@ -281,6 +311,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
       <SettingsDialog v-model:show="settingsDialog" />
       <WorktreeDialog v-model:show="worktreeDialog" :project="worktreeProject" />
       <ProjectDialog v-model:show="projectDialog" :project="editingProject" :default-group-id="defaultGroupId" :confirm-project-change="confirmProjectChange" />
+      <ProjectRenameDialog v-model:project="renamingProject" />
       <GroupDialog v-model:show="groupDialog" :group="editingGroup" />
       <DeleteConfirmDialog v-model:item="deleting" :confirm-project-change="confirmProjectChange" />
       <CloseConfirmDialog :show="closeDialog" :busy="closeBusy" :error="store.error" @resolve="resolveClose" />

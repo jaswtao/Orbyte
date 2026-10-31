@@ -1,5 +1,8 @@
 /** English UI copy. Author: jaswtao · Date: 2026-10-16 */
 export const en = {
+  'shortcut.command.rename': 'Rename project or tab',
+  'project.rename': 'Rename project',
+  'project.renameFailed': 'Failed to rename project. Try again.',
   'sidebar.showHiddenProjects': 'Show hidden projects',
   'sidebar.hideProject': 'Hide project',
   'sidebar.unhideProject': 'Unhide project',

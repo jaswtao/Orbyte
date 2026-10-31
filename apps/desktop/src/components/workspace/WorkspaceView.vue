@@ -418,7 +418,13 @@ async function renamed(from: string, to: string) {
     await commit(next)
   })
 }
-defineExpose({ openFile, renamed, busy, ready, focusTerminal })
+function renameActiveTab(): boolean {
+  if (disposed || !props.active || !ready.value || busy.value || props.shortcutsBlocked || confirmation.value || rename.value || quickOpen.value || tabMenu.value || !activeTab.value) return false
+  if (Array.from(props.editors.entries.values()).some((entry) => entry.dialog)) return false
+  rename.value = { id: activeTab.value.id, title: activeTab.value.title }
+  return true
+}
+defineExpose({ openFile, renamed, busy, ready, focusTerminal, renameActiveTab })
 function saveRename() {
   const target = rename.value
   if (!target?.title.trim() || busy.value || !ready.value) return

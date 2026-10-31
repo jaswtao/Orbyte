@@ -340,7 +340,7 @@ function projectNavigation(visible) {
   const projects = [{ id: 'b', groupId: 'second' }, { id: 'u', groupId: null }, { id: 'a', groupId: 'first' }, { id: 'c', groupId: 'second' }]
   const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => { selected.push(id); return true } }
   const context = { matchShortcut, filterProjects, store, nextTick, disposed: false, sidebarView: { value: 'projects' }, sidebarVisible: false, setSidebarVisible(value) { context.sidebarVisible = value }, sidebar: { value: visible === undefined ? undefined : { revealProject: (id) => revealed.push(id), getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
-  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
+  for (const name of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(handlerJs, context)
   return { store, selected, revealed, context, press(key, overrides = {}) { return context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
@@ -468,7 +468,7 @@ function sidebarResize(innerWidth = 1200) {
     SIDEBAR_MIN: 220, SIDEBAR_MAX: 640, window: { innerWidth },
     localStorage: { setItem: (name, value) => stored.set(name, value) },
   }
-  for (const name of ['projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
+  for (const name of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(clampJs + persistJs + handlerJs, context)
   return {
@@ -1002,4 +1002,221 @@ test('草稿恢复弹窗阻止项目导航和侧栏快捷键，关闭后恢复',
   assert.deepEqual(resize.selected, [])
   resize.context.recoveryDialog.value = false
   assert.equal(resize.press('ArrowLeft'), true)
+})
+/** Rename interaction regressions. Author: jaswtao · Date: 2026-10-30 */
+const renameTrackerSource = await readFile(new URL('../src/services/workspace/renameTarget.ts', import.meta.url), 'utf8')
+function renameTrackerFixture() {
+  class Element {
+    constructor(selectors = [], id) { this.selectors = selectors; this.dataset = { projectId: id } }
+    closest(selector) { return selector.split(', ').some((s) => this.selectors.includes(s)) ? this : null }
+  }
+  const context = vm.createContext({ Element })
+  vm.runInContext(ts.transpileModule(renameTrackerSource.replace(/^export /gm, ''), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  return { tracker: context.createRenameTargetTracker(), element: (...args) => new Element(...args) }
+}
+
+test('Rename defaults, overrides, disabling and conflicts use the shared shortcut manifest', () => {
+  assert.equal(matchShortcut(key('F2')), 'rename')
+  assert.equal(shortcutHint('rename'), 'F2')
+  assert.equal(matchShortcut(key('F2'), { rename: [] }), undefined)
+  const custom = key('KeyR', { ctrlKey: true })
+  assert.equal(matchShortcut(custom, { rename: [custom] }), 'rename')
+  assert.equal(matchShortcut(key('F2'), { rename: [custom] }), undefined)
+  for (const modifier of ['altKey', 'ctrlKey', 'shiftKey', 'metaKey', 'isComposing']) assert.equal(matchShortcut(key('F2', { [modifier]: true })), undefined)
+  assert.ok(shortcutConflicts({ newTerminal: [key('F2')] }).length)
+  for (const command of ['projectSearch', 'newTerminal', 'terminalCopy', 'editorSave']) {
+    const migrated = { [command]: [key('F2')], rename: [] }
+    assert.equal(matchShortcut(key('F2'), migrated), command)
+    assert.equal(shortcutHint('rename', migrated), '')
+    assert.deepEqual(shortcutConflicts(migrated), [])
+  }
+})
+
+test('Automatic terminal focus preserves the clicked project until explicit workspace interaction', () => {
+  const { tracker, element } = renameTrackerFixture()
+  const project = element(['.project-row'], 'p')
+  const terminal = element(['.workspace', '.xterm', 'textarea'])
+  tracker.focusin({ target: terminal })
+  assert.equal(tracker.target.kind, 'workspace')
+  tracker.pointerdown({ target: project })
+  tracker.focusin({ target: terminal })
+  tracker.keydown({ key: 'F2', target: terminal }, true)
+  assert.equal(tracker.target.id, 'p')
+  tracker.keydown({ key: 'Control', target: terminal }, false)
+  assert.equal(tracker.target.id, 'p')
+  tracker.keydown({ key: 'a', target: terminal }, false)
+  assert.equal(tracker.target.kind, 'workspace')
+  tracker.pointerdown({ target: project })
+  tracker.pointerdown({ target: element(['.workspace-tabs']) })
+  assert.equal(tracker.target.kind, 'workspace')
+  tracker.pointerdown({ target: element(['.workspace', '.cm-content', '[contenteditable="true"]']) })
+  assert.equal(tracker.target.kind, 'workspace')
+})
+
+test('Tab focus selects its region; unrelated controls and window blur clear the rename target', () => {
+  const { tracker, element } = renameTrackerFixture()
+  const project = element(['.project-row'], 'p')
+  tracker.pointerdown({ target: project })
+  tracker.keydown({ key: 'Tab', target: project }, false)
+  tracker.focusin({ target: element(['.workspace']) })
+  assert.equal(tracker.target.kind, 'workspace')
+  tracker.focusin({ target: project })
+  assert.equal(tracker.target.id, 'p')
+  for (const selectors of [['input'], ['.workspace', '.cm-editor', 'input'], ['.n-modal-container', 'input'], ['.n-dropdown-menu'], []]) {
+    tracker.pointerdown({ target: project })
+    tracker.focusin({ target: element(selectors) })
+    assert.equal(tracker.target, null)
+  }
+  tracker.pointerdown({ target: project })
+  tracker.reset()
+  assert.equal(tracker.target, null)
+})
+
+function compileFunctions(source, names) {
+  const script = source.includes('<script setup lang="ts">') ? source.split('<script setup lang="ts">')[1].split('</script>')[0] : source
+  const ast = ts.createSourceFile('fixture.ts', script, ts.ScriptTarget.Latest, true)
+  return ts.transpileModule(ast.statements.filter((n) => ts.isFunctionDeclaration(n) && names.includes(n.name?.text)).map((n) => n.getText(ast)).join('\n'), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+}
+const appRenameJs = compileFunctions(await readFile(new URL('../src/App.vue', import.meta.url), 'utf8'), ['renameShortcut'])
+function appRenameFixture() {
+  let tabRenames = 0
+  const context = vm.createContext({ matchShortcut, disposed: false,
+    store: { ready: true, busy: false, settings: { shortcuts: {} }, projects: [{ id: 'p', name: 'Project' }] },
+    renameTarget: { target: { kind: 'project', id: 'p' }, keydown() {} },
+    document: { querySelectorAll: () => [] }, sidebarVisible: ref(true), sidebarView: ref('projects'),
+    deck: { value: { renameActiveTab: () => { tabRenames++; return true } } },
+  })
+  for (const name of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = ref(null)
+  vm.runInContext(appRenameJs, context)
+  const press = (extra = {}) => {
+    const event = { ...key('F2'), key: 'F2', preventDefault() { this.prevented = true }, stopImmediatePropagation() { this.stopped = true }, ...extra }
+    context.renameShortcut(event)
+    return event
+  }
+  return { context, press, tabRenames: () => tabRenames }
+}
+
+test('App rename routes project and tab targets and consumes successful events', () => {
+  const { context, press, tabRenames } = appRenameFixture()
+  assert.equal(press().stopped, true)
+  assert.equal(context.renamingProject.value.id, 'p')
+  context.renamingProject.value = null
+  context.renameTarget.target = { kind: 'workspace' }
+  assert.equal(press().prevented, true)
+  assert.equal(tabRenames(), 1)
+  context.deck.value.renameActiveTab = () => false
+  assert.equal(press().prevented, undefined)
+  context.renameTarget.target = { kind: 'project', id: 'p' }
+  context.document.querySelectorAll = () => [{ getClientRects: () => [] }]
+  assert.equal(press().stopped, true)
+})
+
+test('Rename shortcuts preserve input defaults through both app handlers', async () => {
+  for (const binding of [key('F2'), key('KeyA', { ctrlKey: true })]) {
+    const { context, press, tabRenames } = appRenameFixture()
+    const { tracker, element } = renameTrackerFixture()
+    const input = element(['input'])
+    tracker.focusin({ target: input })
+    context.renameTarget = tracker
+    context.store.settings.shortcuts = { rename: [binding] }
+    vm.runInContext(handlerJs, context)
+    const event = press({ ...binding, target: input, stopPropagation() { this.stopped = true } })
+    await context.workspaceShortcut(event)
+    assert.equal(event.prevented, undefined)
+    assert.equal(event.stopped, undefined)
+    assert.equal(context.renamingProject.value, null)
+    assert.equal(tabRenames(), 0)
+  }
+})
+
+test('App rename ignores blocked, repeated, composing, missing and hidden targets', () => {
+  for (const blocked of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) {
+    const { context, press } = appRenameFixture()
+    context[blocked].value = true
+    assert.equal(press().stopped, undefined, blocked)
+  }
+  for (const mutate of [
+    (c) => { c.store.busy = true }, (c) => { c.store.ready = false }, (c) => { c.disposed = true },
+    (c) => { c.document.querySelectorAll = () => [{ getClientRects: () => [1] }] }, (c) => { c.store.projects = [] },
+    (c) => { c.renameTarget.target = null }, (c) => { c.sidebarVisible.value = false }, (c) => { c.sidebarView.value = 'files' },
+  ]) {
+    const { context, press } = appRenameFixture()
+    mutate(context)
+    assert.equal(press().stopped, undefined)
+  }
+  for (const extra of [{ repeat: true }, { isComposing: true }]) assert.equal(appRenameFixture().press(extra).stopped, undefined)
+})
+
+const renameActiveJs = compileFunctions(workspaceSource, ['renameActiveTab'])
+test('Workspace rename uses the active tab and guards lifecycle, dialogs and editor operations', () => {
+  for (const blocked of [null, 'disposed', 'inactive', 'unready', 'busy', 'shortcutsBlocked', 'confirmation', 'rename', 'quickOpen', 'tabMenu', 'editorDialog', 'empty']) {
+    const context = vm.createContext({ disposed: false, props: { active: true, shortcutsBlocked: false, editors: { entries: new Map() } },
+      ready: ref(true), busy: ref(false), activeTab: ref({ id: 'tab', title: 'Title' }), confirmation: ref(null), rename: ref(null), quickOpen: ref(false), tabMenu: ref(null) })
+    if (blocked === 'disposed') context.disposed = true
+    else if (blocked === 'inactive') context.props.active = false
+    else if (blocked === 'unready') context.ready.value = false
+    else if (blocked === 'shortcutsBlocked') context.props.shortcutsBlocked = true
+    else if (blocked === 'editorDialog') context.props.editors.entries.set('editor', { dialog: {} })
+    else if (blocked === 'empty') context.activeTab.value = null
+    else if (blocked) context[blocked].value = true
+    vm.runInContext(renameActiveJs, context)
+    assert.equal(context.renameActiveTab(), blocked === null, String(blocked))
+    if (!blocked) { assert.equal(context.rename.value.id, 'tab'); assert.equal(context.rename.value.title, 'Title') }
+  }
+})
+
+const projectRenameJs = compileFunctions(await readFile(new URL('../src/components/dialogs/ProjectRenameDialog.vue', import.meta.url), 'utf8'), ['save', 'cancel'])
+function projectRenameFixture() {
+  const updates = []
+  const current = { id: 'p', name: 'Old', path: 'C:/project', groupId: 'g', favorite: true, hidden: true }
+  const context = vm.createContext({ project: ref(current), name: ref('  New  '), error: ref(''), saving: ref(false),
+    store: { projects: [current], busy: false, ready: true, error: '', run: async (action) => { await action(); return true } },
+    projectApi: { updateProject: async (...args) => { updates.push(args) } }, t: (key) => key })
+  vm.runInContext(projectRenameJs, context)
+  return { context, updates }
+}
+
+test('Project rename trims only the name, preserves other values and closes on success', async () => {
+  const { context, updates } = projectRenameFixture()
+  await context.save()
+  assert.equal(updates.length, 1)
+  assert.equal(updates[0][0], 'p')
+  assert.deepEqual(JSON.parse(JSON.stringify(updates[0][1])), { id: 'p', name: 'New', path: 'C:/project', groupId: 'g', favorite: true, hidden: true })
+  assert.equal(context.project.value, null)
+  assert.equal(context.saving.value, false)
+})
+
+test('Project rename validates input, preserves failed edits and cancels without saving', async () => {
+  for (const mutate of [(c) => { c.name.value = ' ' }, (c) => { c.name.value = 'x'.repeat(101) }, (c) => { c.store.projects = [] }, (c) => { c.store.busy = true }, (c) => { c.saving.value = true }, (c) => { c.store.ready = false }]) {
+    const { context, updates } = projectRenameFixture()
+    mutate(context)
+    await context.save()
+    assert.equal(updates.length, 0)
+  }
+  const { context, updates } = projectRenameFixture()
+  context.store.run = async () => { context.store.error = 'Save failed'; return false }
+  await context.save()
+  assert.equal(context.error.value, 'Save failed')
+  assert.equal(context.name.value, '  New  ')
+  assert.equal(context.project.value.id, 'p')
+  assert.equal(context.saving.value, false)
+  context.cancel()
+  assert.equal(context.project.value, null)
+  assert.equal(updates.length, 0)
+})
+
+test('Project rename preloads the name and focuses and selects it after rendering', async (t) => {
+  const source = await readFile(new URL('../src/components/dialogs/ProjectRenameDialog.vue', import.meta.url), 'utf8')
+  const ast = ts.createSourceFile('ProjectRename.ts', source.split('<script setup lang="ts">')[1].split('</script>')[0], ts.ScriptTarget.Latest, true)
+  const watcher = ast.statements.find((n) => ts.isExpressionStatement(n) && ts.isCallExpression(n.expression) && n.expression.expression.getText(ast) === 'watch')
+  const calls = []
+  const context = vm.createContext({ project: ref(null), name: ref(''), error: ref('old error'), nextTick,
+    input: ref({ focus: () => calls.push('focus'), select: () => calls.push('select') }),
+    watch: (...args) => { const stop = watch(...args); t.after(stop); return stop } })
+  vm.runInContext(ts.transpileModule(watcher.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  context.project.value = { id: 'p', name: 'Existing' }
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(context.name.value, 'Existing')
+  assert.equal(context.error.value, '')
+  assert.deepEqual(calls, ['focus', 'select'])
 })

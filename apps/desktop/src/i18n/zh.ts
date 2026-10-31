@@ -2,6 +2,9 @@
 import type { MessageKey } from './en'
 
 export const zh: Record<MessageKey, string> = {
+  'shortcut.command.rename': '重命名项目或页签',
+  'project.rename': '重命名项目',
+  'project.renameFailed': '项目重命名失败，请重试。',
   'sidebar.showHiddenProjects': '显示隐藏项目',
   'sidebar.hideProject': '隐藏项目',
   'sidebar.unhideProject': '取消隐藏',
