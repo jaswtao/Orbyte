@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-connect-sftp"
+description = "Enables the connect_sftp command without any pre-configured scope."
+commands.allow = ["connect_sftp"]
+
+[[permission]]
+identifier = "deny-connect-sftp"
+description = "Denies the connect_sftp command without any pre-configured scope."
+commands.deny = ["connect_sftp"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-remote-terminal-sessions"
+description = "Enables the list_remote_terminal_sessions command without any pre-configured scope."
+commands.allow = ["list_remote_terminal_sessions"]
+
+[[permission]]
+identifier = "deny-list-remote-terminal-sessions"
+description = "Denies the list_remote_terminal_sessions command without any pre-configured scope."
+commands.deny = ["list_remote_terminal_sessions"]

@@ -1,0 +1,180 @@
+/* Author: jaswtao · Date: 2026-10-31 */
+.remote-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.remote-empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.remote-connection {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.remote-connection.active {
+  border-color: var(--accent);
+  background: var(--selection);
+}
+
+.remote-connection-name {
+  font-weight: 600;
+}
+
+.remote-connection-endpoint,
+.remote-connection-status,
+.remote-connection-message {
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remote-connection-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.remote-workspace {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.remote-toolbar,
+.remote-tabs,
+.remote-file-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.remote-title {
+  font-weight: 600;
+  margin-right: 8px;
+}
+
+.remote-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.remote-terminals {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.remote-terminals .terminal-pane,
+.remote-terminals .split-pane {
+  flex: 1;
+  min-height: 0;
+}
+
+.remote-files {
+  width: 340px;
+  flex-shrink: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.remote-path {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.remote-path .n-input {
+  flex: 1;
+}
+
+.remote-listing {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.remote-row,
+.remote-head {
+  display: grid;
+  grid-template-columns: 1.4fr .7fr .7fr .9fr;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-size: 12px;
+}
+
+.remote-head {
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.remote-row.selected {
+  background: var(--selection);
+}
+
+.remote-note,
+.remote-transfer {
+  padding: 8px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.remote-transfer strong {
+  display: block;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.remote-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.remote-key {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}

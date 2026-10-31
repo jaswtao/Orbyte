@@ -179,6 +179,18 @@
   padding: 8px;
 }
 
+.terminal-output-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  color: var(--muted);
+  background: var(--content);
+  font-size: 12px;
+}
+
 .terminal-host {
   height: 100%;
   width: 100%;

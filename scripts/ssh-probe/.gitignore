@@ -1,0 +1,4 @@
+# Generated probe material. Never commit client private keys or host keys.
+keys/
+fixtures/authorized_keys
+.env

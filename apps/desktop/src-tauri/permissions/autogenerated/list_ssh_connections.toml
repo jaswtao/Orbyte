@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-ssh-connections"
+description = "Enables the list_ssh_connections command without any pre-configured scope."
+commands.allow = ["list_ssh_connections"]
+
+[[permission]]
+identifier = "deny-list-ssh-connections"
+description = "Denies the list_ssh_connections command without any pre-configured scope."
+commands.deny = ["list_ssh_connections"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-remote-transfers"
+description = "Enables the list_remote_transfers command without any pre-configured scope."
+commands.allow = ["list_remote_transfers"]
+
+[[permission]]
+identifier = "deny-list-remote-transfers"
+description = "Denies the list_remote_transfers command without any pre-configured scope."
+commands.deny = ["list_remote_transfers"]

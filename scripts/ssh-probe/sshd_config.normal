@@ -1,0 +1,12 @@
+# Author: jaswtao · Date: 2026-10-31
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+UsePAM no
+PermitRootLogin no
+AllowUsers orbyte
+Subsystem sftp internal-sftp

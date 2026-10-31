@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-begin-ssh-connect"
+description = "Enables the begin_ssh_connect command without any pre-configured scope."
+commands.allow = ["begin_ssh_connect"]
+
+[[permission]]
+identifier = "deny-begin-ssh-connect"
+description = "Denies the begin_ssh_connect command without any pre-configured scope."
+commands.deny = ["begin_ssh_connect"]

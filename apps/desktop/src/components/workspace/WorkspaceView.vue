@@ -132,6 +132,7 @@ watch(() => [props.active, layout.value], () => {
       entry.host.dispatchEvent(new Event('terminal-session-hidden', { bubbles: true }))
     }
     entry.visible = props.active && tab.id === layout.value.activeTabId
+    entry.client.setVisible(entry.visible)
     if (entry.visible) {
       entry.client.markContentRead()
       entry.unread = false

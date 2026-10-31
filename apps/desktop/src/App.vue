@@ -41,6 +41,9 @@ import ProjectDialog from './components/dialogs/ProjectDialog.vue'
 import GroupDialog from './components/dialogs/GroupDialog.vue'
 import DeleteConfirmDialog from './components/dialogs/DeleteConfirmDialog.vue'
 import CloseConfirmDialog from './components/dialogs/CloseConfirmDialog.vue'
+import RemoteSidebar from './components/remote/RemoteSidebar.vue'
+import RemoteWorkspace from './components/remote/RemoteWorkspace.vue'
+import type { SshConnection } from './services/remoteApi'
 import { bindTerminalActivation } from './services/terminal/activation'
 import { terminalApi } from './services/terminalApi'
 const unbindTerminalActivation = bindTerminalActivation(document, terminalApi.setActiveTerminal)
@@ -58,12 +61,25 @@ async function windowFocus() {
 const settingsDialog = ref(false)
 const closeDialog = ref(false)
 const closeBusy = ref(false)
+const closeUnsaved = ref(false)
+const closeTransfers = ref(false)
 const recoveryDialog = ref(false)
 let closeRequestPending = false
 let unlistenClose: (() => void) | undefined
 let disposed = false
 const deck = ref<InstanceType<typeof WorkspaceDeck>>()
-const sidebarView = ref<'projects' | 'files'>('projects')
+const sidebarView = ref<'projects' | 'files' | 'remote'>('projects')
+const activeRemote = ref<SshConnection | null>(null)
+const remoteWorkspace = ref<InstanceType<typeof RemoteWorkspace>>()
+function openRemote(connection: SshConnection) {
+  const same = activeRemote.value?.id === connection.id
+  activeRemote.value = connection
+  sidebarView.value = 'remote'
+  if (same) void remoteWorkspace.value?.connectMissing()
+}
+function remoteDeleted(id: string) {
+  if (activeRemote.value?.id === id) activeRemote.value = null
+}
 const sidebarVisible = ref(readSidebarVisible())
 function readSidebarVisible(): boolean {
   try { return localStorage.getItem('orbyte.sidebar-visible') !== 'false' }
@@ -161,6 +177,7 @@ async function workspaceShortcut(event: KeyboardEvent) {
   if (renamingProject.value || projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
   if (!command || command === 'rename') return
+  if (sidebarView.value === 'remote' && command.startsWith('project')) return
   event.preventDefault()
   event.stopPropagation()
   if (command === 'projectSearch') {
@@ -235,7 +252,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('focusin', renameTarget.focusin, true)
   window.removeEventListener('blur', renameTarget.reset)
 })
-async function resolveClose(action: 'save' | 'discard' | 'cancel') {
+async function resolveClose(action: 'save' | 'discard' | 'exit' | 'cancel') {
   if (closeBusy.value) return
   closeBusy.value = true
   try {
@@ -256,7 +273,11 @@ onMounted(async () => {
   window.addEventListener('focus', windowFocus)
   void git.init()
   try {
-    unlistenClose = await lifecycleApi.onCloseRequested(() => { closeDialog.value = true })
+    unlistenClose = await lifecycleApi.onCloseRequested((event) => {
+      closeUnsaved.value = event.payload?.unsaved === true
+      closeTransfers.value = event.payload?.transfers === true
+      closeDialog.value = true
+    })
     if (disposed) { unlistenClose(); return }
     await store.run(async () => {})
   } catch (reason) { reportError(t('app.closeInitFailed', { reason: String(reason) })) }
@@ -278,30 +299,37 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
           <div class="sidebar-segments" role="group" :aria-label="t('app.sidebarView')">
             <button :class="{ active: sidebarView === 'projects' }" :aria-pressed="sidebarView === 'projects'" @click="sidebarView = 'projects'">{{ t('app.projects') }}</button>
             <button :class="{ active: sidebarView === 'files' }" :aria-pressed="sidebarView === 'files'" :disabled="!store.active" @click="sidebarView = 'files'">{{ t('app.files') }}</button>
+            <button :class="{ active: sidebarView === 'remote' }" :aria-pressed="sidebarView === 'remote'" @click="sidebarView = 'remote'">{{ t('app.remote') }}</button>
           </div>
           <FileTree v-if="sidebarView === 'files' && store.active" :key="`${store.active.id}:${store.active.path}`"
             :project-id="store.active.id" :disabled="deck?.mutationBusy ?? true" :change="fileChanges.get(store.active.id) ?? null"
             @open="deck?.openFile($event)" @rename="(from, to) => deck?.renamed(from, to)" @error="reportError" />
-          <KeepAlive>
+          <RemoteSidebar v-else-if="sidebarView === 'remote'" :active-id="activeRemote?.id ?? null" @open="openRemote" @error="reportError" @deleted="remoteDeleted" />
+          <KeepAlive v-else>
           <ProjectSidebar v-if="sidebarView !== 'files' || !store.active" ref="sidebar" :activities="activities" @worktree="openWorktree"
             @edit-project="editProject" @edit-group="editGroup" @delete-item="deleting = $event" />
           </KeepAlive>
         </aside>
         <div v-show="sidebarVisible" class="sidebar-resizer" role="separator" aria-orientation="vertical" :aria-label="t('app.resizeSidebar')" :title="t('app.resizeSidebarTitle')" :aria-valuenow="sidebarWidth" :aria-valuemin="SIDEBAR_MIN" :aria-valuemax="SIDEBAR_MAX" tabindex="0" @pointerdown="startSidebarResize" @keydown="onSidebarResizeKey" />
         <main class="workspace">
-          <header v-if="store.active && store.settings?.show_workspace_header" class="workspace-header">
+          <header v-if="sidebarView !== 'remote' && store.active && store.settings?.show_workspace_header" class="workspace-header">
             <div><h1>{{ store.active.name }}</h1><p>{{ store.active.path }}</p></div>
             <NButton :disabled="store.busy" @click="editProject(store.active)">{{ t('app.editProject') }}</NButton>
             <NButton :disabled="store.busy" @click="deleting = { kind: 'project', id: store.active.id, name: store.active.name }">{{ t('app.deleteProject') }}</NButton>
           </header>
-          <div v-if="!store.active" class="workspace-placeholder">
+          <div v-if="sidebarView === 'remote' && !activeRemote" class="workspace-placeholder">
+            <div class="welcome-mark"><UiIcon name="terminal" :size="32" /></div>
+            <div class="welcome-copy"><h1>{{ t('remote.heading') }}</h1><p>{{ t('remote.placeholder') }}</p></div>
+          </div>
+          <RemoteWorkspace v-if="store.ready && store.settings && activeRemote" v-show="sidebarView === 'remote'" ref="remoteWorkspace" :connection="activeRemote" :settings="store.settings" :appearance="appearance" :active="sidebarView === 'remote'" :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog" @error="reportError" />
+          <div v-if="sidebarView !== 'remote' && !store.active" class="workspace-placeholder">
             <div class="welcome-mark"><UiIcon name="terminal" :size="32" /></div>
             <div class="welcome-copy"><h1>{{ t('app.welcomeTitle') }}</h1><p>{{ store.ready ? t('app.welcomeReady') : store.error ? t('app.welcomeError') : t('app.welcomeLoading') }}</p></div>
             <span class="welcome-brand">{{ t('app.brand') }}</span>
             <NButton v-if="store.ready" type="primary" @click="editProject()">{{ t('app.addProject') }}</NButton>
             <NButton v-else-if="store.error" @click="store.run(async () => {})">{{ t('common.retry') }}</NButton>
           </div>
-          <WorkspaceDeck @recovery-visibility="recoveryDialog = $event" @activate="store.activate($event)" ref="deck" v-if="store.ready && store.settings" v-show="!!store.active" tabs-target="#workspace-titlebar-tabs"
+          <WorkspaceDeck @recovery-visibility="recoveryDialog = $event" @activate="store.activate($event)" ref="deck" v-if="store.ready && store.settings" v-show="sidebarView !== 'remote' && !!store.active" tabs-target="#workspace-titlebar-tabs"
             :appearance="appearance" :projects="store.projects" :settings="store.settings" :active-id="store.active?.id ?? null"
             :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
             @error="reportError" @activity="(id, state) => activities.set(id, state)"
@@ -314,7 +342,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
       <ProjectRenameDialog v-model:project="renamingProject" />
       <GroupDialog v-model:show="groupDialog" :group="editingGroup" />
       <DeleteConfirmDialog v-model:item="deleting" :confirm-project-change="confirmProjectChange" />
-      <CloseConfirmDialog :show="closeDialog" :busy="closeBusy" :error="store.error" @resolve="resolveClose" />
+      <CloseConfirmDialog :show="closeDialog" :busy="closeBusy" :error="store.error" :unsaved="closeUnsaved" :transfers="closeTransfers" @resolve="resolveClose" />
     </div>
     </NNotificationProvider>
   </NConfigProvider>

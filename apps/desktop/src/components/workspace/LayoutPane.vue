@@ -82,13 +82,17 @@ onBeforeUnmount(() => cleanupDrag?.())
   <div v-else-if="node.type === 'terminal'" class="terminal-pane" :class="{ focused: focused === node.terminalConfigId }" @mousedown.capture="focus">
     <div class="pane-heading">
       <span>{{ config?.launchPreset ? config.name : config?.shellType }} · {{ statusText }}</span>
-      <button v-if="entry?.status.state === 'running' && entry.connection !== 'connected'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.reconnect()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.reconnect') }}</button>
+      <button v-if="entry?.status.state === 'running' && !entry.displayPaused && entry.connection !== 'connected'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.reconnect()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.reconnect') }}</button>
       <button v-if="entry?.status.state !== 'running' && entry?.status.state !== 'starting'" @click.stop="emit('restart', node.terminalConfigId)">{{ t('pane.restart') }}</button>
       <button :disabled="!entry" @click.stop="emit('export', node.terminalConfigId)">{{ t('pane.export') }}</button>
       <NDropdown v-if="entry?.status.state === 'running'" trigger="click" placement="bottom-end" :show="moreMenuOpen" :options="moreMenuOptions" @update:show="moreMenuOpen = $event" @select="selectMoreAction" @clickoutside="moreMenuOpen = false">
         <button :aria-label="t('pane.more')" :title="t('pane.more')" aria-haspopup="menu" :aria-expanded="moreMenuOpen" @click.stop>⋯</button>
       </NDropdown>
       <button :aria-label="t('pane.close')" :title="t('pane.closeTitle', { hint: hint('closePane') })" @click.stop="emit('close', node.terminalConfigId)">×</button>
+    </div>
+    <div v-if="entry?.displayPaused" class="terminal-output-warning" role="status">
+      <span>{{ t(entry.status.state === 'running' ? 'terminal.displayPaused' : 'terminal.displayPausedEnded', { bytes: entry.droppedBytes.toLocaleString() }) }}</span>
+      <button v-if="entry.status.state === 'running'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.resumeDisplay()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.resumeDisplay') }}</button>
     </div>
     <div ref="mount" class="terminal-mount" />
     <div class="pane-status" :title="directoryLabel" >{{ t('pane.directory', { path: directoryLabel }) }}</div>

@@ -10,10 +10,12 @@ mod error;
 mod input;
 mod manager;
 pub mod output;
+mod runtime;
 mod session;
 
 pub use backend::{SpawnRequest, TerminalSize};
 pub use error::{TerminalError, TerminalResult};
 pub use manager::{TerminalManager, STOP_GRACE};
 pub use output::FlowConfig;
-pub use session::{FrameSink, SharedSink, TerminalSession, TerminalSessionInfo, TerminalStatus};
+pub use runtime::SessionRuntime;
+pub use session::{FrameSink, OutputHealth, SharedSink, TerminalSession, TerminalSessionInfo, TerminalStatus};

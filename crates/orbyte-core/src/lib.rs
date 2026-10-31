@@ -9,7 +9,12 @@ use std::collections::BTreeMap;
 mod terminal;
 mod shortcuts;
 pub mod layout;
+pub mod remote;
 pub use terminal::{validate_launch_preset, validate_relative_path, validate_shell, TerminalConfig};
+pub use remote::{
+    empty_remote_layout, normalize_endpoint, validate_ssh_connection, RemoteLayout, SshAuthType,
+    SshConnectionInput,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

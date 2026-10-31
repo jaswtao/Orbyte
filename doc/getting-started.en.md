@@ -24,6 +24,14 @@ Rust, Node.js and Visual Studio are not required to use the installer. Install G
 4. Use `Ctrl+P` to find a file by name while respecting ignore rules, or `Ctrl+Shift+P` to include ignored files. You can also open files from the file tree. Save edits with `Ctrl+S`. If you have customized shortcuts, check **Settings → Keyboard shortcuts** for your bindings.
 5. Add a second project, switch to it, then return. The original project's terminal sessions remain available while the app and terminals stay open.
 
+## Connect to a remote server
+
+1. Switch the sidebar to **Remote connections**, create a connection with a name, host, port and username, and choose password or private-key authentication. Pick an OpenSSH Ed25519 or RSA key (encrypted keys included) in the native file picker.
+2. On the first connection with a host-key algorithm, verify the host, port, algorithm and SHA-256 fingerprint, then trust it once, trust and save, or cancel. Algorithms are stored separately per endpoint; a changed key for the same algorithm is rejected.
+3. Open the remote workspace to add terminal tabs or splits and open the SFTP file panel. One **Connect** prompt supplies the password or key passphrase to the pending terminals and file panel in that workspace and clears it from memory after all attempts finish.
+4. The file panel can refresh, navigate into and out of directories, create directories, and upload or download files and directories. Conflicting targets require overwrite, skip or cancel; the transfer list shows progress, speed and results.
+5. A server that only offers keyboard-interactive fails explicitly without sending the password. The screen stays visible after a disconnect and reconnection is manual; three unanswered keepalive probes (about 90 seconds) mark the connection failed.
+
 ## Launch an AI coding CLI
 
 Install Codex or Claude Code yourself and make sure its command is available on PowerShell's PATH before opening Orbyte. Select the corresponding AI CLI from the tab bar's `+` menu. Each CLI uses its own account, authentication and service; Orbyte does not provide a model service or bundle the CLIs.
@@ -49,4 +57,4 @@ Switching projects keeps the current sessions alive. Exiting the app stops manag
 
 See the [README](../README.en.md) for all limitations and local data locations.
 
-> Draft recovery in this branch still requires installed desktop acceptance. The public download does not imply this capability is included. See [validation records](next-stage-validation.md).
+> Draft recovery, index optimizations and SSH/SFTP in this branch still require installed desktop acceptance. The public download does not imply these capabilities are included. See [SSH protocol probe](ssh-probe.md) for automated protocol results and [validation records](next-stage-validation.md) for other runs.

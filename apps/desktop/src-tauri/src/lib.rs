@@ -17,9 +17,14 @@ use tauri_plugin_window_state::{StateFlags, WindowExt};
 fn request_close(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     let mut phase = state.close_phase.lock().unwrap_or_else(|e| e.into_inner());
-    let fresh = phase.request(state.unsaved_editor_count.load(Ordering::Acquire));
+    let unsaved = state.unsaved_editor_count.load(Ordering::Acquire);
+    let transfers = state.ssh.active_transfer_count();
+    if *phase == ClosePhase::Idle {
+        state.ssh.set_accepting(false);
+    }
+    let fresh = phase.request(unsaved, transfers);
     let pending = *phase == ClosePhase::Pending;
-    log::info!("close_requested fresh={fresh} phase={phase:?}");
+    log::info!("close_requested fresh={fresh} phase={phase:?} unsaved={unsaved} transfers={transfers}");
     drop(phase);
     if pending {
         if let Some(window) = app.get_webview_window("main") {
@@ -28,9 +33,11 @@ fn request_close(app: &tauri::AppHandle) {
             let _ = window.set_focus();
         }
         if fresh {
-            if let Err(error) = app.emit("app_close_requested", ()) {
+            let prompt = serde_json::json!({ "unsaved": unsaved > 0, "transfers": transfers > 0 });
+            if let Err(error) = app.emit("app_close_requested", prompt) {
                 log::warn!("无法请求未保存确认：{error}");
                 let _ = state.close_phase.lock().unwrap_or_else(|e| e.into_inner()).resolve(false);
+                state.ssh.set_accepting(true);
             }
         }
         return;
@@ -41,7 +48,11 @@ fn request_close(app: &tauri::AppHandle) {
 #[tauri::command]
 fn resolve_close_request(app: tauri::AppHandle, proceed: bool) -> Result<(), String> {
     app.state::<AppState>().close_phase.lock().unwrap_or_else(|e| e.into_inner()).resolve(proceed)?;
-    if proceed { begin_shutdown(&app); }
+    if proceed {
+        begin_shutdown(&app);
+    } else {
+        app.state::<AppState>().ssh.set_accepting(true);
+    }
     Ok(())
 }
 
@@ -58,8 +69,10 @@ fn begin_shutdown(app: &tauri::AppHandle) {
             let _guard = state.terminal_lifecycle.lock().await;
             let terminals = state.terminals.clone();
             let files = state.files.clone();
+            let ssh = state.ssh.clone();
             let result = tauri::async_runtime::spawn_blocking(move || {
                 files.clear();
+                ssh.shutdown();
                 terminals.stop_all();
             }).await;
             if let Err(error) = result { log::error!("shutdown_cleanup_failed error={error}"); }
@@ -128,6 +141,9 @@ pub fn run() {
             match &database {
                 Ok(_) => log::info!("database_ready"),
                 Err(error) => log::error!("database_init_failed error={error}"),
+            }
+            if let Ok(db) = &database {
+                commands::remote::attach_host_store(&app.state::<AppState>().ssh, db.clone());
             }
             app.manage(StorageState(database));
             if let Some(window) = app.get_webview_window("main") {
@@ -222,12 +238,41 @@ pub fn run() {
             commands::terminal::list_terminal_sessions,
             commands::terminal::terminals_have_running_tasks,
             commands::terminal::subscribe_terminal,
+            commands::terminal::pause_terminal_output,
             commands::terminal::ack_terminal,
             commands::terminal::write_terminal,
             commands::terminal::terminal_uses_native_paste,
             commands::terminal::set_active_terminal,
             commands::terminal::resize_terminal,
             commands::terminal::stop_terminal,
+            commands::remote::list_ssh_connections,
+            commands::remote::create_ssh_connection,
+            commands::remote::update_ssh_connection,
+            commands::remote::delete_ssh_connection,
+            commands::remote::list_ssh_known_hosts,
+            commands::remote::forget_ssh_host_key,
+            commands::remote::load_remote_workspace,
+            commands::remote::save_remote_workspace,
+            commands::remote::set_remote_directory,
+            commands::remote::create_remote_terminal_config,
+            commands::remote::remove_remote_terminal_config,
+            commands::remote::begin_ssh_connect,
+            commands::remote::connect_ssh_terminal,
+            commands::remote::connect_sftp,
+            commands::remote::answer_ssh_challenge,
+            commands::remote::submit_ssh_credential,
+            commands::remote::cancel_ssh_attempt,
+            commands::remote::list_remote_terminal_sessions,
+            commands::remote::list_remote_directory,
+            commands::remote::cancel_remote_browse,
+            commands::remote::create_remote_directory,
+            commands::remote::canonicalize_remote_path,
+            commands::remote::select_transfer_paths,
+            commands::remote::enqueue_remote_transfer,
+            commands::remote::list_remote_transfers,
+            commands::remote::subscribe_remote_transfers,
+            commands::remote::cancel_remote_transfer,
+            commands::remote::resolve_transfer_conflict,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Orbyte")

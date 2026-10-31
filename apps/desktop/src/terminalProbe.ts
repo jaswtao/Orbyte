@@ -63,6 +63,7 @@ function activate(key: string): void {
     const active = tab.key === key
     tab.pane.style.display = active ? 'block' : 'none'
     tab.button.classList.toggle('active', active)
+    tab.client?.setVisible(active)
     if (active && tab.client) {
       tab.client.refreshSize()
       tab.client.focus()

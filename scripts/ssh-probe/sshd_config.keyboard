@@ -1,0 +1,13 @@
+# Author: jaswtao · Date: 2026-10-31
+# Password methods are disabled so only keyboard-interactive remains.
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_ed25519_key
+PasswordAuthentication no
+KbdInteractiveAuthentication yes
+PubkeyAuthentication no
+UsePAM yes
+AuthenticationMethods keyboard-interactive
+PermitRootLogin no
+AllowUsers orbyte
+Subsystem sftp internal-sftp

@@ -11,6 +11,7 @@ pub mod git;
 pub mod project;
 pub mod workspace;
 pub mod files;
+pub mod remote;
 
 pub type CmdResult<T> = Result<T, String>;
 

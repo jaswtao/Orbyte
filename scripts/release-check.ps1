@@ -1,5 +1,5 @@
 # Author: jaswtao · Date: 2026-10-14
-param([string]$Gitleaks = 'gitleaks')
+param([string]$Gitleaks = 'gitleaks', [switch]$SshProbe)
 $ErrorActionPreference = 'Stop'
 Push-Location (Split-Path $PSScriptRoot -Parent)
 try {
@@ -14,6 +14,10 @@ try {
         @{ Command = 'pnpm'; Arguments = @('--filter', 'orbyte-desktop', 'build') },
         @{ Command = 'python'; Arguments = @('scripts/generate-licenses.py', '--check') }
     )
+    if ($SshProbe) {
+        # Requires the isolated fixture from scripts/ssh-probe and its environment.
+        $checks += @{ Command = 'cargo'; Arguments = @('test', '-p', 'orbyte-ssh', '--features', 'probe', '--test', 'protocol_probe', '--locked', '--', '--ignored', '--test-threads=1', '--nocapture') }
+    }
     foreach ($check in $checks) {
         $checkArguments = $check.Arguments
         & $check.Command @checkArguments

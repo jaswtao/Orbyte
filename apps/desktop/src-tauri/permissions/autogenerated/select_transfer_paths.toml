@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-select-transfer-paths"
+description = "Enables the select_transfer_paths command without any pre-configured scope."
+commands.allow = ["select_transfer_paths"]
+
+[[permission]]
+identifier = "deny-select-transfer-paths"
+description = "Denies the select_transfer_paths command without any pre-configured scope."
+commands.deny = ["select_transfer_paths"]

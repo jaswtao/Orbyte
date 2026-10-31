@@ -1,0 +1,15 @@
+# Author: jaswtao · Date: 2026-10-31
+# Only SHA-1 key exchange/MAC and the legacy ssh-rsa host key are offered.
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_rsa_key
+HostKeyAlgorithms ssh-rsa
+PubkeyAcceptedAlgorithms +ssh-rsa
+KexAlgorithms diffie-hellman-group14-sha1
+MACs hmac-sha1
+Ciphers aes128-cbc
+PasswordAuthentication yes
+UsePAM no
+PermitRootLogin no
+AllowUsers orbyte
+Subsystem sftp internal-sftp

@@ -100,6 +100,14 @@ export class ContentActivity {
   }
 
   changed(buffer: Pick<IBuffer, 'length' | 'getLine' | 'type'>): boolean {
+    const scan = this.scan(buffer)
+    let result = scan.next()
+    while (!result.done) result = scan.next()
+    return result.value
+  }
+
+  /** Yield between rows so history comparison shares the terminal parsing budget. */
+  *scan(buffer: Pick<IBuffer, 'length' | 'getLine' | 'type'>): Generator<void, boolean> {
     const parts: string[] = []
     this.prompts = this.prompts.filter((prompt) => !prompt.marker.isDisposed)
     const prompts = new Map(this.prompts.map((prompt) => [prompt.marker.line, prompt]))
@@ -109,6 +117,7 @@ export class ContentActivity {
       while (true) {
         const nextWrapped = buffer.getLine(index + 1)?.isWrapped === true
         text += buffer.getLine(index)?.translateToString(!nextWrapped) ?? ''
+        if (index % 32 === 31) yield
         if (!nextWrapped) break
         index++
       }

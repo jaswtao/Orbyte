@@ -8,11 +8,12 @@ import ts from 'typescript'
 import { Channel } from '@tauri-apps/api/core'
 
 const { OutputRecovery, AckQueue } = await loadService('terminal/recovery')
-const flush = () => new Promise(setImmediate)
+const flush = () => new Promise((resolve) => setTimeout(resolve, 25))
 const { InputQueue } = await loadService('terminal/inputQueue')
 const frameModule = await loadService('terminal/frame')
 const recoveryModule = await loadService('terminal/recovery')
 const contentModule = await loadService('terminal/contentActivity')
+const outputModule = await loadService('terminal/outputScheduler')
 
 test('停止期间丢弃后续输入，旧写入失败不再误报到新会话', async () => {
   const errors = []
@@ -46,7 +47,8 @@ function clientFixture(t) {
   const statuses = []
   const outputActivity = []
   const diagnostics = []
-  const api = { reportDiagnostic: async (...args) => diagnostics.push(args), ackTerminal: async () => {}, resizeTerminal: async () => {}, writeTerminal: async () => {} }
+  const displays = []
+  const api = { reportDiagnostic: async (...args) => diagnostics.push(args), ackTerminal: async () => {}, resizeTerminal: async () => {}, writeTerminal: async () => {}, pauseOutput: async () => {} }
   class Terminal {
     writes = []
     options = {}
@@ -72,12 +74,13 @@ function clientFixture(t) {
       if (name === './selection') return { bindTerminalSelection: () => ({ dispose() {} }) }
       if (name === './shellIntegration') return { ShellIntegration: class { reset() {} input() {} } }
       if (name === './contentActivity') return contentModule
+      if (name === './outputScheduler') return outputModule
       if (name === '../../i18n/translate') return { t: (key) => key }
       throw new Error(name)
     },
   })
   const container = { dataset: {}, offsetWidth: 0, offsetHeight: 0, contains: () => false }
-  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status), onOutput: (unread) => outputActivity.push(unread) })
+  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status), onOutput: (unread) => outputActivity.push(unread), onDisplay: (paused, bytes) => displays.push({ paused, bytes }) })
   const channel = client.createChannel()
   client.attach('session')
   let index = 0
@@ -90,7 +93,7 @@ function clientFixture(t) {
     callbacks.get(channel.id)({ index: index++, message: fallback ? Array.from(new Uint8Array(frame)) : frame })
   }
   t.after(() => { client.dispose(); globalThis.window = previous })
-  return { client, deliver, statuses, outputActivity, diagnostics, api, callbacks, channel, container, document }
+  return { client, deliver, statuses, outputActivity, diagnostics, displays, api, callbacks, channel, container, document }
 }
 
 test('终端回传恢复已读内容的状态，真实输出保持未读直到查看', (t) => {
@@ -190,6 +193,7 @@ test('独立状态查询先报告退出时，仍确认迟到的尾部输出', as
   f.api.ackTerminal = async (id, seq) => confirmed.push([id, seq])
   f.client.updateStatus({ state: 'exited', exitCode: 0 })
   f.deliver(1, 'last output')
+  await flush()
   await f.client.flushAck()
   assert.equal(confirmed.length, 1)
   assert.equal(f.client.term.options.disableStdin, true)
@@ -213,6 +217,141 @@ function outputFrame(kind, text) {
   return buffer
 }
 
+async function waitForOutput(fixture, suffix) {
+  const deadline = performance.now() + 2000
+  while (!fixture.client.term.writes.join('').endsWith(suffix) && performance.now() < deadline) await flush()
+  assert.ok(fixture.client.term.writes.join('').endsWith(suffix))
+}
+
+test('overload pauses only display, keeps input alive, and resumes through an explicit subscription', async (t) => {
+  const f = clientFixture(t)
+  const paused = []
+  const inputs = []
+  let releasePause
+  f.api.pauseOutput = (id) => { paused.push(id); return new Promise((resolve) => { releasePause = resolve }) }
+  f.api.writeTerminal = async (id, data) => inputs.push([id, data])
+  f.deliver(2, '{"state":"running"}')
+  f.client.term.failWrite = true
+  f.deliver(1, 'unrendered')
+  await flush()
+  assert.deepEqual(paused, ['session'])
+  assert.equal(f.displays.at(-1).paused, true)
+  assert.equal(f.client.term.options.disableStdin, false)
+  f.client.term.data('\x03')
+  await flush()
+  assert.deepEqual(inputs, [['session', '\x03']])
+  f.deliver(1, 'dropped')
+  f.client.observeSession({ terminalId: 'session', status: { state: 'running' }, output: {
+    paused: true, droppedBytes: 100, subscribed: true, inflightBytes: 0, ackIdleMs: null,
+  } })
+  assert.equal(f.displays.at(-1).bytes, 117)
+  assert.equal(f.diagnostics.some((args) => args[1] === 'reconnect_started'), false)
+
+  f.client.term.failWrite = false
+  let subscriptions = 0
+  f.api.listTerminalSessions = async () => [{ terminalId: 'session', status: { state: 'running' } }]
+  f.api.subscribeTerminal = async (_id, channel) => {
+    subscriptions++
+    channel.onmessage(outputFrame(2, '{"state":"running"}'))
+    channel.onmessage(outputFrame(1, 'fresh redraw'))
+  }
+  const resumed = f.client.resumeDisplay()
+  await f.client.resumeDisplay()
+  await flush()
+  assert.equal(subscriptions, 0, 'Resume must wait for the pause RPC to finish')
+  releasePause()
+  await resumed
+  assert.equal(subscriptions, 1)
+  assert.equal(f.displays.at(-1).paused, false)
+  assert.equal(f.client.id, 'session', 'Resuming display must not restart the task')
+  assert.ok(f.client.term.writes.join('').endsWith('fresh redraw'))
+})
+
+test('a timed-out parser cannot starve another client or acknowledge a late write', async (t) => {
+  const previousWindow = globalThis.window
+  const broken = clientFixture(t)
+  const normal = clientFixture(t)
+  t.after(() => { globalThis.window = previousWindow })
+  const acknowledgements = []
+  let late
+  broken.client.term.write = (_, complete) => { late = complete }
+  broken.api.ackTerminal = async (_, seq) => acknowledgements.push(seq)
+  broken.deliver(2, '{"state":"running"}')
+  normal.deliver(2, '{"state":"running"}')
+  broken.deliver(1, 'blocked parser')
+  normal.deliver(1, 'other terminal remains usable')
+  await waitForOutput(normal, 'other terminal remains usable')
+  assert.equal(broken.displays.at(-1).paused, true)
+  assert.equal(normal.displays.at(-1).paused, false)
+  late()
+  await flush()
+  assert.deepEqual(acknowledgements, [])
+})
+
+test('output failure still forwards Escape and Ctrl+C to the running process', async (t) => {
+  const f = clientFixture(t)
+  const inputs = []
+  f.api.writeTerminal = async (id, data) => inputs.push([id, data])
+  f.deliver(2, '{"state":"running"}')
+  f.deliver(2, '{broken')
+  assert.equal(f.client.connection, 'disconnected')
+  assert.equal(f.client.term.options.disableStdin, false)
+  f.client.term.data('\x1b')
+  await flush()
+  f.client.term.data('\x03')
+  await flush()
+  assert.deepEqual(inputs, [['session', '\x1b'], ['session', '\x03']])
+  f.client.pauseInput()
+  f.client.term.data('must not reach a stopped session')
+  await flush()
+  assert.equal(inputs.length, 2)
+})
+
+test('output resubscription preserves queued input and keeps writes serialized', async (t) => {
+  const f = clientFixture(t)
+  const inputs = []
+  let release
+  f.api.writeTerminal = (id, data) => {
+    inputs.push([id, data])
+    return inputs.length === 1 ? new Promise((resolve) => { release = resolve }) : Promise.resolve()
+  }
+  f.deliver(2, '{"state":"running"}')
+  f.client.term.data('first')
+  f.client.term.data('\x03')
+  f.client.createChannel()
+  f.client.attach('session')
+  f.client.term.data('\x1b')
+  assert.deepEqual(inputs, [['session', 'first']])
+  release()
+  await flush()
+  assert.deepEqual(inputs, [['session', 'first'], ['session', '\x03\x1b']])
+})
+
+test('output reconnect forwards interrupts while waiting for a subscription and after failure', async (t) => {
+  const f = clientFixture(t)
+  const inputs = []
+  f.api.writeTerminal = async (id, data) => inputs.push([id, data])
+  f.deliver(2, '{"state":"running"}')
+  f.api.listTerminalSessions = async () => [{ terminalId: 'session', status: { state: 'running' } }]
+  let rejectSubscribe
+  f.api.subscribeTerminal = () => new Promise((_, reject) => { rejectSubscribe = reject })
+  const reconnect = f.client.reconnect()
+  await flush()
+  assert.equal(f.client.connection, 'reconnecting')
+  f.client.term.data('\x1b')
+  await flush()
+  rejectSubscribe(new Error('subscription failed'))
+  await reconnect
+  assert.equal(f.client.connection, 'disconnected')
+  f.client.term.data('\x03')
+  await flush()
+  assert.deepEqual(inputs, [['session', '\x1b'], ['session', '\x03']])
+  f.client.updateStatus({ state: 'exited', exitCode: 0 })
+  f.client.term.data('must not reach an exited process')
+  await flush()
+  assert.equal(inputs.length, 2)
+})
+
 test('IPC fallback byte arrays keep output acknowledged and input usable after reconnect', async (t) => {
   const f = clientFixture(t)
   const confirmed = []
@@ -221,12 +360,13 @@ test('IPC fallback byte arrays keep output acknowledged and input usable after r
   f.api.ackTerminal = async (_id, seq) => confirmed.push(seq)
   f.deliver(2, '{"state":"running"}')
   f.deliver(1, 'Codex redraw '.repeat(1024), true)
+  await waitForOutput(f, 'Codex redraw '.repeat(1024))
   await f.client.flushAck()
   assert.equal(f.client.connection, 'connected')
   assert.equal(f.client.term.options.disableStdin, false)
   assert.deepEqual(confirmed, [1])
   assert.equal(f.diagnostics.some((args) => args[1] === 'frame_error'), false)
-  assert.equal(f.client.term.writes.at(-1), 'Codex redraw '.repeat(1024))
+  assert.ok(f.client.term.writes.join('').endsWith('Codex redraw '.repeat(1024)))
   f.client.term.data('draft')
   await flush()
   assert.deepEqual(inputs, [['session', 'draft']])
@@ -237,12 +377,13 @@ test('IPC fallback byte arrays keep output acknowledged and input usable after r
     channel.onmessage(Array.from(new Uint8Array(outputFrame(1, 'Codex redraw '.repeat(1024)))))
   }
   await f.client.reconnect()
+  await waitForOutput(f, 'Codex redraw '.repeat(1024))
   await f.client.flushAck()
   f.deliver(1, 'ignored old subscription', true)
   assert.equal(f.client.connection, 'connected')
   assert.equal(f.client.term.options.disableStdin, false)
   assert.equal(f.diagnostics.some((args) => args[1] === 'frame_error'), false)
-  assert.equal(f.client.term.writes.at(-1), 'Codex redraw '.repeat(1024))
+  assert.ok(f.client.term.writes.join('').endsWith('Codex redraw '.repeat(1024)))
   f.client.term.data('after reconnect')
   await flush()
   assert.deepEqual(inputs.at(-1), ['session', 'after reconnect'])
@@ -269,6 +410,7 @@ test('background output and IPC fallback do not disable input when returning fro
   f.client.observeSession({ terminalId: 'session', status: { state: 'running' },
     output: { subscribed: true, inflightBytes: 12000, ackIdleMs: 60000 } })
   f.deliver(1, 'Browser operation completed\r\n'.repeat(512), true)
+  await waitForOutput(f, 'Browser operation completed\r\n'.repeat(512))
   await f.client.flushAck()
 
   f.document.visibilityState = 'visible'
@@ -276,6 +418,7 @@ test('background output and IPC fallback do not disable input when returning fro
     output: { subscribed: true, inflightBytes: 0, ackIdleMs: null } })
   f.deliver(1, '\x1b[?25l')
   f.deliver(1, 'Codex redraw after return\r\n'.repeat(512), true)
+  await waitForOutput(f, 'Codex redraw after return\r\n'.repeat(512))
   await f.client.flushAck()
   f.client.term.data('next question')
   await flush()
@@ -283,7 +426,7 @@ test('background output and IPC fallback do not disable input when returning fro
   assert.equal(f.client.term.options.disableStdin, false)
   assert.deepEqual(confirmed, [1, 3])
   assert.deepEqual(inputs, [['session', 'next question']])
-  assert.equal(f.client.term.writes.at(-1), 'Codex redraw after return\r\n'.repeat(512))
+  assert.ok(f.client.term.writes.join('').endsWith('Codex redraw after return\r\n'.repeat(512)))
   assert.deepEqual(f.diagnostics, [])
 })
 
@@ -322,7 +465,7 @@ test('帧异常自动恢复一次，后续异常保留手动重连入口且不�
   await flush()
   assert.equal(subscriptions, 1)
   assert.equal(f.client.connection, 'disconnected')
-  assert.equal(f.client.term.options.disableStdin, true)
+  assert.equal(f.client.term.options.disableStdin, false)
   await f.client.reconnect()
   assert.equal(subscriptions, 2)
   assert.equal(f.client.id, 'session')
@@ -347,7 +490,7 @@ test('停止取消进行中的重连后，连接回到可手动重连且不报�
   assert.equal(f.client.connection, 'disconnected')
   assert.equal(f.diagnostics.some((args) => args[1] === 'reconnect_failed'), false)
   f.client.resumeInput()
-  assert.equal(f.client.term.options.disableStdin, true)
+  assert.equal(f.client.term.options.disableStdin, false)
 
   f.api.listTerminalSessions = async () => [running]
   f.api.subscribeTerminal = async (_id, channel) => {
@@ -376,7 +519,7 @@ test('重连已发出订阅但被停止取消时，不保持正在重连', async
   assert.equal(f.client.connection, 'disconnected')
   assert.equal(f.client.term.options.disableStdin, true)
   f.client.resumeInput()
-  assert.equal(f.client.term.options.disableStdin, true)
+  assert.equal(f.client.term.options.disableStdin, false)
 })
 
 test('确认失败后保留进度，串行重试时合并新到达的确认', async () => {

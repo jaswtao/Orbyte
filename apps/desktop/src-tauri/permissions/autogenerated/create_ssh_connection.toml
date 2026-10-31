@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-ssh-connection"
+description = "Enables the create_ssh_connection command without any pre-configured scope."
+commands.allow = ["create_ssh_connection"]
+
+[[permission]]
+identifier = "deny-create-ssh-connection"
+description = "Denies the create_ssh_connection command without any pre-configured scope."
+commands.deny = ["create_ssh_connection"]

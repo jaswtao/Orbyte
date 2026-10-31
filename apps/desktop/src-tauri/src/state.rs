@@ -6,6 +6,7 @@
 use std::sync::{Arc, OnceLock};
 
 use orbyte_platform::shell::{detect_all, ShellInfo, ShellType, SystemShellEnv};
+use orbyte_ssh::SshHub;
 use orbyte_terminal::TerminalManager;
 
 pub struct AppState {
@@ -13,6 +14,7 @@ pub struct AppState {
     pub files: Arc<orbyte_files::watcher::FileManager>,
     pub unsaved_editor_count: std::sync::atomic::AtomicUsize,
     pub terminals: Arc<TerminalManager>,
+    pub ssh: Arc<SshHub>,
     pub shells: Arc<ShellCache>,
     /// 配置创建/重启/移除与项目修改/删除串行，避免数据库与会话注册表竞争。
     pub terminal_lifecycle: tokio::sync::Mutex<()>,
@@ -30,6 +32,7 @@ impl AppState {
             files: Arc::new(orbyte_files::watcher::FileManager::default()),
             unsaved_editor_count: std::sync::atomic::AtomicUsize::new(0),
             terminals: Arc::new(TerminalManager::default()),
+            ssh: SshHub::new(),
             shells: Arc::new(ShellCache::default()),
             terminal_lifecycle: tokio::sync::Mutex::new(()),
             file_writes: tokio::sync::RwLock::new(()),
@@ -49,9 +52,10 @@ pub enum ClosePhase {
 }
 
 impl ClosePhase {
-    pub fn request(&mut self, unsaved: usize) -> bool {
+    /// `transfers` counts queued and running remote copies. Either count asks the user to confirm.
+    pub fn request(&mut self, unsaved: usize, transfers: usize) -> bool {
         if *self != Self::Idle { return false; }
-        *self = if unsaved > 0 { Self::Pending } else { Self::ShuttingDown };
+        *self = if unsaved > 0 || transfers > 0 { Self::Pending } else { Self::ShuttingDown };
         true
     }
 

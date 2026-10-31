@@ -23,6 +23,10 @@ pub use draft::{EditorDraft, MAX_DRAFT_BYTES};
 mod terminal;
 mod layout;
 mod migration;
+mod remote;
+pub use remote::{
+    parse_connection, KnownHost, KnownHostRecord, RemoteTerminalConfig, RemoteWorkspaceRecord, SshConnection,
+};
 
 #[derive(Clone)]
 pub struct Database {

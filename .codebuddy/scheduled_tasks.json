@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "b0cb3366",
+      "cron": "45 23 31 10 *",
+      "prompt": "读取 C:/Users/Tao/AppData/Local/Temp/autosleep11pm-2330-verification.txt，核对 AutoSleep11PM 在 2026-10-31 23:30 是否实际触发休眠。若结果为 SUCCESS，汇总休眠和唤醒时间并删除一次性任务 VerifyAutoSleep11PM-20261031；若为 FAILED 或仍在运行，检查 System 电源日志和 AutoSleep11PM 任务状态，说明原因。不要再次执行休眠。",
+      "createdAt": 1793441830007,
+      "expiryDays": 1,
+      "expiresAt": 1793528230007
+    }
+  ]
+}

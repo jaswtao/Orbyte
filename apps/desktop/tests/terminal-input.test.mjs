@@ -745,7 +745,7 @@ test('右键其他终端时先同步窗格焦点，关闭操作针对该窗格�
   assert.deepEqual(leaves(remaining.tabs[0].root).map((leaf) => leaf.terminalConfigId), ['first'])
 })
 
-function imeFixture(terminal) {
+function imeFixture(terminal, visible) {
   const textarea = new EventTarget()
   textarea.value = ''
   textarea.style = {}
@@ -775,8 +775,42 @@ function imeFixture(terminal) {
   // xterm 的监听先注册，兼容逻辑必须在其更新尺寸后约束输入框。
   textarea.addEventListener('compositionstart', () => helper.compositionstart())
   textarea.addEventListener('compositionupdate', () => helper.compositionupdate({ data: 'chang'.repeat(40) }))
-  return { term, buffer, screen, textarea, composition, listeners, binding: bindTerminalIme(term) }
+  return { term, buffer, screen, textarea, composition, listeners, binding: bindTerminalIme(term, visible) }
 }
+
+test('IME coalesces cursor floods into one frame and skips hidden terminal scans', (t) => {
+  const previousRequest = globalThis.requestAnimationFrame
+  const previousCancel = globalThis.cancelAnimationFrame
+  const frames = new Map()
+  let next = 0
+  globalThis.requestAnimationFrame = (callback) => { frames.set(++next, callback); return next }
+  globalThis.cancelAnimationFrame = (id) => frames.delete(id)
+  let visible = true
+  const fixture = imeFixture(undefined, () => visible)
+  t.after(() => {
+    fixture.binding.dispose()
+    globalThis.requestAnimationFrame = previousRequest
+    globalThis.cancelAnimationFrame = previousCancel
+  })
+  let scans = 0
+  fixture.buffer.getLine = () => { scans++; return { length: 0 } }
+  fixture.listeners.get('?l')([25])
+  for (let index = 0; index < 100; index++) fixture.listeners.get('onCursorMove')()
+  assert.equal(scans, 0)
+  assert.equal(frames.size, 1)
+  const callback = [...frames.values()][0]
+  frames.clear()
+  callback()
+  assert.equal(scans, 24)
+  visible = false
+  for (let index = 0; index < 100; index++) fixture.listeners.get('onRender')()
+  assert.equal(frames.size, 0)
+  assert.equal(scans, 24)
+  visible = true
+  fixture.listeners.get('onScroll')()
+  fixture.binding.dispose()
+  assert.equal(frames.size, 0)
+})
 
 test('开始组词时立即校准锚点，长拼音和 xterm 延迟更新均不越过终端右边界', async () => {
   const fixture = imeFixture()

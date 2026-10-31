@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pause-terminal-output"
+description = "Enables the pause_terminal_output command without any pre-configured scope."
+commands.allow = ["pause_terminal_output"]
+
+[[permission]]
+identifier = "deny-pause-terminal-output"
+description = "Denies the pause_terminal_output command without any pre-configured scope."
+commands.deny = ["pause_terminal_output"]

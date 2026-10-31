@@ -386,6 +386,94 @@ fn native_clipboard_shortcut_reaches_raw_console_as_ctrl_v() {
 }
 
 #[test]
+fn stalled_output_keeps_ipc_bounded_and_accepts_escape_and_ctrl_c() {
+    let source = r#"Add-Type -TypeDefinition @'
+// Author: jaswtao · Date: 2026-10-31
+using System;
+using System.Threading;
+public class FloodInputProbe {
+    static volatile bool stopped;
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Explicit, Size=20)]
+    public struct Record {
+        [System.Runtime.InteropServices.FieldOffset(0)] public ushort Type;
+        [System.Runtime.InteropServices.FieldOffset(4)] public int Down;
+        [System.Runtime.InteropServices.FieldOffset(14)] public ushort Char;
+    }
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int n);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool SetConsoleMode(IntPtr h, uint mode);
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")] static extern bool ReadConsoleInputW(IntPtr h, out Record r, uint count, out uint read);
+    static ushort ReadKey(IntPtr input) {
+        while (true) {
+            Record record; uint read;
+            if (!ReadConsoleInputW(input, out record, 1, out read)) throw new Exception("console read failed");
+            if (record.Type == 1 && record.Down != 0 && record.Char != 0) return record.Char;
+        }
+    }
+    public static void Run() {
+        var input = GetStdHandle(-10);
+        if (!SetConsoleMode(input, 0x98)) throw new Exception("console setup failed");
+        Console.WriteLine("flood-ready");
+        var writer = new Thread(() => {
+            var text = new string('x', 1024);
+            while (!stopped) { Console.Write(text); Thread.Sleep(1); }
+        });
+        writer.IsBackground = true;
+        writer.Start();
+        var first = ReadKey(input);
+        var second = ReadKey(input);
+        stopped = true;
+        writer.Join();
+        Console.WriteLine("\r\ninterrupts-received:{0:X4}:{1:X4}", (int)first, (int)second);
+    }
+}
+'@
+[FloodInputProbe]::Run()
+"#;
+    let request = SpawnRequest {
+        program: detect_shell(&SystemShellEnv, ShellType::Powershell).program.unwrap(),
+        args: vec!["-NoLogo".into(), "-NoProfile".into(), "-Command".into(), source.into()],
+        ..cmd_request()
+    };
+    let manager = TerminalManager::new(FlowConfig {
+        buffer_capacity: 4096,
+        window: 256,
+        max_batch: 128,
+        stale_after: Duration::from_millis(100),
+    });
+    let collector = Arc::new(Collector::default());
+    let id = manager.spawn(&request, collector.clone()).unwrap();
+    let mut consumer = Consumer::default();
+    let ready = consumer.wait_for(&collector, &manager, &id, Duration::from_secs(15), |c| c.text().contains("flood-ready"));
+    if !ready { manager.remove(&id).unwrap(); panic!("Probe did not start: {}", consumer.text()); }
+
+    // Stop consuming and acknowledging while the process continues to redraw.
+    std::thread::sleep(Duration::from_millis(600));
+    let before = collector.frames.lock().unwrap().len();
+    std::thread::sleep(Duration::from_millis(200));
+    let after = collector.frames.lock().unwrap().len();
+    let health = manager.get(&id).unwrap().info().output;
+    manager.write(&id, b"\x1b".to_vec()).unwrap();
+    // ConPTY interprets adjacent ESC + key bytes as an Alt-modified key.
+    std::thread::sleep(Duration::from_millis(500));
+    manager.write(&id, b"\x03".to_vec()).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !manager.get(&id).unwrap().is_exited() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let exited_without_ack = manager.get(&id).unwrap().is_exited();
+    let received = consumer.wait_for(&collector, &manager, &id, Duration::from_secs(10), |c| {
+        c.text().contains("interrupts-received:001B:0003")
+    });
+    manager.remove(&id).unwrap();
+
+    assert_eq!(health.inflight_bytes, 256);
+    assert!(before <= 4, "Output window was bypassed: {before} queued frames");
+    assert_eq!(after, before, "Stalled output kept sending IPC frames");
+    assert!(exited_without_ack, "Interrupts depended on output acknowledgement; received={received}; {}", consumer.text());
+    assert!(received, "{}", consumer.text());
+}
+
+#[test]
 fn unicode_paste_reaches_vt_input_without_protocol_leaking() {
     let input = "\x1b[200~甲“乙”\r‘丙’\"丁\"\x1b[201~";
     let text = probe_console_input(console_input_probe(0x298, input.len(), true), &[input]);
@@ -634,6 +722,40 @@ fn heavy_output_under_backpressure_has_no_gap() {
     );
     assert_eq!(consumer.gaps, 0);
     manager.remove(&id).unwrap();
+}
+
+#[test]
+fn paused_display_drains_process_output_without_affecting_another_terminal() {
+    let manager = TerminalManager::default();
+    let overloaded = Arc::new(Collector::default());
+    let healthy = Arc::new(Collector::default());
+    let id = manager.spawn(&cmd_request(), overloaded.clone()).unwrap();
+    let other = manager.spawn(&cmd_request(), healthy.clone()).unwrap();
+    let mut first = Consumer::default();
+    let mut second = Consumer::default();
+    manager.write(&id, b"echo pause-%COMPUTERNAME:~0,0%ready\r".to_vec()).unwrap();
+    assert!(first.wait_for(&overloaded, &manager, &id, Duration::from_secs(10), |c| c.text().contains("pause-ready")));
+    let session = manager.get(&id).unwrap();
+    session.pause_output();
+    manager.write(&id, b"for /L %i in (1,1,10000) do @echo discarded-%i\r".to_vec()).unwrap();
+    manager.write(&other, b"echo other-%COMPUTERNAME:~0,0%responsive\r".to_vec()).unwrap();
+    let responsive = second.wait_for(&healthy, &manager, &other, Duration::from_secs(2), |c| c.text().contains("other-responsive"));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while session.info().output.dropped_bytes == 0 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let health = session.info().output;
+    // Exit remains observable even though no output can be acknowledged.
+    manager.write(&id, b"exit 0\r".to_vec()).unwrap();
+    let exited = first.wait_for(&overloaded, &manager, &id, Duration::from_secs(10), |c| c.statuses.iter().any(|status| status.contains("\"exited\"")));
+    manager.remove(&id).unwrap();
+    manager.remove(&other).unwrap();
+    assert!(responsive, "Healthy terminal was starved");
+    assert!(health.paused);
+    assert!(health.dropped_bytes > 0);
+    assert_eq!(health.buffered_bytes, 0);
+    assert_eq!(health.inflight_bytes, 0);
+    assert!(exited, "Paused display hid process exit");
 }
 
 #[test]

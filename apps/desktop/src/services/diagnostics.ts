@@ -8,6 +8,7 @@ const quietCommands = new Set([
   'list_terminal_sessions', 'list_running_workspaces', 'terminals_have_running_tasks',
   'put_editor_draft', 'delete_editor_draft',
   'git_status', 'set_unsaved_editor_count', 'report_terminal_diagnostic',
+  'list_remote_transfers', 'list_remote_terminal_sessions', 'submit_ssh_credential',
 ])
 let sequence = 0
 const page = crypto.randomUUID()

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-remote-browse"
+description = "Enables the cancel_remote_browse command without any pre-configured scope."
+commands.allow = ["cancel_remote_browse"]
+
+[[permission]]
+identifier = "deny-cancel-remote-browse"
+description = "Denies the cancel_remote_browse command without any pre-configured scope."
+commands.deny = ["cancel_remote_browse"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-resolve-transfer-conflict"
+description = "Enables the resolve_transfer_conflict command without any pre-configured scope."
+commands.allow = ["resolve_transfer_conflict"]
+
+[[permission]]
+identifier = "deny-resolve-transfer-conflict"
+description = "Denies the resolve_transfer_conflict command without any pre-configured scope."
+commands.deny = ["resolve_transfer_conflict"]

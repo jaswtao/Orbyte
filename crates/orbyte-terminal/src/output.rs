@@ -49,9 +49,9 @@ impl Default for FlowConfig {
     fn default() -> Self {
         Self {
             buffer_capacity: 4 * 1024 * 1024,
-            window: 1024 * 1024,
+            window: 128 * 1024,
             stale_after: Duration::from_secs(5),
-            max_batch: 64 * 1024,
+            max_batch: 16 * 1024,
         }
     }
 }
@@ -87,6 +87,8 @@ pub struct FlowState {
     inflight_bytes: usize,
     last_ack: Instant,
     dropped_pending: u64,
+    paused: bool,
+    dropped_bytes: u64,
 }
 
 impl FlowState {
@@ -101,6 +103,8 @@ impl FlowState {
             inflight_bytes: 0,
             last_ack: now,
             dropped_pending: 0,
+            paused: false,
+            dropped_bytes: 0,
         }
     }
 
@@ -118,6 +122,20 @@ impl FlowState {
 
     pub fn inflight_bytes(&self) -> usize {
         self.inflight_bytes
+    }
+
+    pub fn is_paused(&self) -> bool { self.paused }
+
+    pub fn dropped_bytes(&self) -> u64 { self.dropped_bytes }
+
+    /// Keep draining the process without sending display data or applying backpressure.
+    pub fn pause(&mut self) {
+        self.paused = true;
+        self.dropped_bytes = self.dropped_bytes.saturating_add(self.buffer.len() as u64);
+        self.buffer.clear();
+        self.inflight.clear();
+        self.inflight_bytes = 0;
+        self.dropped_pending = 0;
     }
 
     pub fn ack_idle_ms(&self, now: Instant) -> Option<u64> {
@@ -140,6 +158,10 @@ impl FlowState {
 
     /// 把读取到的数据写入缓冲。
     pub fn push(&mut self, data: &[u8], now: Instant) -> PushOutcome {
+        if self.paused {
+            self.dropped_bytes = self.dropped_bytes.saturating_add(data.len() as u64);
+            return PushOutcome::DroppedOldest(data.len());
+        }
         let cap = self.cfg.buffer_capacity;
         if self.buffer.len() + data.len() <= cap {
             self.buffer.extend(data);
@@ -156,12 +178,15 @@ impl FlowState {
         self.buffer.extend(data);
         let dropped = overflow + skipped;
         self.dropped_pending += dropped as u64;
+        self.dropped_bytes = self.dropped_bytes.saturating_add(dropped as u64);
         PushOutcome::DroppedOldest(dropped)
     }
 
     /// 取出下一帧：先发缺口通知，再按窗口取输出。无订阅时不发送。
     pub fn take_frame(&mut self, now: Instant) -> Option<PendingFrame> {
-        if !self.subscribed {
+        // Gap notifications share the output window; otherwise a slow renderer
+        // receives a new IPC message for every discarded reader chunk.
+        if !self.subscribed || self.paused || self.inflight_bytes >= self.cfg.window {
             return None;
         }
         if self.dropped_pending > 0 {
@@ -169,10 +194,10 @@ impl FlowState {
             self.dropped_pending = 0;
             return Some(PendingFrame { kind: FRAME_GAP, seq: self.alloc_seq(), payload });
         }
-        if self.buffer.is_empty() || self.inflight_bytes >= self.cfg.window {
+        if self.buffer.is_empty() {
             return None;
         }
-        let n = self.buffer.len().min(self.cfg.max_batch);
+        let n = self.buffer.len().min(self.cfg.max_batch).min(self.cfg.window - self.inflight_bytes);
         let payload: Vec<u8> = self.buffer.drain(..n).collect();
         let seq = self.alloc_seq();
         if self.inflight_bytes == 0 {
@@ -205,6 +230,7 @@ impl FlowState {
     /// 建立新订阅：丢弃未发送的缓冲与在途记录，只推后续输出。缺口计数保留，下一帧先发缺口。
     pub fn subscribe(&mut self, now: Instant) {
         self.subscribed = true;
+        self.paused = false;
         self.buffer.clear();
         self.inflight.clear();
         self.inflight_bytes = 0;
@@ -307,6 +333,40 @@ mod tests {
     }
 
     #[test]
+    fn stalled_output_coalesces_gaps_until_the_window_is_acknowledged() {
+        let start = Instant::now();
+        let mut flow = FlowState::new(small_cfg(), start);
+        flow.subscribe(start);
+        flow.push(&[1; 16], start);
+        flow.take_frame(start).unwrap();
+        let last = flow.take_frame(start).unwrap();
+        let later = start + Duration::from_secs(6);
+
+        // A stalled renderer must not receive an unbounded stream of gap notifications.
+        for _ in 0..100 {
+            flow.push(&[2; 16], later);
+            assert!(flow.take_frame(later).is_none());
+        }
+        flow.ack(last.seq, later);
+        let gap = flow.take_frame(later).unwrap();
+        assert_eq!(gap.kind, FRAME_GAP);
+        assert_eq!(gap.payload, b"{\"droppedBytes\":1592}");
+        assert_eq!(flow.take_frame(later).unwrap().kind, FRAME_OUTPUT);
+    }
+
+    #[test]
+    fn output_frames_do_not_exceed_the_remaining_window() {
+        let now = Instant::now();
+        let mut flow = FlowState::new(FlowConfig { window: 6, ..small_cfg() }, now);
+        flow.subscribe(now);
+        flow.push(b"abcdefghijkl", now);
+        assert_eq!(flow.take_frame(now).unwrap().payload, b"abcd");
+        assert_eq!(flow.take_frame(now).unwrap().payload, b"ef");
+        assert_eq!(flow.inflight_bytes(), 6);
+        assert!(flow.take_frame(now).is_none());
+    }
+
+    #[test]
     fn closing_never_blocks_reader() {
         let now = Instant::now();
         let mut flow = FlowState::new(small_cfg(), now);
@@ -314,6 +374,34 @@ mod tests {
         flow.push(&[1; 16], now);
         flow.set_closing();
         assert_eq!(flow.push(&[2; 4], now), PushOutcome::DroppedOldest(4));
+    }
+
+    #[test]
+    fn paused_output_drains_without_buffering_and_resumes_only_on_subscribe() {
+        let now = Instant::now();
+        let mut flow = FlowState::new(small_cfg(), now);
+        flow.subscribe(now);
+        flow.push(&[1; 16], now);
+        flow.take_frame(now).unwrap();
+        flow.pause();
+        assert!(flow.is_paused());
+        assert!(flow.is_subscribed());
+        assert_eq!(flow.dropped_bytes(), 12);
+        for _ in 0..100 {
+            assert_eq!(flow.push(&[2; 32], now), PushOutcome::DroppedOldest(32));
+            assert_eq!(flow.buffered_len(), 0);
+            assert!(flow.take_frame(now).is_none());
+        }
+        flow.ack(u64::MAX, now);
+        assert!(flow.is_paused());
+        assert_eq!(flow.inflight_bytes(), 0);
+        assert_eq!(flow.dropped_bytes(), 3212);
+        flow.pause();
+        assert_eq!(flow.dropped_bytes(), 3212);
+        flow.subscribe(now);
+        assert!(!flow.is_paused());
+        flow.push(b"live", now);
+        assert_eq!(flow.take_frame(now).unwrap().payload, b"live");
     }
 
     #[test]

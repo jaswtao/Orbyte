@@ -1,0 +1,35 @@
+# Isolated fixture for the ignored SSH protocol probe.
+# Author: jaswtao · Date: 2026-10-31
+name: orbyte-ssh-probe
+
+services:
+  normal:
+    build: .
+    ports:
+      - "2222:22"
+    environment:
+      SSH_PASSWORD: ${SSH_PASSWORD:?set SSH_PASSWORD before docker compose up}
+    volumes:
+      - ./fixtures/authorized_keys:/fixtures/authorized_keys:ro
+      - ./sshd_config.normal:/etc/ssh/sshd_config:ro
+
+  weak:
+    build: .
+    ports:
+      - "2223:22"
+    environment:
+      SSH_PASSWORD: ${SSH_PASSWORD:?set SSH_PASSWORD before docker compose up}
+    volumes:
+      - ./fixtures/authorized_keys:/fixtures/authorized_keys:ro
+      - ./sshd_config.weak:/etc/ssh/sshd_config:ro
+
+  keyboard:
+    build: .
+    ports:
+      - "2224:22"
+    environment:
+      SSH_PASSWORD: ${SSH_PASSWORD:?set SSH_PASSWORD before docker compose up}
+      SSHD_BIN: /usr/sbin/sshd.pam
+    volumes:
+      - ./fixtures/authorized_keys:/fixtures/authorized_keys:ro
+      - ./sshd_config.keyboard:/etc/ssh/sshd_config:ro

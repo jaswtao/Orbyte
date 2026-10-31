@@ -8,6 +8,7 @@ members = [
     "apps/desktop/src-tauri",
     "crates/orbyte-platform",
     "crates/orbyte-terminal",
+    "crates/orbyte-ssh",
 ]
 
 [workspace.package]
@@ -28,6 +29,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"
 dunce = "1"
 orbyte-platform = { path = "crates/orbyte-platform" }
 orbyte-terminal = { path = "crates/orbyte-terminal" }
+orbyte-ssh = { path = "crates/orbyte-ssh" }
 
 anyhow = "1"
 thiserror = "2"

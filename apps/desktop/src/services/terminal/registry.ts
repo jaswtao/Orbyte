@@ -20,11 +20,15 @@ export interface TerminalEntry {
   visible: boolean
   intentionalStop: boolean
   connection: 'connected' | 'reconnecting' | 'disconnected'
+  displayPaused: boolean
+  droppedBytes: number
+  /** Remote SSH sessions are not in the local PTY list and must not be marked exited by that poll. */
+  remote: boolean
 }
 
 export class TerminalRegistry {
   constructor(private readonly appearance: () => AppearanceMode, private readonly settings: () => Settings, private readonly shortcutsBlocked: () => boolean = () => false) {}
-  readonly byConfig = new Map<string, TerminalEntry>()
+  readonly byConfig = shallowReactive(new Map<string, TerminalEntry>())
   private pollsInFlight = 0
   private pollGeneration = 0
 
@@ -48,7 +52,7 @@ export class TerminalRegistry {
       if (generation !== this.pollGeneration) return
       const current = new Set(this.byConfig.values())
       for (const { entry, id } of observed) {
-        if (!id || entry.client.id !== id || !current.has(entry)) continue
+        if (!id || entry.remote || entry.client.id !== id || !current.has(entry)) continue
         const session = sessions.find((item) => item.terminalId === id)
         if (session) entry.client.observeSession(session)
         else entry.client.updateStatus({ state: 'exited', exitCode: null })
@@ -61,7 +65,7 @@ export class TerminalRegistry {
   private reportPollFailures(generation: number, observed: Array<{ entry: TerminalEntry; id: string | null }>): void {
     if (generation !== this.pollGeneration) return
     for (const { entry, id } of observed) {
-      if (!id || entry.client.id !== id) continue
+      if (!id || entry.remote || entry.client.id !== id) continue
       entry.client.reportPollFailed()
     }
   }
@@ -76,11 +80,19 @@ export class TerminalRegistry {
     }
   }
 
-  create(options: ITerminalOptions, onError: (message: string) => void, onCommandEnd?: (duration: number, exitCode?: number) => void, onExit?: (exitCode: number | null) => void, onWarning?: (message: string) => void): TerminalEntry {
+  create(options: ITerminalOptions, onError: (message: string) => void, onCommandEnd?: (duration: number, exitCode?: number) => void, onExit?: (exitCode: number | null) => void, onWarning?: (message: string) => void, remote = false): TerminalEntry {
     const host = document.createElement('div')
     host.className = 'terminal-host'
     const client = markRaw(new TerminalClient(host, { ...options, theme: terminalAppearance(this.appearance()) }, {
+      shellIntegration: !remote,
+      listSessions: remote ? () => import('../remoteApi').then((api) => api.remoteApi.listSessions()) : undefined,
       onConnection: (state) => { entry.connection = state },
+      onDisplay: (paused, droppedBytes) => {
+        const changed = (paused && !entry.displayPaused) || droppedBytes > entry.droppedBytes
+        entry.displayPaused = paused
+        entry.droppedBytes = droppedBytes
+        if (paused && changed && !entry.visible) entry.unread = true
+      },
       onWarning,
       onStatus: (status) => {
         const exitedAlready = entry.status.state === 'exited'
@@ -105,7 +117,7 @@ export class TerminalRegistry {
       onError,
       onGap: (bytes) => { onWarning?.(t('terminal.outputGap', { bytes: bytes.toLocaleString() })) },
     }))
-    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected' })
+    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected', displayPaused: false, droppedBytes: 0, remote })
     entry.client.term.attachCustomKeyEventHandler((event) => {
       // Windows 输入法会把 Esc 标记为 229，xterm 6 会在编码前丢弃它。
       // 正在组词时仍交给输入法取消候选，避免误中断终端程序。
@@ -146,7 +158,7 @@ export class TerminalRegistry {
         }
         if (entry.client.id !== id) return
         if (text) entry.client.term.paste(text)
-        else if (forwardWithoutText) {
+        else if (forwardWithoutText && !entry.remote) {
           // Native clipboard access also works when WebView denies browser clipboard reads.
           const path = await terminalApi.saveClipboardImage()
           if (!path) return

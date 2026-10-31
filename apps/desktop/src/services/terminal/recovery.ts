@@ -1,5 +1,7 @@
 /** Output acknowledgement and one-shot automatic recovery. Author: jaswtao · Date: 2026-10-20 */
 export interface OutputHealth {
+  paused: boolean
+  droppedBytes: number
   subscribed: boolean
   inflightBytes: number
   ackIdleMs: number | null

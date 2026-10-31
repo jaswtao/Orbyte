@@ -52,6 +52,8 @@ pub struct TerminalSessionInfo {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputHealth {
+    pub paused: bool,
+    pub dropped_bytes: u64,
     pub subscribed: bool,
     pub inflight_bytes: usize,
     pub buffered_bytes: usize,
@@ -186,6 +188,8 @@ impl TerminalSession {
             terminal_config_id: self.config_id.clone(),
             status: st.status.clone(),
             output: OutputHealth {
+                paused: st.flow.is_paused(),
+                dropped_bytes: st.flow.dropped_bytes(),
                 subscribed: st.flow.is_subscribed(),
                 inflight_bytes: st.flow.inflight_bytes(),
                 buffered_bytes: st.flow.buffered_len(),
@@ -234,6 +238,12 @@ impl TerminalSession {
     pub fn ack(&self, seq: u64) {
         self.shared.lock().flow.ack(seq, Instant::now());
         self.shared.cv.notify_all();
+    }
+
+    pub fn pause_output(&self) {
+        self.shared.lock().flow.pause();
+        self.shared.cv.notify_all();
+        log::info!(target: "orbyte_terminal", "output_paused session={}", self.id);
     }
 
     /// 替换订阅：丢弃未发送的缓冲，只推后续输出；已退出的会话会再收到一次退出状态。

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-subscribe-remote-transfers"
+description = "Enables the subscribe_remote_transfers command without any pre-configured scope."
+commands.allow = ["subscribe_remote_transfers"]
+
+[[permission]]
+identifier = "deny-subscribe-remote-transfers"
+description = "Denies the subscribe_remote_transfers command without any pre-configured scope."
+commands.deny = ["subscribe_remote_transfers"]

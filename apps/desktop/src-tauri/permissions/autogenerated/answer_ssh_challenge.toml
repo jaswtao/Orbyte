@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-answer-ssh-challenge"
+description = "Enables the answer_ssh_challenge command without any pre-configured scope."
+commands.allow = ["answer_ssh_challenge"]
+
+[[permission]]
+identifier = "deny-answer-ssh-challenge"
+description = "Denies the answer_ssh_challenge command without any pre-configured scope."
+commands.deny = ["answer_ssh_challenge"]

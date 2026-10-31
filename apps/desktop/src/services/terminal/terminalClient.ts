@@ -17,12 +17,13 @@ import { bindTerminalIme } from './ime'
 import { bindTerminalSelection } from './selection'
 import { ShellIntegration, type ShellEvent } from './shellIntegration'
 import { ContentActivity } from './contentActivity'
+import { OutputQueue, terminalOutputScheduler, OUTPUT_QUEUE_LIMIT } from './outputScheduler'
 import { t } from '../../i18n/translate'
 
-const ACK_BYTES = 256 * 1024
-const ACK_IDLE_MS = 50
+const ACK_BYTES = 32 * 1024
+const ACK_IDLE_MS = 16
 const RESIZE_DEBOUNCE_MS = 100
-const CONTENT_CHECK_MS = 200
+const CONTENT_CHECK_MS = 1000
 export const INITIAL_SIZE: TerminalSize = { cols: 120, rows: 30 }
 
 export interface TerminalClientEvents {
@@ -33,6 +34,11 @@ export interface TerminalClientEvents {
   onGap?: (droppedBytes: number) => void
   onConnection?: (state: 'connected' | 'reconnecting' | 'disconnected') => void
   onWarning?: (message: string) => void
+  onDisplay?: (paused: boolean, droppedBytes: number) => void
+  /** Remote sessions do not parse local shell-integration OSC sequences. */
+  shellIntegration?: boolean
+  /** WebView resubscribe uses this list. Remote ids are absent from the local PTY list. */
+  listSessions?: () => Promise<import('../terminalApi').TerminalSessionInfo[]>
 }
 
 export class TerminalClient {
@@ -66,12 +72,21 @@ export class TerminalClient {
   private resizeTimer: number | undefined
   private contentTimer: number | undefined
   private readonly contentActivity = new ContentActivity()
+  private visible = true
+  private displayPaused = false
+  private pauseRequest: Promise<void> | null = null
+  private resumingDisplay = false
+  private localDroppedBytes = 0
+  private backendDroppedBytes = 0
+  private readonly output = new OutputQueue(terminalOutputScheduler,
+    (data, complete) => this.term.write(data, complete), () => this.visible && document.visibilityState !== 'hidden',
+    (discarded) => this.pauseDisplay(discarded))
   private lastSize: TerminalSize | null = null
   private readonly observer: ResizeObserver
   private readonly ime: ReturnType<typeof bindTerminalIme>
   private readonly selection: IDisposable
-  private pendingChannel: { frames: TerminalFrameData[] } | null = null
-  private activeChannel: { frames: TerminalFrameData[] } | null = null
+  private pendingChannel: { frames: TerminalFrameData[]; bytes: number; dropped: number } | null = null
+  private activeChannel: { frames: TerminalFrameData[]; bytes: number; dropped: number } | null = null
   status: TerminalStatus = { state: 'starting' }
 
   constructor(
@@ -85,18 +100,26 @@ export class TerminalClient {
     this.term.onResize(() => this.safe(() => this.contentActivity.resized(this.term.buffer.active)))
     this.term.onWriteParsed(() => {
       // 合并清屏与重画；持续输出时最多每 200ms 比较一次。
-      if (this.contentTimer === undefined) this.contentTimer = window.setTimeout(() => this.safe(() => this.flushContentActivity()), CONTENT_CHECK_MS)
+      if (!this.displayPaused && this.contentTimer === undefined) this.contentTimer = window.setTimeout(() => this.safe(() => this.flushContentActivity()), CONTENT_CHECK_MS)
     })
-    this.ime = bindTerminalIme(this.term)
+    this.ime = bindTerminalIme(this.term, () => this.isVisible())
     this.selection = bindTerminalSelection(this.term)
-    for (const code of [133, 9, 7]) this.term.parser.registerOscHandler(code, (data) => {
-      this.safe(() => {
-        if (code === 133 && data === 'C') this.contentActivity.commandStart(this.term)
-        this.integration.osc(code, data)
+    const shellIntegration = events.shellIntegration !== false
+    if (shellIntegration) {
+      for (const code of [133, 9, 7]) this.term.parser.registerOscHandler(code, (data) => {
+        this.safe(() => {
+          if (code === 133 && data === 'C') this.contentActivity.commandStart(this.term)
+          this.integration.osc(code, data)
+        })
+        return true
       })
-      return true
-    })
-    this.term.onData((data) => this.safe(() => { if (!this.term.options.disableStdin) { this.integration.input(data); this.input.push(data) } }))
+    }
+    this.term.onData((data) => this.safe(() => {
+      if (!this.term.options.disableStdin) {
+        if (shellIntegration) this.integration.input(data)
+        this.input.push(data)
+      }
+    }))
     this.observer = new ResizeObserver(() => this.scheduleResize())
     this.observer.observe(container)
   }
@@ -107,12 +130,18 @@ export class TerminalClient {
 
   /** 创建绑定到本实例的 Channel，用于 create / start / subscribe 命令。 */
   createChannel(): Channel<TerminalFrameData> {
-    const subscription = { frames: [] as TerminalFrameData[] }
+    const subscription = { frames: [] as TerminalFrameData[], bytes: 0, dropped: 0 }
     this.pendingChannel = subscription
     const channel = new Channel<TerminalFrameData>()
     channel.onmessage = (buffer) => {
       this.safe(() => {
-        if (this.pendingChannel === subscription) subscription.frames.push(buffer)
+        if (this.pendingChannel === subscription) {
+          const length = Array.isArray(buffer) ? buffer.length : buffer.byteLength
+          if (subscription.bytes + length <= OUTPUT_QUEUE_LIMIT && !subscription.dropped) {
+            subscription.frames.push(buffer)
+            subscription.bytes += length
+          } else subscription.dropped += length
+        }
         else if (this.activeChannel === subscription) this.handleFrame(buffer)
       })
     }
@@ -121,7 +150,13 @@ export class TerminalClient {
 
   /** 命令返回 terminal_id 后绑定，之前排队的输入和 ack 随之发出。 */
   attach(terminalId: string): void {
-    if (this.terminalId !== terminalId) {
+    const newSession = this.terminalId !== terminalId
+    if (newSession) {
+      this.output.clear()
+      this.displayPaused = false
+      this.localDroppedBytes = 0
+      this.backendDroppedBytes = 0
+      this.notifyDisplay()
       this.recovery.reset()
       this.contentActivity.reset(this.term.buffer.active)
       this.status = { state: 'starting' }
@@ -129,16 +164,18 @@ export class TerminalClient {
       this.awaitingStatus = false
     }
     this.generation++
+    this.output.clear()
     this.ack.reset()
     this.ackFailures = 0
     this.integration.reset()
     window.clearTimeout(this.ackTimer)
     this.ackTimer = undefined
     this.processedSeq = null
-    this.input.setSender(null)
-    this.inputEnabled = false
-    this.input.pause()
-    if (this.terminalId !== null) this.input.clear()
+    // Resubscribing output must not discard queued keys or overlap an active write.
+    if (newSession) {
+      this.input.pause()
+      this.inputEnabled = false
+    }
     this.terminalId = terminalId
     this.container.dataset.terminalSession = terminalId
     if (this.container.contains(document.activeElement)) this.container.dispatchEvent(new Event('terminal-session-attached', { bubbles: true }))
@@ -149,6 +186,8 @@ export class TerminalClient {
       this.pendingChannel = null
       for (const frame of subscription.frames) this.safe(() => this.handleFrame(frame))
       subscription.frames = []
+      subscription.bytes = 0
+      if (subscription.dropped) this.pauseDisplay(this.output.clear() + subscription.dropped)
     }
     this.syncInput()
     void this.flushAck()
@@ -168,6 +207,13 @@ export class TerminalClient {
     this.scheduleResize()
   }
 
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return
+    this.flushContentActivity()
+    this.visible = visible
+    if (visible) this.scheduleResize()
+  }
+
   focus(): void {
     this.term.focus()
   }
@@ -181,17 +227,80 @@ export class TerminalClient {
   flushContentActivity(): void {
     window.clearTimeout(this.contentTimer)
     this.contentTimer = undefined
-    this.contentActivity.changed(this.term.buffer.active)
-    this.events.onOutput?.(this.contentActivity.unread)
+    if (this.displayPaused) return
+    const wasVisible = this.visible && document.visibilityState !== 'hidden'
+    const buffer = this.term.buffer.active
+    if (buffer.length <= 32) {
+      this.contentActivity.changed(buffer)
+      this.events.onOutput?.(this.contentActivity.unread)
+      return
+    }
+    const scan = this.contentActivity.scan(buffer)
+    this.output.scheduleMaintenance(() => {
+      const deadline = performance.now() + 2
+      let result = scan.next()
+      while (!result.done && performance.now() < deadline) result = scan.next()
+      if (result.done) {
+        if (wasVisible) this.contentActivity.markRead()
+        this.events.onOutput?.(this.contentActivity.unread)
+      }
+      return !!result.done
+    })
   }
 
   markContentRead(): void {
     this.contentActivity.markRead()
   }
 
+  private notifyDisplay(): void {
+    this.events.onDisplay?.(this.displayPaused, this.localDroppedBytes + this.backendDroppedBytes)
+  }
+
+  private pauseDisplay(discarded: number, request = true): void {
+    this.localDroppedBytes += discarded
+    if (this.displayPaused || this.disposed) return
+    this.displayPaused = true
+    this.recoveryAttempt++
+    this.generation++
+    this.ack.reset()
+    window.clearTimeout(this.ackTimer)
+    this.ackTimer = undefined
+    window.clearTimeout(this.contentTimer)
+    this.contentTimer = undefined
+    this.notifyDisplay()
+    // Deliberately leave the process and its input queue running.
+    if (request && this.terminalId) {
+      const pending = terminalApi.pauseOutput(this.terminalId)
+      // A timeout cannot cancel a native command. Resume must wait for its real
+      // completion so a late pause cannot disable the replacement subscription.
+      this.pauseRequest = pending.catch(() => {})
+      void withTimeout(pending).catch(() => {
+        if (!this.disposed) this.events.onError?.(t('terminal.pauseFailed'))
+      })
+    }
+  }
+
+  async resumeDisplay(): Promise<void> {
+    if (!this.displayPaused || this.resumingDisplay || this.disposed || this.operationPaused || this.reconnecting || this.status.state !== 'running') return
+    this.resumingDisplay = true
+    const terminalId = this.terminalId
+    try {
+      await this.pauseRequest
+      if (this.disposed || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
+      this.displayPaused = false
+      this.reset()
+      this.recovery.reset()
+      await this.reconnect()
+      if (this.disposed || this.terminalId !== terminalId || this.operationPaused) return
+      if (this.connection !== 'connected') this.pauseDisplay(this.output.clear())
+      this.notifyDisplay()
+    } finally { this.resumingDisplay = false }
+  }
+
   dispose(): void {
     this.disposed = true
     this.generation++
+    this.output.clear()
     this.ack.reset()
     this.pauseInput()
     this.contentActivity.reset()
@@ -209,13 +318,14 @@ export class TerminalClient {
   }
 
   private isVisible(): boolean {
-    return document.visibilityState !== 'hidden' && this.container.offsetWidth > 0 && this.container.offsetHeight > 0
+    return this.visible && document.visibilityState !== 'hidden' && this.container.offsetWidth > 0 && this.container.offsetHeight > 0
   }
 
   pauseInput(): void {
     this.awaitingStatus = false
     this.recoveryAttempt++
     this.generation++
+    this.output.clear()
     this.pendingChannel = null
     this.operationPaused = true
     this.syncInput()
@@ -245,8 +355,11 @@ export class TerminalClient {
   observeSession(session: TerminalSessionInfo): void {
     if (this.disposed || this.terminalId !== session.terminalId) return
     this.updateStatus(session.status)
+    this.backendDroppedBytes = Math.max(this.backendDroppedBytes, session.output.droppedBytes ?? 0)
+    if (session.output.paused && !this.displayPaused && !this.reconnecting) this.pauseDisplay(this.output.clear(), false)
+    this.notifyDisplay()
     if (this.awaitingStatus) { this.awaitingStatus = false; this.resumeInput() }
-    if (session.status.state === 'running' && !this.operationPaused && !this.reconnecting) {
+    if (session.status.state === 'running' && !this.operationPaused && !this.reconnecting && !this.displayPaused) {
       const recover = this.recovery.observe(session.output, this.isVisible(), performance.now())
       if (this.recovery.unhealthy) { this.setConnection('disconnected'); this.syncInput() }
       if (recover) void this.reconnect()
@@ -255,17 +368,18 @@ export class TerminalClient {
 
   async reconnect(): Promise<void> {
     const terminalId = this.terminalId
-    if (!terminalId || this.disposed || this.reconnecting || this.operationPaused || this.status.state !== 'running') return
+    if (!terminalId || this.disposed || this.reconnecting || this.operationPaused || this.displayPaused || this.status.state !== 'running') return
     this.reconnecting = true
     const attempt = ++this.recoveryAttempt
     const cancelled = () => this.disposed || this.operationPaused || this.terminalId !== terminalId || this.recoveryAttempt !== attempt
     this.activeChannel = null
+    this.output.clear()
     this.ack.reset()
     this.setConnection('reconnecting')
     this.syncInput()
     this.diagnostic('reconnect_started')
     try {
-      const sessions = await withTimeout(terminalApi.listTerminalSessions())
+      const sessions = await withTimeout((this.events.listSessions ?? (() => terminalApi.listTerminalSessions()))())
       if (cancelled()) return
       const session = sessions.find((item) => item.terminalId === terminalId)
       if (!session) throw new Error('Terminal session missing')
@@ -310,7 +424,9 @@ export class TerminalClient {
   }
 
   private syncInput(): void {
-    const enabled = !this.disposed && !this.operationPaused && !this.reconnecting && this.connection === 'connected' && this.status.state === 'running'
+    // Output health does not determine whether the process can receive input.
+    // In particular, Escape and Ctrl+C must still reach a stalled TUI.
+    const enabled = !this.disposed && !this.operationPaused && this.status.state === 'running'
     this.term.options.disableStdin = !enabled
     if (enabled === this.inputEnabled) return
     this.inputEnabled = enabled
@@ -339,7 +455,7 @@ export class TerminalClient {
       if (this.status.state === 'exited' || this.status.state === 'failed') return
       this.setConnection('disconnected')
       this.syncInput()
-      if (this.recovery.fault(this.isVisible())) queueMicrotask(() => { void this.reconnect() })
+      if (!this.displayPaused && this.recovery.fault(this.isVisible())) queueMicrotask(() => { void this.reconnect() })
     }
   }
 
@@ -348,8 +464,9 @@ export class TerminalClient {
     switch (frame.kind) {
       case FrameKind.Output: {
         const length = frame.payload.byteLength
+        if (this.displayPaused) { this.localDroppedBytes += length; return }
         const subscription = this.activeChannel
-        this.term.write(frame.payload, () => {
+        this.output.enqueue(frame.payload, () => {
           this.safe(() => { if (this.activeChannel === subscription) this.onProcessed(frame.seq, length) })
         })
         break
@@ -361,7 +478,7 @@ export class TerminalClient {
         this.events.onError?.(decodeJsonPayload<{ message: string }>(frame.payload).message)
         break
       case FrameKind.Gap:
-        this.events.onGap?.(decodeJsonPayload<{ droppedBytes: number }>(frame.payload).droppedBytes)
+        if (!this.displayPaused) this.events.onGap?.(decodeJsonPayload<{ droppedBytes: number }>(frame.payload).droppedBytes)
         break
     }
   }
@@ -389,7 +506,7 @@ export class TerminalClient {
     else {
       this.ackFailures++
       if (this.ackFailures === 1) this.diagnostic('ack_failed')
-      if (this.ackFailures >= 3 && this.status.state === 'running') {
+      if (this.ackFailures >= 3 && this.status.state === 'running' && !this.displayPaused) {
         this.setConnection('disconnected')
         this.syncInput()
         if (this.recovery.fault(this.isVisible())) void this.reconnect()

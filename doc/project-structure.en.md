@@ -17,7 +17,7 @@ Orbyte is a local Windows development workbench. The interface uses Vue 3, the d
 │   └── tests/                    Frontend tests
 ├── crates/                       Rust workspace members
 ├── doc/                          Structure notes, release checklist, third-party licenses
-├── scripts/                      Dependency audit, license generation, release checks
+├── scripts/                      Dependency audit, license generation, release checks, SSH probe fixture
 └── .github/workflows/            Windows CI and draft release
 ```
 
@@ -33,20 +33,24 @@ flowchart LR
   tauriHost --> core[orbyte-core]
   tauriHost --> storage[orbyte-storage]
   tauriHost --> terminal[orbyte-terminal]
+  tauriHost --> ssh[orbyte-ssh]
   tauriHost --> files[orbyte-files]
   tauriHost --> git[orbyte-git]
   terminal --> platform[orbyte-platform]
+  ssh --> terminal
+  ssh --> core
   files --> platform
   storage --> core
 ```
 
-`orbyte-storage` uses the project and settings types from `orbyte-core`. Terminal and file access go through `orbyte-platform` for Windows processes, shells, and paths.
+`orbyte-storage` uses the project and settings types from `orbyte-core`. Terminal and file access go through `orbyte-platform` for Windows processes, shells, and paths. `orbyte-ssh` owns SSH/SFTP networking and transfers, reusing the output frame and flow-control protocol from `orbyte-terminal` instead of `orbyte-platform`.
 
 ## Rust crates
 
 - `orbyte-core`: project, group, settings, shortcut, and layout rules.
 - `orbyte-storage`: SQLite persistence. Changes that touch multiple tables run in a transaction.
 - `orbyte-terminal`: PTY sessions, output flow control, and subscriptions.
+- `orbyte-ssh`: SSH sessions, host-key and algorithm checks, SFTP browsing, transfer queue, and temporary-file commits.
 - `orbyte-files`: file index, watching, read/write, and path checks.
 - `orbyte-git`: invokes the system Git binary and parses porcelain output.
 - `orbyte-platform`: Windows Job Objects, shell discovery, and process launch.
@@ -56,10 +60,11 @@ flowchart LR
 `apps/desktop` uses Vue 3, Vite, Pinia, Naive UI, xterm.js, and CodeMirror.
 
 - `src/components/workspace`: workspace and split panes.
+- `src/components/remote`: remote connection list, connection form, host fingerprint confirmation, remote terminals, and the SFTP file panel.
 - `src/components/sidebar`: project sidebar and context menu.
 - `src/components/editor` and `src/components/files`: editor, file tree, and quick open.
 - `src/components/dialogs`: project, group, worktree, and close confirmation.
-- `src/services`: terminal, editor, files, Git, workspace layout, and appearance. Each `*Api.ts` module is the boundary that calls Tauri.
+- `src/services`: terminal, editor, files, Git, workspace layout, appearance, and remote connections. Each `*Api.ts` module is the boundary that calls Tauri.
 - `src/stores/projects.ts` and `src/stores/git.ts`: active project and Git state.
 
 ## Tauri commands
@@ -70,6 +75,7 @@ Commands live in `apps/desktop/src-tauri/src/commands`. Errors are converted int
 - `workspace`: open layout and activity.
 - `files`: file tree, read/write, and quick open.
 - `terminal`: create, write, read, and close terminals.
+- `remote`: SSH connection configuration, host trust, remote workspaces and terminals, SFTP browsing, and transfer queues.
 - `git`: branch status and worktrees.
 - `clipboard`: terminal clipboard and screenshot paths.
 - `export`: export the terminal scrollback.

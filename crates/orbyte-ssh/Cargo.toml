@@ -1,0 +1,39 @@
+[package]
+name = "orbyte-ssh"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "SSH sessions and SFTP transfers for Orbyte"
+
+[features]
+# Enables the hidden probe surface used by ignored real-server integration tests.
+probe = []
+
+[dependencies]
+base64 = "0.22"
+dunce.workspace = true
+log.workspace = true
+orbyte-terminal.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+# WinCNG, libssh2's default Windows backend, only supports RSA host keys.
+# OpenSSL is required for ssh-ed25519 and the allowed key exchange set.
+ssh2 = { version = "0.9.5", features = ["vendored-openssl", "openssl-on-win32"] }
+thiserror.workspace = true
+uuid.workspace = true
+zeroize = { version = "1", features = ["alloc"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Networking_WinSock",
+    "Win32_Storage_FileSystem",
+] }
+
+[dev-dependencies]
+serde_json.workspace = true

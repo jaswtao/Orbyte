@@ -8,6 +8,7 @@ Orbyte is an open-source local development workbench. Organize terminals and fil
 
 - **Keep each project's work at hand.** Terminals keep running when you switch projects or tabs; unsaved edits are periodically stored as local recovery drafts.
 - **Put commands beside files.** Run PowerShell, CMD or an installed WSL distribution alongside a text editor.
+- **Reach remote servers.** Save SSH connections, open remote terminals, and browse, upload or download files over SFTP.
 - **Separate tasks with worktrees.** Check Git status, create a branch worktree or add an existing worktree to a project group.
 
 Chinese and English interfaces. Built with Tauri 2, Vue 3, Rust and CodeMirror; first-party code is MIT-licensed.
@@ -50,11 +51,24 @@ $scanner = & ./scripts/install-gitleaks.ps1
 pnpm build
 ```
 
+The real SSH protocol probe needs the isolated OpenSSH fixture and the `-SshProbe` switch; real-server scenarios do not run in a normal release check:
+
+```powershell
+pwsh scripts/ssh-probe/setup.ps1
+pwsh scripts/release-check.ps1 -Gitleaks $scanner -SshProbe
+```
+
+See [SSH protocol probe](doc/ssh-probe.md) for the fixture, environment variables and coverage matrix. Stop the containers with `pwsh scripts/ssh-probe/setup.ps1 -Down` when finished.
+
 The unsigned NSIS installer is written to target/release/bundle/nsis/ by default. To produce source archives, third-party MPL sources and checksums from a clean reviewed commit, create a tag pointing to that commit (for example, `git tag v0.1.0`), then run `./scripts/prepare-release.ps1 -Tag v0.1.0`. Packaging resolves the actual Cargo target directory, including `CARGO_TARGET_DIR`, and requires a newly built installer for the requested version. Tag releases must pass the full CI workflow, including commit history scanning and the minimum Rust version check, before packaging a draft prerelease.
 
 ## Features and limitations
 
 - Grouped projects, favorites, terminal tabs and nested splits; terminals keep running when projects change.
+- SSH connections with password or private-key authentication, per-algorithm SHA-256 host-key trust, remote terminal tabs/splits and an SFTP file panel. One connect prompt supplies the password or key passphrase to pending terminals and SFTP in that workspace, then clears it from memory. Keepalive probes run every 30 seconds; three unanswered probes (about 90 seconds) mark the connection failed and require a manual reconnect.
+- SFTP browsing supports refresh, directory navigation and creation, plus file or directory uploads and downloads. Conflicting targets require overwrite, skip or cancel.
+- SSH accepts OpenSSH Ed25519 and RSA keys (including encrypted keys). It does not support PuTTY `.ppk`, SSH agents, keyboard-interactive/MFA, certificate authentication or `ssh_config` import; a keyboard-interactive-only server fails explicitly without sending the password. Host keys are limited to `ssh-ed25519`, `rsa-sha2-512` and `rsa-sha2-256`; SHA-1 KEX/MAC and `ssh-rsa` host keys are rejected.
+- Transfers skip symlinks and special files, do not preserve ownership, ACLs or Unix modes, and offer no remote deletion, permission editing, pause, resume or automatic retry. A disconnected transfer may leave a `.orbyte-transfer-<UUID>.part` file whose path is shown but can only be removed in a remote terminal.
 - PowerShell/CMD shell integration, background activity indicators and configurable notifications.
 - UTF-8 and GBK editing, disk conflict detection, recycle-bin deletion and Git status/worktree helpers.
 - Chinese/English interface, light/dark themes and configurable shortcuts. Ctrl+F4 closes a tab; Ctrl+Shift+W closes a pane.
@@ -68,7 +82,7 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/ by default
 
 ## Local data and privacy
 
-Draft recovery and index optimizations in this branch still require installed desktop acceptance; the public v0.1.0 download does not imply these changes are included. See [validation records](doc/next-stage-validation.md).
+Draft recovery, index optimizations and SSH/SFTP in this branch still require installed desktop acceptance; the public v0.1.0 download does not imply these changes are included. See [SSH protocol probe](doc/ssh-probe.md) for automated protocol results and [validation records](doc/next-stage-validation.md) for other runs.
 
 Drafts stay in the local SQLite database and are excluded from diagnostics. Writes occur after 750 ms idle or at most every 5 seconds of continuous input, plus queue and storage time; draft text is limited to 5 MiB of UTF-8 bytes. Recovery changes only the editor buffer. Explicitly discarding changes, saving, or undoing to a known disk baseline removes the corresponding draft; cancellation and abnormal exits keep the last successfully persisted copy. Changed project roots allow viewing, copying or discarding old drafts, with no automatic application to the new root.
 

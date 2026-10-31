@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use orbyte_core::TerminalConfig;
 use orbyte_platform::shell::{unavailable_error, ShellInfo, ShellType};
-use orbyte_terminal::{FrameSink, SpawnRequest, TerminalSessionInfo, TerminalSize};
+use orbyte_terminal::{FrameSink, SessionRuntime, SpawnRequest, TerminalSessionInfo, TerminalSize};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
 
@@ -37,6 +37,9 @@ fn sink(channel: Channel<InvokeResponseBody>) -> Arc<dyn FrameSink> {
 
 #[tauri::command]
 pub fn set_active_terminal(state: State<'_, AppState>, terminal_id: Option<String>) -> CmdResult<()> {
+    if terminal_id.as_ref().is_some_and(|id| state.ssh.terminal(id).is_some()) {
+        return Ok(());
+    }
     state.terminals.set_active_terminal(terminal_id).map_err(err_text)
 }
 
@@ -266,16 +269,34 @@ pub async fn subscribe_terminal(
     terminal_id: String,
     channel: Channel<InvokeResponseBody>,
 ) -> CmdResult<()> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        return terminal.subscribe(sink(channel)).map_err(err_text);
+    }
     state.terminals.subscribe(&terminal_id, sink(channel)).map_err(err_text)
 }
 
 #[tauri::command]
 pub async fn ack_terminal(state: State<'_, AppState>, terminal_id: String, seq: u64) -> CmdResult<()> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        return terminal.ack(seq).map_err(err_text);
+    }
     state.terminals.ack(&terminal_id, seq).map_err(err_text)
 }
 
 #[tauri::command]
+pub async fn pause_terminal_output(state: State<'_, AppState>, terminal_id: String) -> CmdResult<()> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        return terminal.pause_output().map_err(err_text);
+    }
+    state.terminals.get(&terminal_id).map_err(err_text)?.pause_output();
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn terminal_uses_native_paste(state: State<'_, AppState>, terminal_id: String) -> CmdResult<bool> {
+    if state.ssh.terminal(&terminal_id).is_some() {
+        return Ok(false);
+    }
     let terminals = state.terminals.clone();
     blocking(move || {
         let session = terminals.get(&terminal_id).map_err(err_text)?;
@@ -300,6 +321,9 @@ pub async fn terminal_uses_native_paste(state: State<'_, AppState>, terminal_id:
 
 #[tauri::command]
 pub async fn write_terminal(state: State<'_, AppState>, terminal_id: String, data: String) -> CmdResult<()> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        return terminal.write(data.into_bytes()).map_err(err_text);
+    }
     state.terminals.write(&terminal_id, data.into_bytes()).map_err(err_text)
 }
 
@@ -311,6 +335,12 @@ pub async fn resize_terminal(
     rows: u16,
     nudge: Option<bool>,
 ) -> CmdResult<()> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        if nudge.unwrap_or(false) {
+            return terminal.redraw(TerminalSize { cols, rows }).map_err(err_text);
+        }
+        return terminal.resize(TerminalSize { cols, rows }).map_err(err_text);
+    }
     let terminals = state.terminals.clone();
     blocking(move || {
         let size = TerminalSize { cols, rows };
@@ -327,6 +357,9 @@ pub async fn stop_terminal(
     state: State<'_, AppState>,
     terminal_id: String,
 ) -> CmdResult<Option<u32>> {
+    if let Some(terminal) = state.ssh.terminal(&terminal_id) {
+        return terminal.stop().map_err(err_text);
+    }
     let _guard = state.terminal_lifecycle.lock().await;
     let terminals = state.terminals.clone();
     blocking(move || terminals.stop(&terminal_id).map_err(err_text)).await

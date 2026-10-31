@@ -11,8 +11,9 @@ Author: jaswtao · Date: 2026-10-20
 - [ ] 维护目标版本的 `doc/releases/v<version>.json`，核对发布日期、中英文功能改进与修复摘要；应用会打包该文件供离线查看。允许某个分类为空，但每种语言至少保留一条更新内容。
 - [ ] `cargo +1.90.0 check --workspace --all-targets --locked` 验证最低 Rust 版本。
 - [ ] `pwsh scripts/release-check.ps1 -Gitleaks <gitleaks.exe>`。
+- [ ] 启动隔离 OpenSSH 夹具后执行 `pwsh scripts/release-check.ps1 -Gitleaks <gitleaks.exe> -SshProbe`；8 项协议探针通过，并将夹具版本、服务器和结果写入 SSH 验收记录。未启动夹具时不得用普通 `cargo test` 替代。
 - [ ] 确认 RSA 审计豁免对应依赖未进入 Windows 实际构建；新漏洞和警告须重新评估，不盲目豁免。
-- [ ] 许可证声明可重复生成，包含第三方完整声明及 MPL 对应源码。
+- [ ] 许可证声明可重复生成，包含第三方完整声明及 MPL 对应源码，并包含 ssh2、libssh2 与 OpenSSL 条目。
 - [ ] 源码提交中没有公司邮箱、密钥、证书或本机运行数据。
 - [ ] 发布标签存在且指向当前已审查提交；标签流程的完整 CI（含历史扫描与最低 Rust 检查）通过。
 - [ ] 默认构建目录和自定义 `CARGO_TARGET_DIR` 均能定位当前版本的新安装包，旧包不会被复用。
@@ -29,6 +30,10 @@ Author: jaswtao · Date: 2026-10-20
 - [ ] 安装版通知；真实 Codex / Claude Code 启动、退出与重启。
 - [ ] Git 状态刷新及 Worktree 新建、已有目录提示。
 - [ ] 导出对话框取消、UTF-8 内容落盘、截图缓存路径。
+- [ ] SSH：密码与 Ed25519／RSA（含加密）私钥登录；首次按算法确认 SHA-256 主机指纹；同算法密钥变化被拒绝；仅 keyboard-interactive 的服务器明确失败且不发送口令。
+- [ ] 远程终端：多 Tab／分屏、中文与 Ctrl+C、窗口 resize、断线保留屏幕并手动重连；对端无响应约 90 秒标为失效。
+- [ ] SFTP：浏览、刷新、新建目录、中文／空格名称、符号链接显示且不跟随；上传下载空文件、空目录、多层目录、覆盖／跳过／取消；1 GiB 往返 SHA-256 一致。
+- [ ] 传输退出：有传输时的退出确认与取消退出后任务继续；WebView 重载恢复任务快照；断网残留 `.part` 路径可见且文件面板不能删除。
 - [ ] 卸载及用户数据是否保留的实际行为，并写入发行说明。
 
 ## 发布操作
@@ -56,3 +61,14 @@ cargo test -p orbyte-terminal --test windows_pty consecutive_git_difftool_window
 ```
 
 本轮原生验收未完成，保持不发布。输入法、安装和通知不以逻辑测试通过代替。
+
+## 2026-10-31 SSH／SFTP 验证
+
+环境：Windows x64 构建机；隔离夹具为 Alpine 3.20.10 + OpenSSH_9.7p1 的 normal／weak／keyboard 三个容器；客户端使用 OpenSSL 后端的 libssh2（`ssh2` 0.9.6，启用 `vendored-openssl` 与 `openssl-on-win32`）。完整矩阵与手动场景见 [SSH 协议探针](ssh-probe.md)。
+
+- [x] 隔离 OpenSSH 探针 8/8：密码；Ed25519、RSA（PEM）与加密 Ed25519 私钥；按算法主机密钥优先；keyboard-interactive 仅提供时拒绝；弱算法拒绝；PTY resize；SFTP `lstat`／rename／symlink；双向传输含空文件、空目录、多层与中文／空格名称、覆盖、跳过、取消和符号链接跳过。
+- [x] `cargo test --workspace --tests --locked` 与探针命令在工作区通过；普通测试不依赖真实服务器。
+- [ ] 1 GiB 往返 SHA-256、worker 额外内存不超过 64 MiB、持续传输时终端回显 p95 不高于 200 ms；需在安装版采样并记录服务器与网络条件。
+- [ ] 保活实测：暂停 normal 容器后约 90 秒进入失效；`keepalive.rs` 单元测试不能替代。
+- [ ] 只读目录或其他无法安全替换的远程目标：保留原文件、该项失败并报告结果。
+- [ ] 安装版主机指纹确认、取消过期、断线保留屏幕与手动重连、WebView 重载恢复任务、退出确认与 3 秒预算。

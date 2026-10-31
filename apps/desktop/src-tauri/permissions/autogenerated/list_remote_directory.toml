@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-remote-directory"
+description = "Enables the list_remote_directory command without any pre-configured scope."
+commands.allow = ["list_remote_directory"]
+
+[[permission]]
+identifier = "deny-list-remote-directory"
+description = "Denies the list_remote_directory command without any pre-configured scope."
+commands.deny = ["list_remote_directory"]

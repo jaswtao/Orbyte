@@ -26,6 +26,7 @@ orbyte-files.workspace = true
 orbyte-git.workspace = true
 orbyte-core.workspace = true
 orbyte-storage.workspace = true
+orbyte-ssh.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 uuid.workspace = true

@@ -80,7 +80,7 @@ function visualCarets(term: Terminal): { col: number; row: number }[] {
   return found
 }
 
-export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void } {
+export function bindTerminalIme(term: Terminal, visible: () => boolean = () => true): IDisposable & { reset(): void } {
   const textarea = term.textarea!
   const screen = term.element!.querySelector<HTMLElement>('.xterm-screen')!
   const composition = term.element!.querySelector<HTMLElement>('.composition-view')!
@@ -89,13 +89,17 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
   let cursorHidden = false
   let pinned: { col: number; row: number } | null = null
   let observer: MutationObserver | undefined
+  let frame: number | undefined
+  let delayed: ReturnType<typeof setTimeout> | undefined
 
   const watch = () => {
     observer?.observe(textarea, { attributes: true, attributeFilter: ['style'] })
     observer?.observe(composition, { attributes: true, attributeFilter: ['style'] })
   }
   const sync = () => {
-    if (disposed) return
+    if (disposed || !visible()) return
+    if (!composing && textarea.ownerDocument && textarea.ownerDocument.activeElement !== textarea) return
+    if (!screen.clientWidth || !screen.clientHeight) return
     const buffer = term.buffer.active
     // 只有程序隐藏真实光标时才寻找假光标，普通 Shell 反色输出不参与定位。
     const hits = cursorHidden ? visualCarets(term) : []
@@ -128,8 +132,13 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
     }
     watch()
   }
+  const schedule = () => {
+    if (disposed || !visible() || frame !== undefined) return
+    if (typeof requestAnimationFrame === 'undefined') { sync(); return }
+    frame = requestAnimationFrame(() => { frame = undefined; sync() })
+  }
   // 排在 xterm 的 setTimeout(0) 之后，把被写回硬件光标的坐标再钉到假光标。
-  const resync = () => { sync(); setTimeout(sync, 0) }
+  const resync = () => { sync(); clearTimeout(delayed); delayed = setTimeout(sync, 0) }
   const start = () => { composing = true; resync() }
   const end = () => { composing = false; pinned = null; resync() }
   // 捕获阶段先定位；冒泡阶段再覆盖 xterm 按组词长度扩展的输入框。
@@ -139,7 +148,7 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
   textarea.addEventListener('focus', sync)
   const reset = () => { cursorHidden = false; pinned = null; sync() }
   const subscriptions = [
-    term.onRender(sync), term.onCursorMove(sync), term.onResize(sync), term.onScroll(sync),
+    term.onRender(schedule), term.onCursorMove(schedule), term.onResize(schedule), term.onScroll(schedule),
     // 返回 false，继续交由 xterm 执行原有模式切换和重置。
     term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
       if (params.includes(25)) cursorHidden = true
@@ -155,12 +164,14 @@ export function bindTerminalIme(term: Terminal): IDisposable & { reset(): void }
   // 真实 DOM 上 xterm 一改 style 就立刻钉回。测试里的假元素不是 HTMLElement，不挂观察器。
   if (typeof MutationObserver !== 'undefined' && typeof HTMLElement !== 'undefined'
     && textarea instanceof HTMLElement && composition instanceof HTMLElement) {
-    observer = new MutationObserver(() => sync())
+    observer = new MutationObserver(schedule)
     watch()
   }
   sync()
   return { reset, dispose() {
     disposed = true
+    clearTimeout(delayed)
+    if (frame !== undefined) cancelAnimationFrame(frame)
     observer?.disconnect()
     for (const subscription of subscriptions) subscription.dispose()
     textarea.removeEventListener('compositionstart', start, true)

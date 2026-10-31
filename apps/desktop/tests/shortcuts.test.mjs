@@ -464,7 +464,7 @@ function sidebarResize(innerWidth = 1200) {
   const sidebarWidth = { value: 280 }
   const store = { projects, groups: [], active: projects[0], settings: { shortcuts: {} }, activate: (id) => { selected.push(id); store.active = projects.find((project) => project.id === id) } }
   const context = {
-    matchShortcut, filterProjects, store, sidebarWidth, sidebar: { value: undefined },
+    matchShortcut, filterProjects, store, sidebarWidth, sidebarView: { value: 'projects' }, sidebar: { value: undefined },
     SIDEBAR_MIN: 220, SIDEBAR_MAX: 640, window: { innerWidth },
     localStorage: { setItem: (name, value) => stored.set(name, value) },
   }
