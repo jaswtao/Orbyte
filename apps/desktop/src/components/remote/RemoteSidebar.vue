@@ -1,8 +1,9 @@
 <!-- Author: jaswtao · Date: 2026-10-31 -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { NButton, NInput, NModal } from 'naive-ui'
 import ConnectionManager from './ConnectionManager.vue'
+import ProjectContextMenu from '../sidebar/ProjectContextMenu.vue'
 import { useRemote } from '../../stores/remote'
 import { remoteApi, type RemoteProject } from '../../services/remoteApi'
 import { t } from '../../i18n'
@@ -16,6 +17,21 @@ const projectDialog = ref(false)
 const name = ref('')
 const deleting = ref<RemoteProject | null>(null)
 const busy = ref(false)
+const contextMenu = ref<{ id: string; x: number; y: number } | null>(null)
+const menuOptions = computed(() => [
+  { key: 'rename', label: t('remote.renameProject'), disabled: busy.value },
+  { key: 'delete', label: t('remote.deleteProject'), disabled: busy.value },
+])
+function openMenu(event: MouseEvent, project: RemoteProject) {
+  contextMenu.value = busy.value ? null : { id: project.id, x: event.clientX, y: event.clientY }
+}
+function onMenuSelect(key: string) {
+  const project = remote.projects.find((item) => item.id === contextMenu.value?.id)
+  contextMenu.value = null
+  if (!project || busy.value) return
+  if (key === 'rename') edit(project)
+  else if (key === 'delete') deleting.value = project
+}
 function fail(reason: unknown) { emit('error', String(reason)) }
 async function reload() { try { await remote.reload() } catch (reason) { fail(reason) } }
 function edit(project?: RemoteProject) {
@@ -54,7 +70,7 @@ onMounted(reload)
     </div>
     <p v-if="!remote.projects.length" class="remote-empty">{{ t('remote.noProjects') }}</p>
     <div class="project-list" role="list">
-      <div v-for="project in remote.projects" :key="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem">
+      <div v-for="project in remote.projects" :key="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem" @contextmenu.prevent.stop="openMenu($event, project)">
         <button class="remote-project-select" :aria-pressed="project.id === remote.activeProjectId" @click="remote.selectProject(project.id)">
           <strong>{{ project.name }}</strong>
           <span>{{ t('remote.connectionCount', { count: remote.tabs.filter((tab) => tab.projectId === project.id).length }) }}</span>
@@ -65,6 +81,7 @@ onMounted(reload)
         </div>
       </div>
     </div>
+    <ProjectContextMenu trigger="manual" placement="bottom-start" :show="!!contextMenu" :x="contextMenu?.x ?? 0" :y="contextMenu?.y ?? 0" :options="menuOptions" @select="onMenuSelect" @clickoutside="contextMenu = null" />
     <NButton class="remote-manage-button" @click="manager = true">{{ t('remote.manageConnections') }}</NButton>
     <NModal v-model:show="manager" preset="card" :title="t('remote.manageConnections')" class="form-modal">
       <ConnectionManager @changed="reload" @error="emit('error', $event)" />

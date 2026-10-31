@@ -26,6 +26,7 @@ const record = ref<WorkspaceRecord | null>(null)
 const focused = ref<string | null>(null)
 const entries = ref<DirEntry[]>([])
 const pathInput = ref('.')
+const directory = ref('.')
 const browsing = ref(false)
 const sftpUp = ref(false)
 const selected = ref<string[]>([])
@@ -53,12 +54,13 @@ let reloadToken = 0
 let ratioTimer = 0
 const dialogOpen = computed(() => !!credential.value || !!challenge.value || !!closing.value || !!rename.value || folderOpen.value || !!conflictTransfer.value)
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || dialogOpen.value)
+const terminalDirectory = computed(() => focused.value ? registry.byConfig.get(focused.value)?.shell.cwd ?? null : null)
 const endpoint = computed(() => endpointLabel(props.connection.username, props.connection.host, props.connection.port))
 const layout = computed(() => record.value ? asLayout(record.value.layout) : null)
 const activeTab = computed(() => layout.value?.tabs.find((tab) => tab.id === layout.value?.activeTabId) ?? null)
 const names = computed(() => terminalPaneNames(record.value?.terminals ?? [], layout.value?.tabs ?? []))
 const hint = (id: string) => shortcutHint(id, props.settings.shortcuts)
-const parent = computed(() => parentPath(pathInput.value))
+const parent = computed(() => parentPath(directory.value))
 const workspaceTransfers = computed(() => remote.transfers.filter((transfer) => transfer.workspaceId === record.value?.id))
 const conflictTransfer = computed(() => workspaceTransfers.value.find((transfer) => transfer.state === 'awaitingConflict') ?? null)
 const conflictName = computed(() => conflictTransfer.value?.files.find((file) => file.status === 'awaitingConflict')?.relative || conflictTransfer.value?.message || '')
@@ -142,7 +144,7 @@ function onUi(event: SshUiEvent) {
       markSftpReady(record.value.id, true)
       sftpUp.value = true
       sftpError.value = ''
-      void browse(record.value.lastDirectory || pathInput.value || '.')
+      void browse(terminalDirectory.value || record.value.lastDirectory || directory.value || '.')
     } else if (event.state === 'failed') {
       if (record.value) markSftpReady(record.value.id, false)
       sftpUp.value = false
@@ -214,7 +216,7 @@ async function connectMissing() {
   const needSftp = !isSftpReady(record.value.id)
   sftpUp.value = !needSftp
   if (!connect.length && !needSftp) {
-    await browse(record.value.lastDirectory || '.')
+    await browse(terminalDirectory.value || record.value.lastDirectory || '.')
     return
   }
   await launch(connect, needSftp)
@@ -222,6 +224,10 @@ async function connectMissing() {
 async function reload() {
   reloadToken += 1
   const token = reloadToken
+  browseGeneration += 1
+  if (browseId) void remoteApi.cancelBrowse(browseId).catch(() => {})
+  browseId = ''
+  browsing.value = false
   disposeEntries()
   entries.value = []
   selected.value = []
@@ -231,45 +237,73 @@ async function reload() {
     if (token !== reloadToken) return
     record.value = loaded
     pathInput.value = loaded.lastDirectory || '.'
-    focused.value = terminalIds(asLayout(loaded.layout))[0] ?? null
+    directory.value = pathInput.value
+    const current = asLayout(loaded.layout)
+    const tab = current.tabs.find((tab) => tab.id === current.activeTabId)
+    focused.value = tab ? leaves(tab.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
     await connectMissing()
   } catch (reason) { if (token === reloadToken) fail(reason) }
 }
-async function browse(path: string) {
+let directorySaveChain: Promise<unknown> = Promise.resolve()
+async function browse(path: string, resolvePath = false) {
   if (!record.value || !isSftpReady(record.value.id)) return
   const generation = ++browseGeneration
-  if (browseId) void remoteApi.cancelBrowse(browseId)
+  if (browseId) void remoteApi.cancelBrowse(browseId).catch(() => {})
+  browseId = ''
+  directory.value = path
+  pathInput.value = path
   browsing.value = true
   selected.value = []
   entries.value = []
   const workspaceId = record.value.id
   const channel = new Channel<DirBatch>()
   channel.onmessage = (batch) => {
-    if (generation !== browseGeneration) return
+    if (generation !== browseGeneration || record.value?.id !== workspaceId) return
     if (batch.entries.length) entries.value = [...entries.value, ...batch.entries]
-    if (batch.path) pathInput.value = batch.path
+    if (batch.path) {
+      directory.value = batch.path
+      pathInput.value = batch.path
+    }
     if (!batch.done) return
     browsing.value = false
     sftpError.value = batch.message || ''
-    if (!batch.message && batch.path) void remoteApi.setDirectory(workspaceId, batch.path).catch((reason) => fail(reason))
+    if (batch.message) entries.value = []
+    if (!batch.message && batch.path) {
+      record.value = { ...record.value, lastDirectory: batch.path }
+      directorySaveChain = directorySaveChain.catch(() => {}).then(() => {
+        if (generation === browseGeneration) return remoteApi.setDirectory(workspaceId, batch.path)
+      }).catch(fail)
+    }
   }
   try {
+    if (resolvePath) {
+      path = await remoteApi.canonicalize(workspaceId, path)
+      if (generation !== browseGeneration || record.value?.id !== workspaceId) return
+      directory.value = path
+      pathInput.value = path
+    }
     const requestId = await remoteApi.listDirectory(workspaceId, path, channel)
     if (generation !== browseGeneration) {
-      void remoteApi.cancelBrowse(requestId)
+      void remoteApi.cancelBrowse(requestId).catch(() => {})
       return
     }
     browseId = requestId
   } catch (reason) {
     if (generation === browseGeneration) {
       browsing.value = false
+      entries.value = []
       sftpError.value = fail(reason)
     }
   }
 }
+function followTerminalDirectory() {
+  const path = terminalDirectory.value
+  if (props.active && sftpUp.value && path && path !== directory.value) void browse(path)
+}
+watch(() => [focused.value, terminalDirectory.value, props.active], followTerminalDirectory)
 function openEntry(entry: DirEntry) {
   if (entry.kind !== 'dir') return
-  void browse(joinRemote(pathInput.value, entry.name))
+  void browse(joinRemote(directory.value, entry.name))
 }
 function toggleSelect(name: string) {
   selected.value = selected.value.includes(name) ? selected.value.filter((item) => item !== name) : [...selected.value, name]
@@ -277,18 +311,19 @@ function toggleSelect(name: string) {
 async function submitPath() {
   if (!record.value) return
   try {
-    const canonical = await remoteApi.canonicalize(record.value.id, pathInput.value)
-    await browse(canonical)
+    await browse(pathInput.value, true)
   } catch (reason) { sftpError.value = fail(reason) }
 }
 async function makeDirectory() {
   if (!record.value || !folderName.value.trim()) return
+  const workspaceId = record.value.id
+  const path = directory.value
   busy.value = true
   try {
-    await remoteApi.createDirectory(record.value.id, joinRemote(pathInput.value, folderName.value.trim()))
+    await remoteApi.createDirectory(workspaceId, joinRemote(path, folderName.value.trim()))
     folderOpen.value = false
     folderName.value = ''
-    await browse(pathInput.value)
+    if (record.value?.id === workspaceId && directory.value === path) await browse(path)
   } catch (reason) { fail(reason) }
   finally { busy.value = false }
 }
@@ -304,9 +339,11 @@ async function transfer(kind: 'upload-files' | 'upload-folders' | 'download', na
     return
   }
   try {
-    const grant = await remoteApi.selectPaths(record.value.id, kind)
+    const workspaceId = record.value.id
+    const path = directory.value
+    const grant = await remoteApi.selectPaths(workspaceId, kind)
     if (!grant) return
-    await remoteApi.enqueueTransfer(record.value.id, grant.token, crypto.randomUUID(), pathInput.value, kind === 'download' ? downloadNames : [])
+    await remoteApi.enqueueTransfer(workspaceId, grant.token, crypto.randomUUID(), path, kind === 'download' ? downloadNames : [])
   } catch (reason) { fail(reason) }
 }
 async function retry(transferItem: TransferView) {
@@ -528,6 +565,7 @@ onBeforeUnmount(() => {
   window.clearInterval(sessionTimer)
   window.clearTimeout(ratioTimer)
   reloadToken += 1
+  browseGeneration += 1
   if (browseId) void remoteApi.cancelBrowse(browseId)
   disposeEntries()
 })
@@ -557,12 +595,14 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       <aside class="remote-files">
         <div class="remote-file-toolbar">
           <strong>{{ t('remote.files') }}</strong>
-          <NButton size="tiny" :disabled="browsing || !sftpUp" @click="browse(pathInput)">{{ t('remote.refresh') }}</NButton>
+          <NButton size="tiny" :disabled="browsing || !sftpUp" @click="browse(directory)">{{ t('remote.refresh') }}</NButton>
           <NButton size="tiny" :disabled="!browsing" @click="browseId && remoteApi.cancelBrowse(browseId)">{{ t('remote.cancelBrowse') }}</NButton>
         </div>
+        <div class="remote-current-path" :title="directory">{{ t('remote.path') }}: {{ directory }}</div>
+        <div v-if="terminalDirectory && terminalDirectory !== directory" class="remote-current-path" :title="terminalDirectory">{{ t('remote.terminalPath') }}: {{ terminalDirectory }}</div>
         <div class="remote-path">
           <NButton size="tiny" :disabled="!parent" @click="parent && browse(parent)">{{ t('remote.parent') }}</NButton>
-          <NInput v-model:value="pathInput" :placeholder="t('remote.path')" @keydown.enter="submitPath" />
+          <NInput v-model:value="pathInput" :title="directory" :placeholder="t('remote.path')" @keydown.enter="submitPath" />
         </div>
         <div class="remote-file-toolbar">
           <NButton size="tiny" @click="transfer('upload-files')">{{ t('remote.uploadFiles') }}</NButton>

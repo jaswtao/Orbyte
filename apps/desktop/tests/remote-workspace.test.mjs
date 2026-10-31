@@ -7,6 +7,57 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { computed, nextTick, watch, markRaw, shallowReactive, reactive, ref, effectScope } from 'vue'
 
+test('remote project context menu renames and confirms deletion of the clicked project', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteSidebar.vue', import.meta.url), 'utf8')
+  const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
+  const projects = [{ id: 'one', name: 'First' }, { id: 'two', name: 'Second' }]
+  const saved = [], deleted = [], selected = [], errors = []
+  const remote = {
+    projects, activeProjectId: 'one', reload: async () => {},
+    selectProject: (id) => selected.push(id),
+  }
+  const context = vm.createContext({
+    computed, ref, onMounted() {}, useRemote: () => remote,
+    defineEmits: () => (_event, message) => errors.push(message), t: (key) => key,
+    remoteApi: {
+      saveProject: async (...args) => { saved.push(args); return args[0] },
+      deleteProject: async (id) => deleted.push(id),
+    },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const run = (code) => vm.runInContext(code, context)
+  run('openMenu({ clientX: 120, clientY: 240 }, remote.projects[1])')
+  assert.equal(run('contextMenu.value.x'), 120)
+  assert.equal(run('contextMenu.value.y'), 240)
+  assert.deepEqual(Array.from(run('menuOptions.value'), (item) => item.key), ['rename', 'delete'])
+  run("onMenuSelect('rename')")
+  assert.equal(run('contextMenu.value'), null)
+  assert.equal(run('projectDialog.value'), true)
+  assert.equal(run('name.value'), 'Second')
+  run("name.value = 'Renamed'")
+  await run('save()')
+  assert.deepEqual(saved, [['two', 'Renamed']])
+  assert.deepEqual(selected, ['two'])
+  run("openMenu({ clientX: 1, clientY: 2 }, remote.projects[0]); onMenuSelect('delete')")
+  assert.equal(run('deleting.value.id'), 'one')
+  assert.deepEqual(deleted, [])
+  await run('remove()')
+  assert.deepEqual(deleted, ['one'])
+  assert.equal(run('deleting.value'), null)
+  run('openMenu({ clientX: 1, clientY: 2 }, remote.projects[0]); busy.value = true')
+  assert.ok(run('menuOptions.value.every((item) => item.disabled)'))
+  run("onMenuSelect('delete')")
+  assert.equal(run('deleting.value'), null)
+  run('openMenu({ clientX: 1, clientY: 2 }, remote.projects[0])')
+  assert.equal(run('contextMenu.value'), null)
+  run('busy.value = false; openMenu({ clientX: 1, clientY: 2 }, remote.projects[1]); remote.projects.pop()')
+  run("onMenuSelect('rename')")
+  assert.equal(run('projectDialog.value'), false)
+  assert.deepEqual(errors, [])
+  assert.match(source, /@contextmenu\.prevent\.stop="openMenu\(\$event, project\)"/)
+  assert.match(source, /<ProjectContextMenu\b[^>]*@clickoutside="contextMenu = null"/)
+})
+
 test('remote terminal tabs rename persistently, validate names and preserve edits after failure', async () => {
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
   const script = source.slice(source.indexOf('let saveChain'), source.indexOf('async function persist('))
@@ -662,7 +713,7 @@ test('SFTP status events work before and after the connection command returns', 
         const event = { type: 'attempt', attemptId: 'sftp-new', state, message: state === 'failed' ? 'Authentication failed' : undefined }
         const context = {
           ref, props: { connection: { id: 'connection', authType: 'password' } },
-          record: ref({ id: 'workspace', lastDirectory: '/home' }), pathInput: ref('.'),
+          record: ref({ id: 'workspace', lastDirectory: '/home' }), pathInput: ref('.'), directory: ref('.'), terminalDirectory: ref(null),
           sftpUp: ref(false), sftpError: ref(''), savePassword: ref(false), credential: ref(null), challenge: ref(null),
           Channel: class {}, setRemoteLink() {}, syncVisibility() {}, t: (key) => key, batchCancelId,
           markSftpReady: (...args) => ready.push(args), browse: (path) => browsed.push(path), fail: (error) => errors.push(error),

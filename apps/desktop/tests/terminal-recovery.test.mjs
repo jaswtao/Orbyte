@@ -14,6 +14,7 @@ const frameModule = await loadService('terminal/frame')
 const recoveryModule = await loadService('terminal/recovery')
 const contentModule = await loadService('terminal/contentActivity')
 const outputModule = await loadService('terminal/outputScheduler')
+const directoryModule = await loadService('remote/directory')
 
 test('停止期间丢弃后续输入，旧写入失败不再误报到新会话', async () => {
   const errors = []
@@ -37,7 +38,7 @@ const clientSource = ts.transpileModule(await readFile(new URL('../src/services/
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText
 
-function clientFixture(t) {
+function clientFixture(t, events = {}) {
   const callbacks = new Map()
   let next = 0
   const previous = globalThis.window
@@ -53,7 +54,8 @@ function clientFixture(t) {
     writes = []
     options = {}
     buffer = { active: { type: 'normal', length: 0, getLine: () => undefined } }
-    parser = { registerOscHandler() {} }
+    oscHandlers = new Map()
+    parser = { registerOscHandler: (code, handler) => this.oscHandlers.set(code, handler) }
     loadAddon() {} open() {} onResize() {} onWriteParsed() {} onData(callback) { this.data = callback }
     write(data, callback) { if (this.failWrite) throw new Error('parser failed'); this.writes.push(new TextDecoder().decode(data)); callback?.() }
     dispose() {} reset() {}
@@ -73,6 +75,7 @@ function clientFixture(t) {
       if (name === './ime') return { bindTerminalIme: () => ({ dispose() {}, reset() {} }) }
       if (name === './selection') return { bindTerminalSelection: () => ({ dispose() {} }) }
       if (name === './shellIntegration') return { ShellIntegration: class { reset() {} input() {} } }
+      if (name === '../remote/directory') return directoryModule
       if (name === './contentActivity') return contentModule
       if (name === './outputScheduler') return outputModule
       if (name === '../../i18n/translate') return { t: (key) => key }
@@ -80,7 +83,7 @@ function clientFixture(t) {
     },
   })
   const container = { dataset: {}, offsetWidth: 0, offsetHeight: 0, contains: () => false }
-  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status), onOutput: (unread) => outputActivity.push(unread), onDisplay: (paused, bytes) => displays.push({ paused, bytes }) })
+  const client = new exports.TerminalClient(container, {}, { onStatus: (status) => statuses.push(status), onOutput: (unread) => outputActivity.push(unread), onDisplay: (paused, bytes) => displays.push({ paused, bytes }), ...events })
   const channel = client.createChannel()
   client.attach('session')
   let index = 0
@@ -95,6 +98,16 @@ function clientFixture(t) {
   t.after(() => { client.dispose(); globalThis.window = previous })
   return { client, deliver, statuses, outputActivity, diagnostics, displays, api, callbacks, channel, container, document }
 }
+
+test('remote clients deliver directory reports without enabling local command tracking', (t) => {
+  const events = []
+  const f = clientFixture(t, { shellIntegration: false, onShell: (event) => events.push(event) })
+  assert.equal(f.client.term.oscHandlers.has(133), false)
+  f.client.term.oscHandlers.get(9)('9;/home/中文 space')
+  f.client.term.oscHandlers.get(7)('file://remote.example/var/log')
+  f.client.term.oscHandlers.get(9)('9;relative')
+  assert.deepEqual(events.map((event) => ({ ...event })), [{ type: 'cwd', path: '/home/中文 space' }, { type: 'cwd', path: '/var/log' }])
+})
 
 test('终端回传恢复已读内容的状态，真实输出保持未读直到查看', (t) => {
   const f = clientFixture(t)

@@ -67,7 +67,7 @@ function label(key: MessageKey) { return t(key) }
       <RemoteLayoutPane :node="node.children[1]" :path="[...path, 1]" :registry="registry" :names="names" :focused="focused" :visible="visible" :endpoint="endpoint" @focus="emit('focus', $event)" @close="emit('close', $event)" @reconnect="emit('reconnect', $event)" @ratio="(p, value) => emit('ratio', p, value)" />
     </div>
   </div>
-  <div v-else-if="node.type === 'terminal'" class="terminal-pane" :class="{ focused: focused === node.terminalConfigId }" @mousedown.capture="focus">
+  <div v-else-if="node.type === 'terminal'" class="terminal-pane" :class="{ focused: focused === node.terminalConfigId }" @mousedown.capture="focus" @focusin="emit('focus', node.terminalConfigId)">
     <div class="pane-heading">
       <span>{{ names.get(node.terminalConfigId) || label('remote.terminal') }} · {{ statusText }}</span>
       <button v-if="entry?.status.state === 'running' && !entry.displayPaused && entry.connection !== 'connected'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.reconnect()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.reconnect') }}</button>

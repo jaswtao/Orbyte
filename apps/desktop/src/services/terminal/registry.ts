@@ -191,6 +191,9 @@ export class TerminalRegistry {
   }
 
   bind(configId: string, entry: TerminalEntry, sessionId: string): void {
+    if (entry.remote && entry.client.id !== sessionId) {
+      entry.shell = { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }
+    }
     this.byConfig.set(configId, entry)
     entry.client.attach(sessionId)
   }

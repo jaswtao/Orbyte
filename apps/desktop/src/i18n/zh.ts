@@ -399,6 +399,7 @@ export const zh: Record<MessageKey, string> = {
   'remote.reconnect': '重新连接',
   'remote.files': '远程文件',
   'remote.path': '远程路径',
+  'remote.terminalPath': '终端当前目录',
   'remote.refresh': '刷新',
   'remote.uploadFiles': '上传文件',
   'remote.uploadFolders': '上传文件夹',

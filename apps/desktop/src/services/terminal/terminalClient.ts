@@ -16,6 +16,7 @@ import { InputQueue } from './inputQueue'
 import { bindTerminalIme } from './ime'
 import { bindTerminalSelection } from './selection'
 import { ShellIntegration, type ShellEvent } from './shellIntegration'
+import { remoteDirectory } from '../remote/directory'
 import { ContentActivity } from './contentActivity'
 import { OutputQueue, terminalOutputScheduler, OUTPUT_QUEUE_LIMIT } from './outputScheduler'
 import { t } from '../../i18n/translate'
@@ -35,7 +36,7 @@ export interface TerminalClientEvents {
   onConnection?: (state: 'connected' | 'reconnecting' | 'disconnected') => void
   onWarning?: (message: string) => void
   onDisplay?: (paused: boolean, droppedBytes: number) => void
-  /** Remote sessions do not parse local shell-integration OSC sequences. */
+  /** Remote sessions parse directory reports separately from local shell integration. */
   shellIntegration?: boolean
   /** WebView resubscribe uses this list. Remote ids are absent from the local PTY list. */
   listSessions?: () => Promise<import('../terminalApi').TerminalSessionInfo[]>
@@ -110,6 +111,14 @@ export class TerminalClient {
         this.safe(() => {
           if (code === 133 && data === 'C') this.contentActivity.commandStart(this.term)
           this.integration.osc(code, data)
+        })
+        return true
+      })
+    } else {
+      for (const code of [9, 7]) this.term.parser.registerOscHandler(code, (data) => {
+        this.safe(() => {
+          const path = remoteDirectory(code, data)
+          if (path !== null) this.events.onShell?.({ type: 'cwd', path })
         })
         return true
       })

@@ -397,6 +397,7 @@ export const en = {
   'remote.reconnect': 'Reconnect',
   'remote.files': 'Remote files',
   'remote.path': 'Remote path',
+  'remote.terminalPath': 'Terminal directory',
   'remote.refresh': 'Refresh',
   'remote.uploadFiles': 'Upload files',
   'remote.uploadFolders': 'Upload folders',

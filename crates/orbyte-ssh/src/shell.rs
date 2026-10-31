@@ -222,10 +222,11 @@ fn worker(launch: ShellLaunch, shared: Arc<OutputShared>, input_rx: Receiver<Vec
         connect::authenticate(&mut connected, &cancel, &username, &credential, secret.as_str())?;
         drop(secret);
         drop(finish_auth);
+        let initialization = directory_initialization(&mut connected, &cancel);
         let mut channel = open_shell(&mut connected, cols, rows, &cancel)?;
         on_state("ready", None);
         set_status(&shared, TerminalStatus::Running);
-        shell_loop(&mut channel, &connected.session, &connected.stream, &shared, &input_rx, &resize, &cancel)?;
+        shell_loop(&mut channel, &connected.session, &connected.stream, &shared, &input_rx, &resize, &cancel, initialization.as_bytes())?;
         Ok(())
     })();
     if let Err(error) = result {
@@ -239,6 +240,44 @@ fn worker(launch: ShellLaunch, shared: Arc<OutputShared>, input_rx: Receiver<Vec
     }
     shared.lock().exited = true;
     shared.cv.notify_all();
+}
+
+fn directory_initialization(connected: &mut connect::Connected, cancel: &CancelToken) -> String {
+    // Probe on a separate channel so unsupported shells never receive shell syntax as keyboard input.
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let probe = (|| -> SshResult<Vec<u8>> {
+        let mut channel = connect::drive(&connected.stream, &mut connected.session, cancel, deadline, |session| session.channel_session())?;
+        connect::drive(&connected.stream, &mut connected.session, cancel, deadline, |_| {
+            channel.exec("printf '\\036orbyte-shell:%s\\037' \"$0\"")
+        })?;
+        let mut output = Vec::new();
+        let mut buffer = [0u8; 1024];
+        while Instant::now() < deadline && !cancel.is_cancelled() && output.len() < 4096 {
+            match channel.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(n) => {
+                    output.extend_from_slice(&buffer[..n]);
+                    if output.contains(&0x1f) { break; }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    wait_session(&connected.stream, &connected.session, Duration::from_millis(50))?;
+                }
+                Err(_) => break,
+            }
+        }
+        Ok(output)
+    })();
+    directory_initialization_command(&probe.unwrap_or_default())
+}
+
+fn directory_initialization_command(output: &[u8]) -> String {
+    let text = String::from_utf8_lossy(output);
+    let shell = text.split_once('\u{1e}').and_then(|(_, value)| value.strip_prefix("orbyte-shell:"))
+        .and_then(|value| value.split_once('\u{1f}')).map(|(value, _)| value.rsplit('/').next().unwrap_or(value).trim_start_matches('-'));
+    if !matches!(shell, Some("bash" | "zsh")) { return String::new(); }
+    // A single eval line keeps multiline initialization out of the interactive line editor.
+    let script = include_str!("directory-integration.sh").replace('\r', "");
+    format!(" eval $'{}'\r", script.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n"))
 }
 
 fn open_shell(connected: &mut connect::Connected, cols: u16, rows: u16, cancel: &CancelToken) -> SshResult<Channel> {
@@ -263,8 +302,9 @@ fn shell_loop(
     input_rx: &Receiver<Vec<u8>>,
     resize: &Mutex<Option<(TerminalSize, bool)>>,
     cancel: &CancelToken,
+    initialization: &[u8],
 ) -> SshResult<()> {
-    let mut buffered = VecDeque::new();
+    let mut buffered = VecDeque::from(initialization.to_vec());
     let mut keepalive = Keepalive::default();
     let mut probing = false;
     let mut probe_written = false;
@@ -449,4 +489,92 @@ fn collect(state: &mut OutputState) -> Vec<Vec<u8>> {
         }
     }
     frames
+}
+
+#[cfg(test)]
+mod directory_tests {
+    use super::directory_initialization_command;
+
+    #[test]
+    fn directory_initialization_requires_a_supported_shell_marker() {
+        for output in ["", "bash", "\x1eorbyte-shell:/bin/fish\x1f", "\x1eorbyte-shell:/bin/bash", "\x1eorbyte-shell:cmd.exe\x1f"] {
+            assert!(directory_initialization_command(output.as_bytes()).is_empty());
+        }
+        for shell in ["bash", "-bash", "/bin/bash", "/usr/bin/zsh", "-zsh"] {
+            let output = format!("Welcome\n\x1eorbyte-shell:{shell}\x1f");
+            assert!(!directory_initialization_command(output.as_bytes()).is_empty());
+        }
+    }
+
+    #[test]
+    fn initialization_is_one_quoted_line_with_no_literal_escape_sequences() {
+        let command = directory_initialization_command(b"\x1eorbyte-shell:/bin/bash\x1f");
+        assert!(command.starts_with(" eval $'"));
+        assert!(command.ends_with("'\r"));
+        assert!(!command.contains(['\n', '\x1b', '\x07']));
+        // Decode the ANSI-C quoted payload to verify quotes, newlines and printf escapes survive.
+        let mut decoded = String::new();
+        let mut chars = command[8..command.len() - 2].chars();
+        while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                match chars.next().unwrap() {
+                    'n' => decoded.push('\n'),
+                    value @ ('\\' | '\'') => decoded.push(value),
+                    value => panic!("unexpected escape {value}"),
+                }
+            } else { decoded.push(ch); }
+        }
+        assert_eq!(decoded, include_str!("directory-integration.sh").replace('\r', ""));
+    }
+
+    #[test]
+    #[ignore = "requires an isolated Bash or Zsh SSH server and ORBYTE_SSH_PROBE=1"]
+    fn ssh_shell_reports_directory_changes() {
+        use std::sync::{Arc, Mutex};
+        use std::time::{Duration, Instant};
+        use orbyte_terminal::{FrameSink, SessionRuntime};
+        use super::{CancelToken, Credential, ShellLaunch, SshTerminal, Zeroizing};
+
+        assert_eq!(std::env::var("ORBYTE_SSH_PROBE").as_deref(), Ok("1"));
+        #[derive(Default)]
+        struct Output(Mutex<Vec<u8>>);
+        impl FrameSink for Output {
+            fn send(&self, frame: Vec<u8>) -> bool {
+                if frame[0] == orbyte_terminal::output::FRAME_OUTPUT {
+                    self.0.lock().unwrap().extend_from_slice(&frame[orbyte_terminal::output::FRAME_HEADER_LEN..]);
+                }
+                true
+            }
+        }
+        struct Stop(Arc<SshTerminal>);
+        impl Drop for Stop { fn drop(&mut self) { let _ = self.0.stop(); } }
+        let output = Arc::new(Output::default());
+        let secret = Zeroizing::new(std::env::var("ORBYTE_SSH_PASSWORD").expect("test password"));
+        let username = std::env::var("ORBYTE_SSH_USER").unwrap_or_else(|_| "orbyte".into());
+        let initial = format!("/home/{username}");
+        let terminal = SshTerminal::start(ShellLaunch {
+            terminal_id: "directory-probe".into(), config_id: "directory-probe".into(),
+            host: std::env::var("ORBYTE_SSH_HOST").expect("isolated test host"),
+            port: std::env::var("ORBYTE_SSH_PORT").expect("isolated test port").parse().unwrap(),
+            saved_algorithms: Vec::new(), username, credential: Credential::Password,
+            cols: 120, rows: 30, sink: output.clone(), cancel: CancelToken::new(),
+            prepare_auth: Box::new(move |_| Ok(secret)), finish_auth: Box::new(|| {}), on_state: Box::new(|_, _| {}),
+        }).unwrap();
+        let _stop = Stop(terminal.clone());
+        let wait = |path: &str| {
+            let report = format!("\x1b]9;9;{path}\x07");
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                if output.0.lock().unwrap().windows(report.len()).any(|window| window == report.as_bytes()) { return; }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            panic!("missing directory report for {path}; session status: {:?}", terminal.info().status);
+        };
+        wait(&initial);
+        for (command, path) in [("cd /tmp\r", "/tmp"), ("cd /\r", "/"), ("cd - >/dev/null\r", "/tmp"), ("cd /__orbyte_missing_directory__\r", "/tmp")] {
+            output.0.lock().unwrap().clear();
+            terminal.write(command.as_bytes().to_vec()).unwrap();
+            wait(path);
+        }
+    }
 }
