@@ -1086,12 +1086,13 @@ function compileFunctions(source, names) {
 }
 const appRenameJs = compileFunctions(await readFile(new URL('../src/App.vue', import.meta.url), 'utf8'), ['renameShortcut'])
 function appRenameFixture() {
-  let tabRenames = 0
+  let tabRenames = 0, remoteRenames = 0
   const context = vm.createContext({ matchShortcut, disposed: false,
     store: { ready: true, busy: false, settings: { shortcuts: {} }, projects: [{ id: 'p', name: 'Project' }] },
     renameTarget: { target: { kind: 'project', id: 'p' }, keydown() {} },
     document: { querySelectorAll: () => [] }, sidebarVisible: ref(true), sidebarView: ref('projects'),
     deck: { value: { renameActiveTab: () => { tabRenames++; return true } } },
+    remoteDeck: { value: { renameActiveTab: () => { remoteRenames++; return true } } },
   })
   for (const name of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = ref(null)
   vm.runInContext(appRenameJs, context)
@@ -1100,7 +1101,7 @@ function appRenameFixture() {
     context.renameShortcut(event)
     return event
   }
-  return { context, press, tabRenames: () => tabRenames }
+  return { context, press, tabRenames: () => tabRenames, remoteRenames: () => remoteRenames }
 }
 
 test('App rename routes project and tab targets and consumes successful events', () => {
@@ -1113,7 +1114,16 @@ test('App rename routes project and tab targets and consumes successful events',
   assert.equal(tabRenames(), 1)
   context.deck.value.renameActiveTab = () => false
   assert.equal(press().prevented, undefined)
+  const remote = appRenameFixture()
+  remote.context.sidebarView.value = 'remote'
+  remote.context.renameTarget.target = { kind: 'workspace' }
+  assert.equal(remote.press().prevented, true)
+  assert.equal(remote.remoteRenames(), 1)
+  assert.equal(remote.tabRenames(), 0)
+  remote.context.remoteDeck.value.renameActiveTab = () => false
+  assert.equal(remote.press().prevented, undefined)
   context.renameTarget.target = { kind: 'project', id: 'p' }
+  context.sidebarView.value = 'projects'
   context.document.querySelectorAll = () => [{ getClientRects: () => [] }]
   assert.equal(press().stopped, true)
 })

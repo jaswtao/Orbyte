@@ -4,6 +4,7 @@
  * Author: jaswtao
  * Date: 2026-10-31
  */
+import { leaves, type Layout } from '../workspace/layout'
 
 export interface RemoteSessionSnapshot {
   terminalId: string
@@ -66,6 +67,16 @@ export function partitionSessions(configIds: string[], sessions: RemoteSessionSn
     else connect.push(configId)
   }
   return { attach, connect }
+}
+
+/** A one-terminal tab is named by its tab title. Split panes keep their own terminal names. */
+export function terminalPaneNames(terminals: { id: string; name: string }[], tabs: Layout['tabs']): Map<string, string> {
+  const names = new Map(terminals.map((terminal) => [terminal.id, terminal.name]))
+  for (const tab of tabs) {
+    const ids = leaves(tab.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : [])
+    if (ids.length === 1) names.set(ids[0], tab.title)
+  }
+  return names
 }
 
 export function failedRoots(files: { relative: string; status: string }[]): string[] {

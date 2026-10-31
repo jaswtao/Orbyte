@@ -1,6 +1,6 @@
 <!-- Author: jaswtao · Date: 2026-10-31 -->
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Channel } from '@tauri-apps/api/core'
 import { NAlert, NButton, NCheckbox, NInput, NModal } from 'naive-ui'
 import RemoteLayoutPane from './RemoteLayoutPane.vue'
@@ -11,7 +11,8 @@ import { INITIAL_SIZE } from '../../services/terminal/terminalClient'
 import type { AppearanceMode } from '../../services/appearance'
 import type { Settings } from '../../services/projectApi'
 import { leaves, removeFromLayout, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
-import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remotePaneNeedsCloseConfirm, transferPercent } from '../../services/remote/workspace'
+import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
+import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent } from '../../services/remote/workspace'
 import { isSftpReady, markSftpReady, setRemoteLink } from '../../services/remote/status'
 import { t, type MessageKey } from '../../i18n'
 import { useRemote } from '../../stores/remote'
@@ -36,6 +37,9 @@ const savePassword = ref(false)
 const submittingSecret = ref(false)
 const challenge = ref<SshUiEvent | null>(null)
 const closing = ref<{ title: string; ids: string[]; tabId?: string } | null>(null)
+const rename = ref<{ id: string; title: string } | null>(null)
+const renameInput = ref<{ focus: () => void; select: () => void } | null>(null)
+const savingRename = ref(false)
 const folderOpen = ref(false)
 const folderName = ref('')
 const applyAll = ref(false)
@@ -47,12 +51,13 @@ let browseId = ''
 let browseGeneration = 0
 let reloadToken = 0
 let ratioTimer = 0
-const dialogOpen = computed(() => !!credential.value || !!challenge.value || !!closing.value || folderOpen.value || !!conflictTransfer.value)
+const dialogOpen = computed(() => !!credential.value || !!challenge.value || !!closing.value || !!rename.value || folderOpen.value || !!conflictTransfer.value)
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || dialogOpen.value)
 const endpoint = computed(() => endpointLabel(props.connection.username, props.connection.host, props.connection.port))
 const layout = computed(() => record.value ? asLayout(record.value.layout) : null)
 const activeTab = computed(() => layout.value?.tabs.find((tab) => tab.id === layout.value?.activeTabId) ?? null)
-const names = computed(() => new Map((record.value?.terminals ?? []).map((terminal) => [terminal.id, terminal.name])))
+const names = computed(() => terminalPaneNames(record.value?.terminals ?? [], layout.value?.tabs ?? []))
+const hint = (id: string) => shortcutHint(id, props.settings.shortcuts)
 const parent = computed(() => parentPath(pathInput.value))
 const workspaceTransfers = computed(() => remote.transfers.filter((transfer) => transfer.workspaceId === record.value?.id))
 const conflictTransfer = computed(() => workspaceTransfers.value.find((transfer) => transfer.state === 'awaitingConflict') ?? null)
@@ -105,11 +110,18 @@ async function ensureTerminal(loaded: WorkspaceRecord): Promise<WorkspaceRecord>
   await remoteApi.saveWorkspace(loaded.id, next)
   return { ...loaded, layout: next, terminals: [...loaded.terminals, { id: configId, remoteWorkspaceId: loaded.id, name, sortOrder: loaded.terminals.length }] }
 }
+let saveChain: Promise<unknown> = Promise.resolve()
+function enqueueLayoutSave(workspaceId: string, layoutValue: WorkspaceRecord['layout']) {
+  // A tab switch already in flight must not land after a rename and put the old title back.
+  const operation = saveChain.catch(() => {}).then(() => remoteApi.saveWorkspace(workspaceId, layoutValue))
+  saveChain = operation
+  return operation
+}
 async function persist(next: Layout) {
   if (!record.value) return
   const layoutValue = next as unknown as WorkspaceRecord['layout']
   record.value = { ...record.value, layout: layoutValue }
-  await remoteApi.saveWorkspace(record.value.id, layoutValue)
+  await enqueueLayoutSave(record.value.id, layoutValue)
 }
 function onUi(event: SshUiEvent) {
   if (event.type === 'challenge' && event.challengeId) {
@@ -338,17 +350,73 @@ async function answer(decision: 'once' | 'save' | 'cancel') {
   catch (reason) { fail(reason) }
 }
 function selectTab(id: string) {
-  if (!record.value || record.value.layout.activeTabId === id) return
+  if (!record.value || busy.value || record.value.layout.activeTabId === id) return
   const next = { ...asLayout(record.value.layout), activeTabId: id }
   const tab = next.tabs.find((tab) => tab.id === id)
   focused.value = tab ? leaves(tab.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
   void persist(next).catch(fail)
+}
+function renameTab(id: string) {
+  if (!props.active || props.shortcutsBlocked || dialogOpen.value || busy.value) return false
+  const tab = layout.value?.tabs.find((item) => item.id === id)
+  if (!tab) return false
+  window.clearTimeout(ratioTimer)
+  rename.value = { id: tab.id, title: tab.title }
+  return true
+}
+function renameActiveTab() {
+  const id = layout.value?.activeTabId
+  return !!id && renameTab(id)
+}
+function renameFromPointer(event: MouseEvent, id: string) {
+  if (renameTab(id)) event.preventDefault()
+}
+async function saveRename() {
+  const target = rename.value
+  const title = target?.title.trim()
+  if (!target || !title || !record.value || savingRename.value || busy.value) return
+  const next = { ...asLayout(record.value.layout), tabs: asLayout(record.value.layout).tabs.map((tab) => tab.id === target.id ? { ...tab, title } : tab) }
+  savingRename.value = true
+  busy.value = true
+  window.clearTimeout(ratioTimer)
+  try {
+    const layoutValue = next as unknown as WorkspaceRecord['layout']
+    await enqueueLayoutSave(record.value.id, layoutValue)
+    if (record.value && rename.value?.id === target.id) {
+      record.value = { ...record.value, layout: layoutValue }
+      rename.value = null
+    }
+  } catch (reason) { fail(reason) }
+  finally { savingRename.value = false; busy.value = false }
+}
+function cycleTab(delta: number) {
+  const current = layout.value
+  if (!current || current.tabs.length < 2) return
+  const index = current.tabs.findIndex((tab) => tab.id === current.activeTabId)
+  const tab = current.tabs[(index + delta + current.tabs.length) % current.tabs.length]
+  if (!tab) return
+  selectTab(tab.id)
+  void nextTick(() => {
+    if (props.active && !props.shortcutsBlocked && !dialogOpen.value && layout.value?.activeTabId === tab.id) focusTerminal()
+  })
+}
+function keydown(event: KeyboardEvent) {
+  if (!props.active || props.shortcutsBlocked || dialogOpen.value) return
+  const command = matchShortcut(event, props.settings.shortcuts, ['workspace'])
+  if (command !== 'previousTab' && command !== 'nextTab') return
+  event.preventDefault()
+  event.stopPropagation()
+  if (!event.repeat) cycleTab(command === 'previousTab' ? -1 : 1)
 }
 function askClose(ids: string[], title: string, tabId?: string) {
   if (!ids.length) return
   closing.value = { ids, title, tabId }
   // The local "confirm before closing panes" setting does not skip this prompt.
   if (!remotePaneNeedsCloseConfirm()) void confirmClose()
+}
+function closeTab(tab: Layout['tabs'][number]) {
+  if (busy.value) return
+  askClose(leaves(tab.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : []), t('remote.closeTab', { title: tab.title }), tab.id)
 }
 async function confirmClose() {
   const request = closing.value
@@ -377,25 +445,34 @@ async function confirmClose() {
   finally { busy.value = false }
 }
 async function addTerminal(direction?: 'horizontal' | 'vertical') {
-  if (!record.value || !layout.value) return
-  const name = t('remote.terminal')
-  const configId = await remoteApi.createTerminal(record.value.id, name)
-  const current = asLayout(record.value.layout)
-  const tab = current.tabs.find((item) => item.id === current.activeTabId)
-  if (direction && tab && focused.value) {
-    tab.root = splitLeaf(tab.root, focused.value, { type: 'terminal', terminalConfigId: configId }, direction)
-  } else {
-    const tabId = crypto.randomUUID()
-    current.tabs.push({ id: tabId, title: name, root: { type: 'terminal', terminalConfigId: configId } })
-    current.activeTabId = tabId
-  }
-  record.value = { ...record.value, terminals: [...record.value.terminals, { id: configId, remoteWorkspaceId: record.value.id, name, sortOrder: record.value.terminals.length }] }
-  await persist(current)
-  focused.value = configId
-  await launch([configId], !isSftpReady(record.value.id))
+  if (!record.value || !layout.value || busy.value || dialogOpen.value) return
+  busy.value = true
+  let configId = ''
+  try {
+    const name = t('remote.terminal')
+    configId = await remoteApi.createTerminal(record.value.id, name)
+    const currentRecord = record.value
+    if (!currentRecord) return
+    const current = asLayout(currentRecord.layout)
+    const tab = current.tabs.find((item) => item.id === current.activeTabId)
+    if (direction && tab && focused.value) {
+      tab.root = splitLeaf(tab.root, focused.value, { type: 'terminal', terminalConfigId: configId }, direction)
+    } else {
+      const tabId = crypto.randomUUID()
+      current.tabs.push({ id: tabId, title: name, root: { type: 'terminal', terminalConfigId: configId } })
+      current.activeTabId = tabId
+    }
+    record.value = { ...currentRecord, terminals: [...currentRecord.terminals, { id: configId, remoteWorkspaceId: currentRecord.id, name, sortOrder: currentRecord.terminals.length }] }
+    await persist(current)
+    focused.value = configId
+  } catch (reason) {
+    fail(reason)
+    configId = ''
+  } finally { busy.value = false }
+  if (configId && record.value) await launch([configId], !isSftpReady(record.value.id))
 }
 function onRatio(path: number[], value: number) {
-  if (!record.value) return
+  if (!record.value || busy.value || rename.value) return
   const current = asLayout(record.value.layout)
   const tab = current.tabs.find((item) => item.id === current.activeTabId)
   if (!tab) return
@@ -440,12 +517,14 @@ async function syncSessions() {
   }
 }
 const sessionTimer = window.setInterval(() => { void syncSessions() }, 2000)
+watch(rename, (value) => { if (value) void nextTick(() => { renameInput.value?.focus(); renameInput.value?.select() }) })
 watch(() => props.workspaceId, () => { void reload() }, { immediate: true })
 watch(() => [props.active, record.value?.layout.activeTabId, record.value?.layout.tabs.length], syncVisibility, { flush: 'post' })
 watch(() => props.settings, (settings) => registry.updateSettings(settings), { deep: true })
 watch(() => props.appearance, () => registry.updateSettings(props.settings))
-onMounted(() => { void remote.listenTransfers().catch(fail) })
+onMounted(() => { document.addEventListener('keydown', keydown, true); void remote.listenTransfers().catch(fail) })
 onBeforeUnmount(() => {
+  document.removeEventListener('keydown', keydown, true)
   window.clearInterval(sessionTimer)
   window.clearTimeout(ratioTimer)
   reloadToken += 1
@@ -453,7 +532,7 @@ onBeforeUnmount(() => {
   disposeEntries()
 })
 function focusTerminal() { if (focused.value) registry.byConfig.get(focused.value)?.client.focus() }
-defineExpose({ connectMissing, focusTerminal })
+defineExpose({ connectMissing, focusTerminal, renameActiveTab })
 </script>
 <template>
   <section v-if="record && layout" class="remote-workspace">
@@ -466,9 +545,9 @@ defineExpose({ connectMissing, focusTerminal })
       <NButton size="small" :disabled="!focused" @click="addTerminal('vertical')">{{ t('remote.splitVertical') }}</NButton>
     </div>
     <div class="remote-tabs" role="tablist" :aria-label="t('workspace.tabs')">
-      <div v-for="tab in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }">
-        <button role="tab" :aria-selected="tab.id === layout.activeTabId" @click="selectTab(tab.id)">{{ tab.title }}</button>
-        <button :aria-label="t('remote.closeTab', { title: tab.title })" @click="askClose(leaves(tab.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : []), t('remote.closeTab', { title: tab.title }), tab.id)">×</button>
+      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
+        <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
+        <button :aria-label="t('remote.closeTab', { title: tab.title })" :disabled="busy" @click="closeTab(tab)">×</button>
       </div>
     </div>
     <div class="remote-body">
@@ -514,6 +593,13 @@ defineExpose({ connectMissing, focusTerminal })
         </div>
       </aside>
     </div>
+    <NModal :show="active && !!rename" preset="card" :title="t('workspace.rename')" class="form-modal" :mask-closable="!savingRename" @update:show="(show) => { if (!show && !savingRename) rename = null }">
+      <NInput v-if="rename" ref="renameInput" v-model:value="rename.title" :maxlength="100" :disabled="savingRename" :placeholder="t('workspace.tabTitle')" @keydown.enter.prevent="saveRename" />
+      <div class="dialog-actions">
+        <NButton :disabled="savingRename" @click="rename = null">{{ t('common.cancel') }}</NButton>
+        <NButton type="primary" :loading="savingRename" :disabled="savingRename || !rename?.title.trim()" @click="saveRename">{{ t('common.save') }}</NButton>
+      </div>
+    </NModal>
     <NModal :show="active && !!credential" preset="card" :title="t('remote.credentialTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void cancelSecret() }">
       <p>{{ t(credential?.authType === 'privateKey' ? 'remote.passphrasePrompt' : 'remote.passwordPrompt', { endpoint }) }}</p>
       <NInput v-model:value="secret" type="password" show-password-on="click" :placeholder="t('remote.secret')" :disabled="submittingSecret" @keydown.enter="submitSecret" />

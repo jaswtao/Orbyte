@@ -7,10 +7,230 @@ import vm from 'node:vm'
 import ts from 'typescript'
 import { computed, nextTick, watch, markRaw, shallowReactive, reactive, ref, effectScope } from 'vue'
 
+test('remote terminal tabs rename persistently, validate names and preserve edits after failure', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('let saveChain'), source.indexOf('async function persist('))
+    + source.slice(source.indexOf('function renameTab('), source.indexOf('function cycleTab('))
+  const record = ref({ id: 'workspace', layout: { activeTabId: 'one', tabs: [{ id: 'one', title: 'Terminal' }, { id: 'two', title: 'Other' }] } })
+  const rename = ref(null), savingRename = ref(false), dialogOpen = computed(() => !!rename.value)
+  const props = { active: true, shortcutsBlocked: false }
+  const calls = [], errors = []
+  let rejectSave = false
+  const context = vm.createContext({
+    record, layout: computed(() => record.value.layout), rename, savingRename, dialogOpen, props, busy: ref(false),
+    window: { clearTimeout() {} }, ratioTimer: 0,
+    asLayout: (value) => value, fail: (error) => errors.push(String(error)),
+    remoteApi: { saveWorkspace: async (id, layout) => {
+      calls.push(JSON.parse(JSON.stringify({ id, layout })))
+      if (rejectSave) throw new Error('save failed')
+    } },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  props.active = false
+  context.renameTab('one')
+  assert.equal(rename.value, null)
+  props.active = true
+  props.shortcutsBlocked = true
+  context.renameTab('one')
+  assert.equal(rename.value, null)
+  props.shortcutsBlocked = false
+  context.renameTab('one')
+  assert.equal(rename.value.title, 'Terminal')
+  rename.value.title = '  '
+  await context.saveRename()
+  assert.equal(calls.length, 0)
+  rename.value.title = '  Build server  '
+  rejectSave = true
+  await context.saveRename()
+  assert.equal(record.value.layout.tabs[0].title, 'Terminal')
+  assert.equal(rename.value.title, '  Build server  ')
+  assert.equal(savingRename.value, false)
+  assert.equal(context.busy.value, false)
+  assert.match(errors[0], /save failed/)
+  rejectSave = false
+  const saving = context.saveRename()
+  await context.saveRename()
+  await saving
+  assert.equal(calls.length, 2)
+  assert.equal(calls[1].id, 'workspace')
+  assert.equal(calls[1].layout.tabs[0].title, 'Build server')
+  assert.equal(record.value.layout.tabs[0].title, 'Build server')
+  assert.equal(record.value.layout.tabs[1].title, 'Other')
+  assert.equal(record.value.layout.activeTabId, 'one')
+  assert.equal(rename.value, null)
+  context.renameTab('two')
+  rename.value.title = 'Cancelled'
+  rename.value = null
+  await context.saveRename()
+  assert.equal(calls.length, 2)
+  let prevented = false
+  props.shortcutsBlocked = true
+  context.renameFromPointer({ preventDefault() { prevented = true } }, 'one')
+  assert.equal(prevented, false)
+  assert.equal(rename.value, null)
+  props.shortcutsBlocked = false
+  context.renameFromPointer({ preventDefault() { prevented = true } }, 'one')
+  assert.equal(prevented, true)
+  assert.equal(rename.value.id, 'one')
+  assert.match(source, /@contextmenu="renameFromPointer\(\$event, tab\.id\)"/)
+  assert.match(source, /:title="index < 9 \? hint\(`tab\$\{index \+ 1\}`\) : undefined"/)
+  assert.match(source, /@mousedown\.middle\.prevent @auxclick\.middle\.prevent\.stop="closeTab\(tab\)"/)
+})
+
+test('remote tab rename and terminal creation cannot overwrite each other while requests are pending', async (t) => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const { splitLeaf } = await loadService('workspace/layout')
+  const script = source.slice(source.indexOf('function renameTab('), source.indexOf('function cycleTab('))
+    + source.slice(source.indexOf('let saveChain'), source.indexOf('function onUi('))
+    + source.slice(source.indexOf('async function addTerminal('), source.indexOf('function onRatio('))
+  for (const direction of [undefined, 'horizontal', 'vertical']) {
+    await t.test(direction ?? 'new tab', async () => {
+      const record = ref({
+        id: 'workspace', terminals: [{ id: 'terminal-one' }],
+        layout: { activeTabId: 'one', tabs: [{ id: 'one', title: 'Terminal', root: { type: 'terminal', terminalConfigId: 'terminal-one' } }] },
+      })
+      const rename = ref(null), savingRename = ref(false), busy = ref(false)
+      const calls = [], errors = [], clearedTimers = []
+      let finishCreate, finishSave, holdSave = false, failCreate = false, creates = 0, connectedWhileBusy = null
+      const context = vm.createContext({
+        record, rename, savingRename, busy, layout: computed(() => record.value.layout),
+        focused: ref('terminal-one'), dialogOpen: computed(() => !!rename.value),
+        props: { active: true, shortcutsBlocked: false }, asLayout: (value) => value,
+        window: { clearTimeout: (timer) => clearedTimers.push(timer) }, ratioTimer: 42,
+        crypto: { randomUUID: () => 'two' }, t: () => 'Terminal', splitLeaf,
+        launch: async () => { connectedWhileBusy = busy.value }, isSftpReady: () => true, fail: (reason) => errors.push(String(reason)),
+        remoteApi: {
+          createTerminal: () => {
+            creates += 1
+            if (failCreate) return Promise.reject(new Error('create failed'))
+            return new Promise((resolve) => { finishCreate = resolve })
+          },
+          saveWorkspace: async (id, layout) => {
+            calls.push(JSON.parse(JSON.stringify({ id, layout })))
+            if (holdSave) await new Promise((resolve) => { finishSave = resolve })
+          },
+        },
+      })
+      vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+      const adding = context.addTerminal(direction)
+      assert.equal(busy.value, true)
+      context.renameTab('one')
+      assert.equal(rename.value, null)
+      finishCreate('terminal-two')
+      await adding
+      assert.equal(busy.value, false)
+      assert.equal(connectedWhileBusy, false)
+      assert.equal(record.value.terminals.length, 2)
+      assert.equal(record.value.layout.tabs.length, direction ? 1 : 2)
+      if (direction) assert.equal(record.value.layout.tabs[0].root.type, 'split')
+      context.renameTab('one')
+      rename.value.title = 'Renamed'
+      holdSave = true
+      const saving = context.saveRename()
+      assert.equal(busy.value, true)
+      await context.addTerminal(direction)
+      assert.equal(creates, 1)
+      assert.deepEqual(clearedTimers, [42, 42])
+      const expected = JSON.parse(JSON.stringify(record.value))
+      for (const tab of expected.layout.tabs) if (tab.id === 'one') tab.title = 'Renamed'
+      assert.equal(calls.length, 2)
+      assert.deepEqual(calls[1], { id: 'workspace', layout: expected.layout })
+      record.value = { ...record.value, lastDirectory: '/kept' }
+      finishSave()
+      await saving
+      assert.equal(record.value.lastDirectory, '/kept')
+      assert.equal(record.value.layout.tabs.find((tab) => tab.id === 'one').title, 'Renamed')
+      assert.equal(record.value.terminals.length, 2)
+      assert.equal(rename.value, null)
+      assert.equal(savingRename.value, false)
+      assert.equal(busy.value, false)
+      failCreate = true
+      await context.addTerminal(direction)
+      assert.match(errors[0], /create failed/)
+      assert.equal(busy.value, false)
+      context.renameTab('one')
+      assert.equal(rename.value.title, 'Renamed')
+    })
+  }
+})
+
+test('remote terminal shortcuts cycle tabs, restore focus and respect blocking and overrides', async () => {
+  const { matchShortcut } = await loadService('workspace/shortcuts')
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('function cycleTab('), source.indexOf('function askClose('))
+  const layout = ref({ activeTabId: 'one', tabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }] })
+  const selected = [], focused = []
+  const props = { active: true, shortcutsBlocked: false, settings: {} }
+  const dialogOpen = ref(false)
+  const context = vm.createContext({
+    layout, props, dialogOpen, matchShortcut, nextTick,
+    selectTab(id) { selected.push(id); layout.value.activeTabId = id },
+    focusTerminal() { focused.push(layout.value.activeTabId) },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  function press(code, extra = {}) {
+    let prevented = false, stopped = false
+    context.keydown({
+      code, altKey: true, ctrlKey: false, shiftKey: false, metaKey: false, repeat: false,
+      preventDefault() { prevented = true }, stopPropagation() { stopped = true }, ...extra,
+    })
+    assert.equal(prevented, stopped)
+    return prevented
+  }
+  assert.equal(press('ArrowLeft'), true)
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'three')
+  assert.equal(focused.at(-1), 'three')
+  press('ArrowRight')
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'one')
+  assert.equal(focused.at(-1), 'one')
+  press('ArrowRight', { repeat: true })
+  assert.equal(selected.length, 2)
+  for (const extra of [{ ctrlKey: true }, { shiftKey: true }, { metaKey: true }, { isComposing: true }]) {
+    assert.equal(press('ArrowRight', extra), false)
+  }
+  props.active = false
+  assert.equal(press('ArrowRight'), false)
+  props.active = true
+  props.shortcutsBlocked = true
+  assert.equal(press('ArrowRight'), false)
+  props.shortcutsBlocked = false
+  dialogOpen.value = true
+  assert.equal(press('ArrowRight'), false)
+  dialogOpen.value = false
+  props.settings.shortcuts = { nextTab: [{ code: 'KeyN', altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }] }
+  assert.equal(press('ArrowRight'), false)
+  assert.equal(press('KeyN'), true)
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'two')
+  layout.value.tabs = [{ id: 'two' }]
+  press('KeyN')
+  layout.value.tabs = []
+  press('KeyN')
+  assert.equal(selected.length, 3)
+})
+
 const {
   endpointLabel, remotePaneNeedsCloseConfirm, batchCancelId, transferPercent,
-  parentPath, joinRemote, partitionSessions, failedRoots, formatBytes,
+  parentPath, joinRemote, partitionSessions, failedRoots, formatBytes, terminalPaneNames,
 } = await loadService('remote/workspace')
+
+test('a remote pane uses the tab title only when that tab has one terminal', () => {
+  const names = terminalPaneNames(
+    [{ id: 'a', name: 'Terminal' }, { id: 'b', name: 'Left' }, { id: 'c', name: 'Right' }],
+    [
+      { id: 'one', title: 'Build server', root: { type: 'terminal', terminalConfigId: 'a' } },
+      { id: 'two', title: 'Split', root: { type: 'split', direction: 'horizontal', ratio: 0.5, children: [
+        { type: 'terminal', terminalConfigId: 'b' },
+        { type: 'terminal', terminalConfigId: 'c' },
+      ] } },
+    ],
+  )
+  assert.equal(names.get('a'), 'Build server')
+  assert.equal(names.get('b'), 'Left')
+  assert.equal(names.get('c'), 'Right')
+})
 
 test('a remote pane mounts a session bound after its first render and follows replacements', async () => {
   const source = ts.transpileModule(await readFile(new URL('../src/services/terminal/registry.ts', import.meta.url), 'utf8'), {
@@ -83,7 +303,7 @@ test('selecting a remote terminal tab moves focus to a pane in that tab', async 
     { id: 'second', root: { type: 'terminal', terminalConfigId: 'pane-second' } },
   ] } })
   const context = {
-    record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root],
+    record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root], busy: ref(false),
     persist: async (layout) => { record.value.layout = layout }, fail: (reason) => { throw reason },
   }
   vm.createContext(context)
@@ -91,7 +311,112 @@ test('selecting a remote terminal tab moves focus to a pane in that tab', async 
   vm.runInContext("selectTab('second')", context)
   assert.equal(record.value.layout.activeTabId, 'second')
   assert.equal(context.focused.value, 'pane-second')
+  context.busy.value = true
+  vm.runInContext("selectTab('first')", context)
+  assert.equal(record.value.layout.activeTabId, 'second')
+  assert.equal(context.focused.value, 'pane-second')
 })
+
+test('an older remote layout save cannot overwrite a newer tab rename', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('let saveChain'), source.indexOf('function onUi('))
+    + source.slice(source.indexOf('function renameTab('), source.indexOf('function cycleTab('))
+  const calls = [], gates = []
+  const record = ref({
+    id: 'workspace', lastDirectory: '/old',
+    layout: { activeTabId: 'one', tabs: [{ id: 'one', title: 'Terminal' }, { id: 'two', title: 'Other' }] },
+  })
+  const rename = ref(null)
+  const context = vm.createContext({
+    record, rename, savingRename: ref(false), busy: ref(false),
+    layout: computed(() => record.value.layout), dialogOpen: computed(() => !!rename.value),
+    props: { active: true, shortcutsBlocked: false }, asLayout: (value) => value,
+    window: { clearTimeout() {} }, ratioTimer: 0, fail: (error) => { throw error },
+    remoteApi: { saveWorkspace: async (_id, layout) => {
+      calls.push(layout.tabs[0].title)
+      await new Promise((resolve) => gates.push(resolve))
+    } },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const first = context.persist({ ...record.value.layout, activeTabId: 'two' })
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.equal(calls.length, 1)
+  rename.value = { id: 'one', title: 'Build server' }
+  const second = context.saveRename()
+  assert.equal(calls.length, 1)
+  gates[0]()
+  await first
+  await Promise.resolve()
+  await Promise.resolve()
+  assert.deepEqual(calls, ['Terminal', 'Build server'])
+  record.value = { ...record.value, lastDirectory: '/kept' }
+  gates[1]()
+  await second
+  assert.equal(record.value.lastDirectory, '/kept')
+  assert.equal(record.value.layout.tabs[0].title, 'Build server')
+  assert.equal(record.value.layout.activeTabId, 'two')
+  assert.equal(rename.value, null)
+})
+
+test('middle-click closes one remote connection or terminal tab and ignores a busy control', async () => {
+  const deck = await readSource('../src/components/remote/RemoteDeck.vue')
+  const workspace = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  assert.match(deck, /@mousedown\.middle\.prevent @auxclick\.middle\.prevent\.stop="middleClose\(tab\.id\)"/)
+  const closing = ref(null), busy = ref(false)
+  const deckContext = vm.createContext({ closing, busy })
+  vm.runInContext(compileSlice(deck, 'function middleClose(', 'defineExpose'), deckContext)
+  deckContext.middleClose('tab-a')
+  assert.equal(closing.value, 'tab-a')
+  busy.value = true
+  deckContext.middleClose('tab-b')
+  assert.equal(closing.value, 'tab-a')
+  const paneClosing = ref(null), paneBusy = ref(false)
+  const paneContext = vm.createContext({
+    closing: paneClosing, busy: paneBusy, leaves: (root) => [root],
+    t: (_key, params) => params.title, remotePaneNeedsCloseConfirm: () => true,
+  })
+  vm.runInContext(compileSlice(workspace, 'function askClose(', 'async function confirmClose('), paneContext)
+  paneBusy.value = true
+  paneContext.closeTab({ id: 'tab', title: 'Build', root: { type: 'terminal', terminalConfigId: 'term' } })
+  assert.equal(paneClosing.value, null)
+  paneBusy.value = false
+  paneContext.closeTab({ id: 'tab', title: 'Build', root: { type: 'terminal', terminalConfigId: 'term' } })
+  assert.equal(paneClosing.value.title, 'Build')
+  assert.equal(paneClosing.value.tabId, 'tab')
+  assert.deepEqual([...paneClosing.value.ids], ['term'])
+})
+
+test('remote split ratios wait while a rename or layout save is in progress', async () => {
+  const source = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  const record = ref({ layout: { activeTabId: 'one', tabs: [{ id: 'one', root: { type: 'split', ratio: 0.5 } }] } })
+  const scheduled = []
+  const context = vm.createContext({
+    record, busy: ref(false), rename: ref(null), ratioTimer: 0, asLayout: (value) => value,
+    setRatio: (node, _path, value) => ({ ...node, ratio: value }),
+    persist: () => { throw new Error('persist') }, fail() {},
+    window: { clearTimeout() {}, setTimeout(callback) { scheduled.push(callback); return 7 } },
+  })
+  vm.runInContext(compileSlice(source, 'function onRatio(', 'function syncVisibility('), context)
+  context.busy.value = true
+  context.onRatio([], 0.8)
+  assert.equal(record.value.layout.tabs[0].root.ratio, 0.5)
+  context.busy.value = false
+  context.rename.value = { id: 'one', title: 'Name' }
+  context.onRatio([], 0.8)
+  assert.equal(scheduled.length, 0)
+  context.rename.value = null
+  context.onRatio([], 0.8)
+  assert.equal(record.value.layout.tabs[0].root.ratio, 0.8)
+  assert.equal(scheduled.length, 1)
+})
+
+function readSource(path) {
+  return readFile(new URL(path, import.meta.url), 'utf8')
+}
+function compileSlice(source, start, end) {
+  return ts.transpileModule(source.slice(source.indexOf(start), source.indexOf(end)), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+}
 
 test('remote projects retain independent tabs without automatically connecting restored tabs', async () => {
   const source = await readFile(new URL('../src/stores/remote.ts', import.meta.url), 'utf8')

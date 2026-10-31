@@ -32,7 +32,9 @@ function selectTab(id: string) {
   if (same) void views.get(id)?.connectMissing().catch(fail)
 }
 function focusTerminal() { if (remote.activeTabId) views.get(remote.activeTabId)?.focusTerminal() }
-defineExpose({ focusTerminal })
+function renameActiveTab() { return !!remote.activeTabId && (views.get(remote.activeTabId)?.renameActiveTab() ?? false) }
+function middleClose(id: string) { if (!busy.value) closing.value = id }
+defineExpose({ focusTerminal, renameActiveTab })
 async function choose() {
   try { await remote.reload(); chosen.value = null; choosing.value = true }
   catch (reason) { fail(reason) }
@@ -59,7 +61,7 @@ async function refreshConnections() {
   <div v-show="active" class="remote-deck">
     <Teleport v-if="active" to="#remote-titlebar-tabs">
       <div class="workspace-tabs remote-connection-tabs" role="tablist" :aria-label="t('remote.connectionTabs')">
-        <div v-for="tab in remote.projectTabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === remote.activeTabId }">
+        <div v-for="tab in remote.projectTabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === remote.activeTabId }" @mousedown.middle.prevent @auxclick.middle.prevent.stop="middleClose(tab.id)">
           <button role="tab" :aria-selected="tab.id === remote.activeTabId" :title="endpointLabel(connection(tab.connectionId).username, connection(tab.connectionId).host, connection(tab.connectionId).port)" @click="selectTab(tab.id)"><span class="remote-status-dot" :class="remoteLinks[tab.id]?.state" />{{ connection(tab.connectionId).name }}<span v-if="remote.projectTabs.filter((item) => item.connectionId === tab.connectionId).length > 1"> · {{ remote.projectTabs.filter((item) => item.connectionId === tab.connectionId).findIndex((item) => item.id === tab.id) + 1 }}</span></button>
           <button :aria-label="t('remote.closeConnection')" :disabled="busy" @click="closing = tab.id">×</button>
         </div>

@@ -218,6 +218,8 @@ function renameShortcut(event: KeyboardEvent) {
     const project = store.projects.find((item) => item.id === target.id)
     if (!project || !sidebarVisible.value || sidebarView.value !== 'projects') return
     renamingProject.value = project
+  } else if (sidebarView.value === 'remote') {
+    if (!remoteDeck.value?.renameActiveTab()) return
   } else if (!deck.value?.renameActiveTab()) return
   event.preventDefault()
   event.stopImmediatePropagation()
