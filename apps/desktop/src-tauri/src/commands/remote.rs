@@ -1,6 +1,6 @@
 //! SSH connection, session, and SFTP commands.
 //!
-//! Passwords stay in the command argument only long enough to reach the batch.
+//! Saved passwords use the OS credential store; transient copies belong to a batch.
 //! They are not written to logs. Download targets are grants created by a native dialog.
 //!
 //! Author: jaswtao
@@ -13,7 +13,8 @@ use orbyte_ssh::{
     Credential, EnqueueRequest, LocalGrant, LocalGrantKind, NewHostKey, SftpRequest, ShellRequest, SshUiEvent, StoredHostKey,
 };
 use orbyte_terminal::{FrameSink, TerminalSize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use zeroize::{Zeroize, Zeroizing};
 use serde_json::{json, Value};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::Manager;
@@ -86,13 +87,63 @@ pub fn attach_host_store(ssh: &orbyte_ssh::SshHub, db: orbyte_storage::Database)
     );
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionView {
+    #[serde(flatten)]
+    pub connection: orbyte_storage::SshConnection,
+    pub has_saved_password: bool,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(tag = "operation", rename_all = "camelCase")]
+pub enum PasswordChange {
+    #[default]
+    Keep,
+    Set { password: String },
+    Clear,
+}
+
+impl Drop for PasswordChange {
+    fn drop(&mut self) {
+        if let Self::Set { password } = self { password.zeroize(); }
+    }
+}
+
+fn password_change(change: Option<PasswordChange>, auth_type: &str) -> CmdResult<PasswordChange> {
+    let change = change.unwrap_or_default();
+    if let PasswordChange::Set { password } = &change {
+        if auth_type != "password" { return Err("Only password authentication can save a password.".into()); }
+        if password.is_empty() || password.len() > 2560 { return Err("Saved SSH password must contain 1–2560 UTF-8 bytes.".into()); }
+    }
+    Ok(change)
+}
+
+fn apply_password(store: &dyn orbyte_platform::credentials::PasswordStore, id: &str, change: PasswordChange) -> CmdResult<()> {
+    match &change {
+        PasswordChange::Keep => Ok(()),
+        PasswordChange::Clear => store.delete(id),
+        PasswordChange::Set { password } => store.write(id, password),
+    }
+}
+
+fn restore_password(store: &dyn orbyte_platform::credentials::PasswordStore, id: &str, previous: Option<&str>) -> CmdResult<()> {
+    match previous { Some(password) => store.write(id, password), None => store.delete(id) }
+}
+
 #[tauri::command]
-pub async fn list_ssh_connections(storage: tauri::State<'_, StorageState>) -> CmdResult<Vec<orbyte_storage::SshConnection>> {
-    storage.database()?.list_ssh_connections().await
+pub async fn list_ssh_connections(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>) -> CmdResult<Vec<ConnectionView>> {
+    let _guard = state.ssh_connections.lock().await;
+    let connections = storage.database()?.list_ssh_connections().await?;
+    connections.into_iter().map(|connection| {
+        let has_saved_password = state.ssh_passwords.read(&connection.id)?.is_some();
+        Ok(ConnectionView { connection, has_saved_password })
+    }).collect()
 }
 
 #[tauri::command]
 pub async fn create_ssh_connection(
+    state: tauri::State<'_, AppState>,
     storage: tauri::State<'_, StorageState>,
     name: String,
     host: String,
@@ -100,13 +151,23 @@ pub async fn create_ssh_connection(
     username: String,
     auth_type: String,
     private_key_path: Option<String>,
+    password_change: Option<PasswordChange>,
 ) -> CmdResult<String> {
+    let _guard = state.ssh_connections.lock().await;
     let input = connection_input(name, host, port, username, auth_type, private_key_path)?;
-    storage.database()?.create_ssh_connection(input).await
+    let change = self::password_change(password_change, input.auth_type.as_str())?;
+    let db = storage.database()?;
+    let id = db.create_ssh_connection(input).await?;
+    if let Err(error) = apply_password(state.ssh_passwords.as_ref(), &id, change) {
+        db.delete_ssh_connection(&id).await.map_err(|_| "Password save failed; connection rollback also failed. Refresh the connection list.".to_string())?;
+        return Err(error);
+    }
+    Ok(id)
 }
 
 #[tauri::command]
 pub async fn update_ssh_connection(
+    state: tauri::State<'_, AppState>,
     storage: tauri::State<'_, StorageState>,
     id: String,
     name: String,
@@ -115,14 +176,33 @@ pub async fn update_ssh_connection(
     username: String,
     auth_type: String,
     private_key_path: Option<String>,
+    password_change: Option<PasswordChange>,
 ) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
     let input = connection_input(name, host, port, username, auth_type, private_key_path)?;
-    storage.database()?.update_ssh_connection(&id, input).await
+    let mut change = self::password_change(password_change, input.auth_type.as_str())?;
+    let db = storage.database()?;
+    let previous = db.ssh_connection(&id).await?;
+    let identity_changed = previous.host != input.host || previous.port != input.port
+        || previous.username != input.username || previous.auth_type != input.auth_type.as_str();
+    if identity_changed && matches!(change, PasswordChange::Keep) { change = PasswordChange::Clear; }
+    if identity_changed { state.ssh.cancel_connection_batches(&id); }
+    let old_password = state.ssh_passwords.read(&id)?;
+    apply_password(state.ssh_passwords.as_ref(), &id, change)?;
+    if let Err(error) = db.update_ssh_connection(&id, input).await {
+        restore_password(state.ssh_passwords.as_ref(), &id, old_password.as_ref().map(|s| s.as_str()))?;
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_ssh_connection(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, id: String) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
     let db = storage.database()?.clone();
+    db.ssh_connection(&id).await?;
+    state.ssh_passwords.delete(&id)?;
+    state.ssh.cancel_connection_batches(&id);
     let ssh = state.ssh.clone();
     let workspace = db.open_remote_workspace(&id).await.ok();
     if let Some(workspace) = workspace {
@@ -179,14 +259,22 @@ pub async fn remove_remote_terminal_config(storage: tauri::State<'_, StorageStat
 }
 
 #[tauri::command]
-pub fn begin_ssh_connect(state: tauri::State<'_, AppState>, auth_type: String, events: Channel<Value>) -> CmdResult<ConnectBatch> {
+pub async fn begin_ssh_connect(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, connection_id: String, events: Channel<Value>) -> CmdResult<ConnectBatch> {
+    let _guard = state.ssh_connections.lock().await;
+    let connection = storage.database()?.ssh_connection(&connection_id).await?;
+    let secret = if connection.auth_type == "password" { state.ssh_passwords.read(&connection_id)? } else { None };
     let sink = Arc::new(move |event: SshUiEvent| {
         if let Ok(value) = serde_json::to_value(&event) {
             let _ = events.send(value);
         }
     });
-    let batch_id = state.ssh.begin_batch(auth_type, sink).map_err(err_text)?;
+    let batch_id = state.ssh.begin_connection_batch(connection_id, connection.auth_type, secret, sink).map_err(err_text)?;
     Ok(ConnectBatch { batch_id })
+}
+
+#[tauri::command]
+pub fn seal_ssh_connect(state: tauri::State<'_, AppState>, batch_id: String) -> CmdResult<()> {
+    state.ssh.seal_batch(&batch_id).map_err(err_text)
 }
 
 #[tauri::command]
@@ -200,6 +288,8 @@ pub async fn connect_ssh_terminal(
     rows: u16,
     channel: Channel<InvokeResponseBody>,
 ) -> CmdResult<ConnectedTerminal> {
+    let _guard = state.ssh_connections.lock().await;
+    state.ssh.check_batch_connection(&batch_id, &connection_id).map_err(err_text)?;
     let connection = storage.database()?.ssh_connection(&connection_id).await?;
     let size = TerminalSize { cols, rows }.validate().map_err(err_text)?;
     let terminal_id = Uuid::new_v4().to_string();
@@ -231,6 +321,8 @@ pub async fn connect_sftp(
     connection_id: String,
     workspace_id: String,
 ) -> CmdResult<ConnectedSftp> {
+    let _guard = state.ssh_connections.lock().await;
+    state.ssh.check_batch_connection(&batch_id, &connection_id).map_err(err_text)?;
     let connection = storage.database()?.ssh_connection(&connection_id).await?;
     let attempt_id = Uuid::new_v4().to_string();
     let credential = credential(&connection)?;
@@ -254,8 +346,24 @@ pub fn answer_ssh_challenge(state: tauri::State<'_, AppState>, challenge_id: Str
 }
 
 #[tauri::command]
-pub fn submit_ssh_credential(state: tauri::State<'_, AppState>, batch_id: String, secret: String) -> CmdResult<()> {
-    state.ssh.submit_secret(&batch_id, secret).map_err(err_text)
+pub async fn submit_ssh_credential(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, batch_id: String, secret: String, save_password: Option<bool>) -> CmdResult<()> {
+    let secret = Zeroizing::new(secret);
+    let _guard = state.ssh_connections.lock().await;
+    state.ssh.validate_secret_submission(&batch_id).map_err(err_text)?;
+    let id = state.ssh.batch_connection(&batch_id).map_err(err_text)?;
+    let connection = storage.database()?.ssh_connection(&id).await?;
+    let save = save_password.unwrap_or(false);
+    let previous = if save {
+        if connection.auth_type != "password" { return Err("Saving private-key passphrases is not supported.".into()); }
+        let previous = state.ssh_passwords.read(&id)?;
+        state.ssh_passwords.write(&id, &secret)?;
+        previous
+    } else { None };
+    if let Err(error) = state.ssh.submit_secret(&batch_id, secret.to_string()).map_err(err_text) {
+        if save { restore_password(state.ssh_passwords.as_ref(), &id, previous.as_ref().map(|s| s.as_str()))?; }
+        return Err(error);
+    }
+    Ok(())
 }
 
 #[tauri::command]

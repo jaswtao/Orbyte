@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-seal-ssh-connect"
+description = "Enables the seal_ssh_connect command without any pre-configured scope."
+commands.allow = ["seal_ssh_connect"]
+
+[[permission]]
+identifier = "deny-seal-ssh-connect"
+description = "Denies the seal_ssh_connect command without any pre-configured scope."
+commands.deny = ["seal_ssh_connect"]

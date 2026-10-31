@@ -62,6 +62,15 @@ pwsh scripts/ssh-probe/setup.ps1
 cargo test -p orbyte-ssh --features probe --test protocol_probe -- --ignored --test-threads=1 --nocapture
 ```
 
+Windows 上还可验证系统凭据存储及真实连接命令：
+
+```powershell
+cargo test -p orbyte-platform credentials::tests::system_password_roundtrip -- --ignored
+cargo test -p orbyte-desktop --test remote_commands saved_system_password_authenticates_terminals_and_sftp_without_frontend_credentials -- --ignored
+```
+
+第二项使用上述 `ORBYTE_SSH_PROBE` 与 `ORBYTE_SSH_PASSWORD`，连接本机默认 2222 端口的夹具。它将密码保存至临时连接的 Windows 凭据条目，验证首个终端认证完成后，同批次后续终端和 SFTP 仍无需前端输入密码；结束时删除测试凭据并关闭会话。普通测试不写入系统凭据管理器。
+
 `--features probe` 只启用测试用的隐藏入口，不改变应用行为。`--test-threads=1` 避免多个检查同时挤占夹具和网络。
 
 发布检查可显式启用：

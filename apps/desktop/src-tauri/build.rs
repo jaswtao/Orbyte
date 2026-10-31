@@ -65,6 +65,7 @@ const COMMANDS: &[&str] = &[
     "create_remote_terminal_config",
     "remove_remote_terminal_config",
     "begin_ssh_connect",
+    "seal_ssh_connect",
     "connect_ssh_terminal",
     "connect_sftp",
     "answer_ssh_challenge",

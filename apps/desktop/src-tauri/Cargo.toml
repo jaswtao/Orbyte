@@ -22,6 +22,7 @@ tauri-build.workspace = true
 arboard = "3.6"
 png = "0.18"
 log.workspace = true
+zeroize = "1"
 orbyte-files.workspace = true
 orbyte-git.workspace = true
 orbyte-core.workspace = true

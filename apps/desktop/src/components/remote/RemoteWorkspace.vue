@@ -31,6 +31,8 @@ const transfers = ref<TransferView[]>([])
 const sftpError = ref('')
 const credential = ref<{ batchId: string; authType: string } | null>(null)
 const secret = ref('')
+const savePassword = ref(false)
+const submittingSecret = ref(false)
 const challenge = ref<SshUiEvent | null>(null)
 const closing = ref<{ title: string; ids: string[]; tabId?: string } | null>(null)
 const folderOpen = ref(false)
@@ -114,6 +116,7 @@ function onUi(event: SshUiEvent) {
     return
   }
   if (event.type === 'credentialRequired' && event.batchId) {
+    savePassword.value = false
     const pending = { batchId: event.batchId, authType: event.authType || props.connection.authType }
     if (launching.value) heldCredential = pending
     else credential.value = pending
@@ -138,11 +141,16 @@ async function launch(configIds: string[], includeSftp: boolean) {
   if (launching.value || !record.value || (!configIds.length && !includeSftp)) return
   launching.value = true
   heldCredential = null
+  let pendingSftpEvents: SshUiEvent[] | null = includeSftp ? [] : null
   const events = new Channel<SshUiEvent>()
-  events.onmessage = (event) => onUi(event)
+  events.onmessage = (event) => {
+    // SFTP can authenticate before the command returns its attempt ID.
+    if (pendingSftpEvents && event.type === 'attempt' && !event.terminalId) pendingSftpEvents.push(event)
+    else onUi(event)
+  }
   let batchId = ''
   try {
-    const batch = await remoteApi.beginConnect(props.connection.authType, events)
+    const batch = await remoteApi.beginConnect(props.connection.id, events)
     batchId = batch.batchId
     for (const configId of configIds) {
       const entry = ensureEntry(configId)
@@ -158,11 +166,16 @@ async function launch(configIds: string[], includeSftp: boolean) {
     if (includeSftp && record.value) {
       const connected = await remoteApi.connectSftp(batchId, props.connection.id, record.value.id)
       sftpAttemptId = connected.attemptId
+      const pending = pendingSftpEvents
+      pendingSftpEvents = null
+      for (const event of pending ?? []) onUi(event)
     }
+    await remoteApi.sealConnect(batchId)
   } catch (reason) {
     if (batchId) await remoteApi.cancelAttempt(batchCancelId(batchId)).catch(() => {})
     fail(reason)
   } finally {
+    pendingSftpEvents = null
     launching.value = false
     if (heldCredential) {
       credential.value = heldCredential
@@ -297,14 +310,20 @@ async function resolveConflict(choice: 'overwrite' | 'skip' | 'cancel') {
 }
 async function submitSecret() {
   const pending = credential.value
-  if (!pending) return
+  if (!pending || submittingSecret.value || !secret.value) return
   const value = secret.value
   secret.value = ''
-  credential.value = null
-  try { await remoteApi.submitCredential(pending.batchId, value) }
-  catch (reason) { fail(reason) }
+  submittingSecret.value = true
+  try {
+    await remoteApi.submitCredential(pending.batchId, value, pending.authType === 'password' && savePassword.value)
+    credential.value = null
+    savePassword.value = false
+  } catch (reason) { fail(reason) }
+  finally { submittingSecret.value = false }
 }
 async function cancelSecret() {
+  if (submittingSecret.value) return
+  savePassword.value = false
   const pending = credential.value
   secret.value = ''
   credential.value = null
@@ -502,10 +521,11 @@ defineExpose({ connectMissing })
     </div>
     <NModal :show="!!credential" preset="card" :title="t('remote.credentialTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void cancelSecret() }">
       <p>{{ t(credential?.authType === 'privateKey' ? 'remote.passphrasePrompt' : 'remote.passwordPrompt', { endpoint }) }}</p>
-      <NInput v-model:value="secret" type="password" show-password-on="click" :placeholder="t('remote.secret')" @keydown.enter="submitSecret" />
+      <NInput v-model:value="secret" type="password" show-password-on="click" :placeholder="t('remote.secret')" :disabled="submittingSecret" @keydown.enter="submitSecret" />
+      <NCheckbox v-if="credential?.authType === 'password'" v-model:checked="savePassword" :disabled="submittingSecret">{{ t('remote.savePassword') }}</NCheckbox>
       <div class="dialog-actions">
         <NButton @click="cancelSecret">{{ t('common.cancel') }}</NButton>
-        <NButton type="primary" :disabled="!secret" @click="submitSecret">{{ t('common.confirm') }}</NButton>
+        <NButton type="primary" :disabled="!secret || submittingSecret" :loading="submittingSecret" @click="submitSecret">{{ t('common.confirm') }}</NButton>
       </div>
     </NModal>
     <NModal :show="!!challenge" preset="card" :title="t('remote.challengeTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void answer('cancel') }">

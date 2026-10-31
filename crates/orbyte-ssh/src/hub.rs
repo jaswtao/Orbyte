@@ -128,6 +128,7 @@ struct Batch {
     cv: Condvar,
     sink: UiSink,
     auth_type: String,
+    connection_id: String,
 }
 
 struct BatchState {
@@ -136,6 +137,7 @@ struct BatchState {
     pending: usize,
     notified: bool,
     closed: bool,
+    sealed: bool,
 }
 
 struct Challenge {
@@ -206,15 +208,55 @@ impl SshHub {
         self.lock().transfers.iter().filter(|transfer| is_active(&transfer.snapshot.state)).count()
     }
 
-    pub fn begin_batch(&self, auth_type: String, sink: UiSink) -> SshResult<String> {
+    pub fn batch_connection(&self, batch_id: &str) -> SshResult<String> {
+        Ok(self.batch(batch_id)?.connection_id.clone())
+    }
+
+    pub fn check_batch_connection(&self, batch_id: &str, connection_id: &str) -> SshResult<()> {
+        if self.batch_connection(batch_id)? != connection_id { return Err(SshError::ChallengeRejected); }
+        let batch = self.batch(batch_id)?;
+        let state = batch.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.closed || state.cancelled || state.sealed { return Err(SshError::ChallengeRejected); }
+        Ok(())
+    }
+
+    pub fn cancel_connection_batches(&self, connection_id: &str) {
+        let ids: Vec<_> = self.lock().batches.iter()
+            .filter(|(_, batch)| batch.connection_id == connection_id
+                && !batch.state.lock().unwrap_or_else(|err| err.into_inner()).closed)
+            .map(|(id, _)| id.clone()).collect();
+        for id in ids { let _ = self.cancel_batch(&id); }
+    }
+
+    /// Keep the secret until every request has been registered and authenticated.
+    pub fn seal_batch(&self, batch_id: &str) -> SshResult<()> {
+        let batch = self.batch(batch_id)?;
+        let mut state = batch.state.lock().unwrap_or_else(|err| err.into_inner());
+        state.sealed = true;
+        if state.pending == 0 {
+            state.secret = None;
+            state.closed = true;
+        }
+        Ok(())
+    }
+
+    pub fn validate_secret_submission(&self, batch_id: &str) -> SshResult<()> {
+        let batch = self.batch(batch_id)?;
+        let state = batch.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.cancelled || state.closed || state.pending == 0 { return Err(SshError::ChallengeRejected); }
+        Ok(())
+    }
+
+    pub fn begin_connection_batch(&self, connection_id: String, auth_type: String, secret: Option<Zeroizing<String>>, sink: UiSink) -> SshResult<String> {
         let mut inner = self.lock();
         if !inner.accepting { return Err(SshError::ShuttingDown); }
         let id = Uuid::new_v4().to_string();
         inner.batches.insert(id.clone(), Arc::new(Batch {
-            state: Mutex::new(BatchState { secret: None, cancelled: false, pending: 0, notified: false, closed: false }),
+            state: Mutex::new(BatchState { secret, cancelled: false, pending: 0, notified: false, closed: false, sealed: false }),
             cv: Condvar::new(),
             sink,
             auth_type,
+            connection_id,
         }));
         Ok(id)
     }
@@ -616,7 +658,7 @@ impl SshHub {
         let Ok(batch) = self.batch(batch_id) else { return };
         let mut state = batch.state.lock().unwrap_or_else(|err| err.into_inner());
         state.pending = state.pending.saturating_sub(1);
-        if state.pending == 0 {
+        if state.pending == 0 && state.sealed {
             state.secret = None;
             state.closed = true;
         }
@@ -869,9 +911,10 @@ mod tests {
     #[test]
     fn batch_secret_is_cleared_when_the_last_authentication_finishes() {
         let hub = SshHub::new();
-        let id = hub.begin_batch("password".into(), Arc::new(|_| {})).unwrap();
+        let id = hub.begin_connection_batch("connection".into(), "password".into(), None, Arc::new(|_| {})).unwrap();
         let batch = hub.batch(&id).unwrap();
         batch.state.lock().unwrap().pending = 2;
+        hub.seal_batch(&id).unwrap();
         hub.submit_secret(&id, "secret".into()).unwrap();
         hub.finish_auth(&id);
         assert!(batch.state.lock().unwrap().secret.is_some());
@@ -881,5 +924,41 @@ mod tests {
         assert!(state.closed);
         drop(state);
         assert!(hub.submit_secret(&id, "late secret".into()).is_err());
+    }
+
+    #[test]
+    fn saved_password_waits_for_registration_and_never_requests_frontend_credentials() {
+        let hub = SshHub::new();
+        let id = hub.begin_connection_batch("one".into(), "password".into(), Some(Zeroizing::new(" saved ".into())), Arc::new(|_| panic!("saved password must stay in the backend"))).unwrap();
+        assert!(hub.check_batch_connection(&id, "two").is_err());
+        hub.check_batch_connection(&id, "one").unwrap();
+        let batch = hub.batch(&id).unwrap();
+        batch.state.lock().unwrap().pending = 1;
+        assert_eq!(hub.wait_secret(&id, &CancelToken::new()).unwrap().as_str(), " saved ");
+        hub.finish_auth(&id);
+        assert!(batch.state.lock().unwrap().secret.is_some());
+        // A fast first authentication must not clear the password before SFTP registers.
+        batch.state.lock().unwrap().pending += 1;
+        hub.seal_batch(&id).unwrap();
+        assert!(hub.check_batch_connection(&id, "one").is_err());
+        assert_eq!(hub.wait_secret(&id, &CancelToken::new()).unwrap().as_str(), " saved ");
+        hub.finish_auth(&id);
+        let state = batch.state.lock().unwrap();
+        assert!(state.secret.is_none());
+        assert!(state.closed);
+    }
+
+    #[test]
+    fn cancelling_connection_batches_clears_only_their_credentials() {
+        let hub = SshHub::new();
+        let first = hub.begin_connection_batch("one".into(), "password".into(), Some(Zeroizing::new("first".into())), Arc::new(|_| {})).unwrap();
+        let second = hub.begin_connection_batch("two".into(), "password".into(), Some(Zeroizing::new("second".into())), Arc::new(|_| {})).unwrap();
+        hub.cancel_connection_batches("one");
+        assert!(hub.batch(&first).unwrap().state.lock().unwrap().secret.is_none());
+        assert!(hub.check_batch_connection(&first, "one").is_err());
+        hub.check_batch_connection(&second, "two").unwrap();
+        assert!(hub.batch(&second).unwrap().state.lock().unwrap().secret.is_some());
+        hub.seal_batch(&second).unwrap();
+        assert!(hub.batch(&second).unwrap().state.lock().unwrap().secret.is_none());
     }
 }

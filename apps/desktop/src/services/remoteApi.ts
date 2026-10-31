@@ -18,7 +18,11 @@ export interface SshConnection {
   authType: 'password' | 'privateKey'
   privateKeyPath: string | null
   sortOrder: number
+  hasSavedPassword: boolean
 }
+
+export type PasswordChange = { operation: 'keep' | 'clear' } | { operation: 'set'; password: string }
+export type SshConnectionInput = Omit<SshConnection, 'id' | 'sortOrder' | 'hasSavedPassword'> & { passwordChange?: PasswordChange }
 
 export interface KnownHost {
   id: string
@@ -111,11 +115,11 @@ export interface TransferView {
 
 export const remoteApi = {
   listConnections: () => invoke<SshConnection[]>('list_ssh_connections'),
-  createConnection: (input: Omit<SshConnection, 'id' | 'sortOrder'>) => invoke<string>('create_ssh_connection', {
-    name: input.name, host: input.host, port: input.port, username: input.username, authType: input.authType, privateKeyPath: input.privateKeyPath,
+  createConnection: (input: SshConnectionInput) => invoke<string>('create_ssh_connection', {
+    name: input.name, host: input.host, port: input.port, username: input.username, authType: input.authType, privateKeyPath: input.privateKeyPath, passwordChange: input.passwordChange,
   }),
-  updateConnection: (id: string, input: Omit<SshConnection, 'id' | 'sortOrder'>) => invoke<void>('update_ssh_connection', {
-    id, name: input.name, host: input.host, port: input.port, username: input.username, authType: input.authType, privateKeyPath: input.privateKeyPath,
+  updateConnection: (id: string, input: SshConnectionInput) => invoke<void>('update_ssh_connection', {
+    id, name: input.name, host: input.host, port: input.port, username: input.username, authType: input.authType, privateKeyPath: input.privateKeyPath, passwordChange: input.passwordChange,
   }),
   deleteConnection: (id: string) => invoke<void>('delete_ssh_connection', { id }),
   listKnownHosts: (host: string, port: number) => invoke<KnownHost[]>('list_ssh_known_hosts', { host, port }),
@@ -125,13 +129,14 @@ export const remoteApi = {
   setDirectory: (workspaceId: string, directory: string) => invoke<void>('set_remote_directory', { workspaceId, directory }),
   createTerminal: (workspaceId: string, name: string) => invoke<string>('create_remote_terminal_config', { workspaceId, name }),
   removeTerminal: (workspaceId: string, terminalConfigId: string) => invoke<void>('remove_remote_terminal_config', { workspaceId, terminalConfigId }),
-  beginConnect: (authType: string, events: Channel<SshUiEvent>) => invoke<{ batchId: string }>('begin_ssh_connect', { authType, events }),
+  beginConnect: (connectionId: string, events: Channel<SshUiEvent>) => invoke<{ batchId: string }>('begin_ssh_connect', { connectionId, events }),
+  sealConnect: (batchId: string) => invoke<void>('seal_ssh_connect', { batchId }),
   connectTerminal: (batchId: string, connectionId: string, configId: string, size: TerminalSize, channel: Channel<TerminalFrameData>) =>
     invoke<{ terminalId: string; attemptId: string }>('connect_ssh_terminal', { batchId, connectionId, configId, cols: size.cols, rows: size.rows, channel }),
   connectSftp: (batchId: string, connectionId: string, workspaceId: string) =>
     invoke<{ attemptId: string }>('connect_sftp', { batchId, connectionId, workspaceId }),
   answerChallenge: (challengeId: string, decision: 'once' | 'save' | 'cancel') => invoke<void>('answer_ssh_challenge', { challengeId, decision }),
-  submitCredential: (batchId: string, secret: string) => invoke<void>('submit_ssh_credential', { batchId, secret }),
+  submitCredential: (batchId: string, secret: string, savePassword = false) => invoke<void>('submit_ssh_credential', { batchId, secret, savePassword }),
   cancelAttempt: (attemptId: string) => invoke<void>('cancel_ssh_attempt', { attemptId }),
   listSessions: () => invoke<TerminalSessionInfo[]>('list_remote_terminal_sessions'),
   listDirectory: (workspaceId: string, path: string, events: Channel<DirBatch>) => invoke<string>('list_remote_directory', { workspaceId, path, events }),

@@ -15,6 +15,8 @@ pub struct AppState {
     pub unsaved_editor_count: std::sync::atomic::AtomicUsize,
     pub terminals: Arc<TerminalManager>,
     pub ssh: Arc<SshHub>,
+    pub ssh_passwords: Arc<dyn orbyte_platform::credentials::PasswordStore>,
+    pub ssh_connections: tokio::sync::Mutex<()>,
     pub shells: Arc<ShellCache>,
     /// 配置创建/重启/移除与项目修改/删除串行，避免数据库与会话注册表竞争。
     pub terminal_lifecycle: tokio::sync::Mutex<()>,
@@ -33,6 +35,8 @@ impl AppState {
             unsaved_editor_count: std::sync::atomic::AtomicUsize::new(0),
             terminals: Arc::new(TerminalManager::default()),
             ssh: SshHub::new(),
+            ssh_passwords: Arc::new(orbyte_platform::credentials::SystemPasswordStore),
+            ssh_connections: tokio::sync::Mutex::new(()),
             shells: Arc::new(ShellCache::default()),
             terminal_lifecycle: tokio::sync::Mutex::new(()),
             file_writes: tokio::sync::RwLock::new(()),

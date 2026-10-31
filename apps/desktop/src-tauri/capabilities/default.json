@@ -86,6 +86,7 @@
     "allow-create-remote-terminal-config",
     "allow-remove-remote-terminal-config",
     "allow-begin-ssh-connect",
+    "allow-seal-ssh-connect",
     "allow-connect-ssh-terminal",
     "allow-connect-sftp",
     "allow-answer-ssh-challenge",

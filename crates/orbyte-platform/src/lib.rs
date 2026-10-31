@@ -11,3 +11,5 @@ pub mod path;
 
 #[cfg(windows)]
 pub mod windows;
+
+pub mod credentials;

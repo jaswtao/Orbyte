@@ -3,13 +3,15 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect } from 'naive-ui'
 import { open } from '@tauri-apps/plugin-dialog'
-import { remoteApi, type KnownHost, type SshConnection } from '../../services/remoteApi'
+import { remoteApi, type KnownHost, type SshConnection, type PasswordChange } from '../../services/remoteApi'
 import { t } from '../../i18n'
 
 const props = defineProps<{ connection: SshConnection | null }>()
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ saved: []; error: [message: string] }>()
 const form = reactive({ name: '', host: '', port: 22 as number | null, username: '', authType: 'password' as 'password' | 'privateKey', privateKeyPath: '' })
+const password = ref('')
+const clearPassword = ref(false)
 const knownHosts = ref<KnownHost[]>([])
 const busy = ref(false)
 const error = ref('')
@@ -18,6 +20,8 @@ const authOptions = computed(() => [
   { label: t('remote.privateKey'), value: 'privateKey' },
 ])
 watch(show, (visible) => {
+  password.value = ''
+  clearPassword.value = false
   if (!visible) return
   error.value = ''
   const current = props.connection
@@ -26,6 +30,7 @@ watch(show, (visible) => {
     : { name: '', host: '', port: 22, username: '', authType: 'password', privateKeyPath: '' })
   void refreshKeys()
 })
+watch(() => form.authType, () => { password.value = '' })
 async function refreshKeys() {
   knownHosts.value = []
   if (!show.value || !form.host.trim() || !form.port) return
@@ -55,6 +60,9 @@ async function save() {
     username: form.username.trim(),
     authType: form.authType,
     privateKeyPath: form.authType === 'privateKey' ? form.privateKeyPath.trim() : null,
+    passwordChange: (form.authType === 'password' && password.value
+      ? { operation: 'set', password: password.value }
+      : { operation: clearPassword.value ? 'clear' : 'keep' }) as PasswordChange,
   }
   try {
     if (props.connection) await remoteApi.updateConnection(props.connection.id, input)
@@ -64,7 +72,11 @@ async function save() {
   } catch (reason) {
     error.value = String(reason)
     emit('error', error.value)
-  } finally { busy.value = false }
+  } finally {
+    password.value = ''
+    if (input.passwordChange.operation === 'set') input.passwordChange.password = ''
+    busy.value = false
+  }
 }
 </script>
 <template>
@@ -75,6 +87,13 @@ async function save() {
       <NFormItem :label="t('remote.port')"><NInputNumber v-model:value="form.port" :min="1" :max="65535" @update:value="refreshKeys" /></NFormItem>
       <NFormItem :label="t('remote.username')"><NInput v-model:value="form.username" :maxlength="128" /></NFormItem>
       <NFormItem :label="t('remote.auth')"><NSelect v-model:value="form.authType" :options="authOptions" /></NFormItem>
+      <NFormItem v-if="form.authType === 'password'" :label="t('remote.password')">
+        <div class="path-picker">
+          <NInput v-model:value="password" type="password" show-password-on="click" :placeholder="t(connection?.hasSavedPassword && !clearPassword ? 'remote.passwordSaved' : 'remote.passwordOptional')" :disabled="busy" />
+          <NButton v-if="connection?.hasSavedPassword && !clearPassword" :disabled="busy" @click="clearPassword = true; password = ''">{{ t('remote.clearPassword') }}</NButton>
+        </div>
+      </NFormItem>
+      <p v-if="form.authType === 'password'">{{ t(clearPassword ? 'remote.passwordWillClear' : 'remote.passwordStorage') }}</p>
       <NFormItem v-if="form.authType === 'privateKey'" :label="t('remote.keyPath')">
         <div class="path-picker">
           <NInput v-model:value="form.privateKeyPath" />
@@ -91,7 +110,7 @@ async function save() {
       </div>
       <NAlert v-if="error" type="error">{{ error }}</NAlert>
       <div class="dialog-actions">
-        <NButton @click="show = false">{{ t('common.cancel') }}</NButton>
+        <NButton :disabled="busy" @click="show = false">{{ t('common.cancel') }}</NButton>
         <NButton attr-type="submit" type="primary" :loading="busy" :disabled="!form.name.trim() || !form.host.trim() || !form.username.trim() || !form.port || (form.authType === 'privateKey' && !form.privateKeyPath.trim())">{{ t('common.save') }}</NButton>
       </div>
     </NForm>

@@ -257,6 +257,7 @@ pub fn run() {
             commands::remote::create_remote_terminal_config,
             commands::remote::remove_remote_terminal_config,
             commands::remote::begin_ssh_connect,
+            commands::remote::seal_ssh_connect,
             commands::remote::connect_ssh_terminal,
             commands::remote::connect_sftp,
             commands::remote::answer_ssh_challenge,

@@ -2984,6 +2984,7 @@ dependencies = [
  "tokio",
  "uuid",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -3020,6 +3021,7 @@ dependencies = [
  "orbyte-core",
  "serde",
  "windows-sys 0.61.2",
+ "zeroize",
 ]
 
 [[package]]

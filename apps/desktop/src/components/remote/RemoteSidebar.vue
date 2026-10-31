@@ -35,9 +35,16 @@ async function reload() {
   try { connections.value = await remoteApi.listConnections() }
   catch (reason) { error.value = String(reason); emit('error', error.value) }
 }
-function edit(connection?: SshConnection) {
-  editing.value = connection ?? null
-  dialog.value = true
+async function edit(connection?: SshConnection) {
+  try {
+    if (connection) {
+      connections.value = await remoteApi.listConnections()
+      const current = connections.value.find((item) => item.id === connection.id)
+      if (!current) return
+      editing.value = current
+    } else editing.value = null
+    dialog.value = true
+  } catch (reason) { error.value = String(reason); emit('error', error.value) }
 }
 async function remove() {
   const connection = deleting.value
