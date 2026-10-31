@@ -97,7 +97,7 @@ button:focus-visible, select:focus-visible {
   flex: 1;
 }
 
-.titlebar-tabs, #workspace-titlebar-tabs {
+.titlebar-tabs, #workspace-titlebar-tabs, #remote-titlebar-tabs {
   display: flex;
   min-width: 0;
   max-width: 100%;

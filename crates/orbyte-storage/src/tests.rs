@@ -203,7 +203,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 7);
+            assert_eq!(count, 8);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();

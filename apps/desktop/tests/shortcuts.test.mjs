@@ -952,6 +952,7 @@ test('窗口 focus 事件等待 DOM 更新后仅转发当前项目，并保留 G
   vm.runInContext(ts.transpileModule(forward.getText(deckAst), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, deckContext)
   const context = vm.createContext({ nextTick, disposed: false, document: { hasFocus: () => true },
     store: { active: { id: 'active' } }, git: { schedule: (id) => calls.push(`git:${id}`) },
+    sidebarView: { value: 'projects' }, remoteDeck: { value: { focusTerminal: () => calls.push('remote') } },
     deck: { value: { focusTerminal: () => deckContext.focusTerminal() } } })
   vm.runInContext(ts.transpileModule(handler.getText(ast), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   const pending = context.windowFocus()
@@ -970,6 +971,12 @@ test('窗口 focus 事件等待 DOM 更新后仅转发当前项目，并保留 G
     await pending
     assert.deepEqual(calls, ['git:active'])
   }
+  calls.length = 0
+  context.disposed = false
+  context.sidebarView.value = 'remote'
+  deckContext.props.activeId = 'active'
+  await context.windowFocus()
+  assert.deepEqual(calls, ['git:active', 'remote'])
 })
 
 test('工作区新绑定只执行一次，保留数字 Tab 定位并阻断后台、弹窗和长按', () => {

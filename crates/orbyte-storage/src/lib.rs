@@ -25,7 +25,7 @@ mod layout;
 mod migration;
 mod remote;
 pub use remote::{
-    parse_connection, KnownHost, KnownHostRecord, RemoteTerminalConfig, RemoteWorkspaceRecord, SshConnection,
+    parse_connection, KnownHost, KnownHostRecord, RemoteConnectionTab, RemoteProject, RemoteTerminalConfig, RemoteWorkspaceRecord, SshConnection,
 };
 
 #[derive(Clone)]

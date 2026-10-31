@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-delete-remote-project"
+description = "Enables the delete_remote_project command without any pre-configured scope."
+commands.allow = ["delete_remote_project"]
+
+[[permission]]
+identifier = "deny-delete-remote-project"
+description = "Denies the delete_remote_project command without any pre-configured scope."
+commands.deny = ["delete_remote_project"]

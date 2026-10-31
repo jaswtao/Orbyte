@@ -14,11 +14,12 @@ import { leaves, removeFromLayout, setRatio, splitLeaf, type Layout } from '../.
 import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remotePaneNeedsCloseConfirm, transferPercent } from '../../services/remote/workspace'
 import { isSftpReady, markSftpReady, setRemoteLink } from '../../services/remote/status'
 import { t, type MessageKey } from '../../i18n'
+import { useRemote } from '../../stores/remote'
 import '@xterm/xterm/css/xterm.css'
 import '../workspace/workspace.css'
 import './remote.css'
 
-const props = defineProps<{ connection: SshConnection; settings: Settings; appearance: AppearanceMode; active: boolean; shortcutsBlocked: boolean }>()
+const props = defineProps<{ workspaceId: string; connection: SshConnection; settings: Settings; appearance: AppearanceMode; active: boolean; shortcutsBlocked: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const record = ref<WorkspaceRecord | null>(null)
 const focused = ref<string | null>(null)
@@ -27,7 +28,7 @@ const pathInput = ref('.')
 const browsing = ref(false)
 const sftpUp = ref(false)
 const selected = ref<string[]>([])
-const transfers = ref<TransferView[]>([])
+const remote = useRemote()
 const sftpError = ref('')
 const credential = ref<{ batchId: string; authType: string } | null>(null)
 const secret = ref('')
@@ -53,7 +54,7 @@ const layout = computed(() => record.value ? asLayout(record.value.layout) : nul
 const activeTab = computed(() => layout.value?.tabs.find((tab) => tab.id === layout.value?.activeTabId) ?? null)
 const names = computed(() => new Map((record.value?.terminals ?? []).map((terminal) => [terminal.id, terminal.name])))
 const parent = computed(() => parentPath(pathInput.value))
-const workspaceTransfers = computed(() => transfers.value.filter((transfer) => transfer.workspaceId === record.value?.id))
+const workspaceTransfers = computed(() => remote.transfers.filter((transfer) => transfer.workspaceId === record.value?.id))
 const conflictTransfer = computed(() => workspaceTransfers.value.find((transfer) => transfer.state === 'awaitingConflict') ?? null)
 const conflictName = computed(() => conflictTransfer.value?.files.find((file) => file.status === 'awaitingConflict')?.relative || conflictTransfer.value?.message || '')
 const stateText: Record<string, MessageKey> = {
@@ -123,8 +124,8 @@ function onUi(event: SshUiEvent) {
     return
   }
   if (event.type !== 'attempt') return
-  setRemoteLink(props.connection.id, event.state || 'idle', event.message || '')
-    if (event.attemptId && event.attemptId === sftpAttemptId) {
+  setRemoteLink(props.workspaceId, event.state || 'idle', event.message || '')
+  if (event.attemptId && event.attemptId === sftpAttemptId) {
     if (event.state === 'ready' && record.value) {
       markSftpReady(record.value.id, true)
       sftpUp.value = true
@@ -214,7 +215,7 @@ async function reload() {
   selected.value = []
   sftpError.value = ''
   try {
-    const loaded = await ensureTerminal(await remoteApi.loadWorkspace(props.connection.id))
+    const loaded = await ensureTerminal(await remoteApi.getWorkspace(props.workspaceId))
     if (token !== reloadToken) return
     record.value = loaded
     pathInput.value = loaded.lastDirectory || '.'
@@ -339,6 +340,8 @@ async function answer(decision: 'once' | 'save' | 'cancel') {
 function selectTab(id: string) {
   if (!record.value || record.value.layout.activeTabId === id) return
   const next = { ...asLayout(record.value.layout), activeTabId: id }
+  const tab = next.tabs.find((tab) => tab.id === id)
+  focused.value = tab ? leaves(tab.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
   void persist(next).catch(fail)
 }
 function askClose(ids: string[], title: string, tabId?: string) {
@@ -436,22 +439,12 @@ async function syncSessions() {
     if (session) entry.client.observeSession(session)
   }
 }
-async function listenTransfers() {
-  const channel = new Channel<{ transfers: TransferView[] }>()
-  let live = false
-  channel.onmessage = (event) => { live = true; transfers.value = event.transfers }
-  try {
-    await remoteApi.subscribeTransfers(channel)
-    const snapshot = await remoteApi.listTransfers()
-    if (!live) transfers.value = snapshot.transfers
-  } catch (reason) { fail(reason) }
-}
 const sessionTimer = window.setInterval(() => { void syncSessions() }, 2000)
-watch(() => props.connection.id, () => { void reload() }, { immediate: true })
-watch(() => [props.active, record.value?.layout.activeTabId, record.value?.layout.tabs.length], syncVisibility)
+watch(() => props.workspaceId, () => { void reload() }, { immediate: true })
+watch(() => [props.active, record.value?.layout.activeTabId, record.value?.layout.tabs.length], syncVisibility, { flush: 'post' })
 watch(() => props.settings, (settings) => registry.updateSettings(settings), { deep: true })
 watch(() => props.appearance, () => registry.updateSettings(props.settings))
-onMounted(() => { void listenTransfers() })
+onMounted(() => { void remote.listenTransfers().catch(fail) })
 onBeforeUnmount(() => {
   window.clearInterval(sessionTimer)
   window.clearTimeout(ratioTimer)
@@ -459,22 +452,24 @@ onBeforeUnmount(() => {
   if (browseId) void remoteApi.cancelBrowse(browseId)
   disposeEntries()
 })
-defineExpose({ connectMissing })
+function focusTerminal() { if (focused.value) registry.byConfig.get(focused.value)?.client.focus() }
+defineExpose({ connectMissing, focusTerminal })
 </script>
 <template>
   <section v-if="record && layout" class="remote-workspace">
     <div class="remote-toolbar">
       <span class="remote-title">{{ connection.name }}</span>
       <span class="remote-connection-endpoint">{{ endpoint }}</span>
+      <NButton size="small" :disabled="launching" @click="connectMissing().catch(fail)">{{ t('remote.reconnect') }}</NButton>
       <NButton size="small" @click="addTerminal()">{{ t('remote.newTab') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('horizontal')">{{ t('remote.splitHorizontal') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('vertical')">{{ t('remote.splitVertical') }}</NButton>
     </div>
-    <div class="remote-tabs">
-      <button v-for="tab in layout.tabs" :key="tab.id" type="button" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" @click="selectTab(tab.id)">
-        {{ tab.title }}
-        <span @click.stop="askClose(leaves(tab.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : []), t('remote.closeTab', { title: tab.title }), tab.id)">×</span>
-      </button>
+    <div class="remote-tabs" role="tablist" :aria-label="t('workspace.tabs')">
+      <div v-for="tab in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }">
+        <button role="tab" :aria-selected="tab.id === layout.activeTabId" @click="selectTab(tab.id)">{{ tab.title }}</button>
+        <button :aria-label="t('remote.closeTab', { title: tab.title })" @click="askClose(leaves(tab.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : []), t('remote.closeTab', { title: tab.title }), tab.id)">×</button>
+      </div>
     </div>
     <div class="remote-body">
       <div class="remote-terminals">
@@ -519,7 +514,7 @@ defineExpose({ connectMissing })
         </div>
       </aside>
     </div>
-    <NModal :show="!!credential" preset="card" :title="t('remote.credentialTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void cancelSecret() }">
+    <NModal :show="active && !!credential" preset="card" :title="t('remote.credentialTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void cancelSecret() }">
       <p>{{ t(credential?.authType === 'privateKey' ? 'remote.passphrasePrompt' : 'remote.passwordPrompt', { endpoint }) }}</p>
       <NInput v-model:value="secret" type="password" show-password-on="click" :placeholder="t('remote.secret')" :disabled="submittingSecret" @keydown.enter="submitSecret" />
       <NCheckbox v-if="credential?.authType === 'password'" v-model:checked="savePassword" :disabled="submittingSecret">{{ t('remote.savePassword') }}</NCheckbox>
@@ -528,7 +523,7 @@ defineExpose({ connectMissing })
         <NButton type="primary" :disabled="!secret || submittingSecret" :loading="submittingSecret" @click="submitSecret">{{ t('common.confirm') }}</NButton>
       </div>
     </NModal>
-    <NModal :show="!!challenge" preset="card" :title="t('remote.challengeTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void answer('cancel') }">
+    <NModal :show="active && !!challenge" preset="card" :title="t('remote.challengeTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void answer('cancel') }">
       <p>{{ t('remote.challengeBody', { host: challenge?.host ?? '', port: challenge?.port ?? '' }) }}</p>
       <p>{{ t('remote.algorithm') }}: {{ challenge?.algorithm }}</p>
       <p>{{ t('remote.fingerprint') }}: {{ challenge?.fingerprint }}</p>
@@ -538,21 +533,21 @@ defineExpose({ connectMissing })
         <NButton type="primary" @click="answer('save')">{{ t('remote.trustSave') }}</NButton>
       </div>
     </NModal>
-    <NModal :show="!!closing" preset="card" :title="t('workspace.confirmClose')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show && !busy) closing = null }">
+    <NModal :show="active && !!closing" preset="card" :title="t('workspace.confirmClose')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show && !busy) closing = null }">
       <p>{{ closing?.title }}</p>
       <div class="dialog-actions">
         <NButton :disabled="busy" @click="closing = null">{{ t('common.cancel') }}</NButton>
         <NButton type="error" :loading="busy" @click="confirmClose">{{ t('common.confirm') }}</NButton>
       </div>
     </NModal>
-    <NModal v-model:show="folderOpen" preset="card" :title="t('remote.mkdir')" class="form-modal">
+    <NModal :show="active && folderOpen" @update:show="folderOpen = $event" preset="card" :title="t('remote.mkdir')" class="form-modal">
       <NInput v-model:value="folderName" :placeholder="t('remote.folderName')" @keydown.enter="makeDirectory" />
       <div class="dialog-actions">
         <NButton @click="folderOpen = false">{{ t('common.cancel') }}</NButton>
         <NButton type="primary" :loading="busy" :disabled="!folderName.trim()" @click="makeDirectory">{{ t('common.confirm') }}</NButton>
       </div>
     </NModal>
-    <NModal :show="!!conflictTransfer" preset="card" :title="t('remote.conflictTitle')" class="form-modal" :mask-closable="false">
+    <NModal :show="active && !!conflictTransfer" preset="card" :title="t('remote.conflictTitle')" class="form-modal" :mask-closable="false">
       <p>{{ t('remote.conflictBody', { name: conflictName }) }}</p>
       <NCheckbox v-model:checked="applyAll">{{ t('remote.applyAll') }}</NCheckbox>
       <div class="dialog-actions">

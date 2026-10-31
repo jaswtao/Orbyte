@@ -60,6 +60,57 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.remote-deck {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.remote-project {
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.remote-project.active {
+  border-color: var(--accent);
+  background: var(--selection);
+}
+
+.remote-project-select {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  color: var(--text);
+  background: transparent;
+  text-align: left;
+}
+
+.remote-project-select span { color: var(--muted); font-size: 12px; }
+.remote-project-actions { display: flex; gap: 6px; padding: 0 10px 8px; }
+.remote-manage-button { flex-shrink: 0; }
+.remote-status-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--muted); }
+.remote-status-dot.ready { background: #36ad6a; }
+.remote-status-dot.failed { background: #e35b65; }
+.remote-status-dot.connecting,
+.remote-status-dot.verifyingHost,
+.remote-status-dot.authenticating { background: #d9a441; }
+.remote-tabs { flex-shrink: 0; }
+.remote-tabs .workspace-tab.active,
+.remote-connection-tabs .workspace-tab.active {
+  border-color: var(--accent);
+  background: var(--selection);
+  color: var(--text);
 }
 
 .remote-toolbar,

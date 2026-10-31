@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-remote-project"
+description = "Enables the save_remote_project command without any pre-configured scope."
+commands.allow = ["save_remote_project"]
+
+[[permission]]
+identifier = "deny-save-remote-project"
+description = "Denies the save_remote_project command without any pre-configured scope."
+commands.deny = ["save_remote_project"]

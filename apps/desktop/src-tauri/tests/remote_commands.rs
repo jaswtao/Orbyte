@@ -13,6 +13,7 @@ mod state;
 use commands::project::StorageState;
 use commands::remote::*;
 use orbyte_storage::Database;
+use orbyte_terminal::SessionRuntime;
 use state::AppState;
 use tauri::{ipc::Channel, test::{mock_builder, mock_context, noop_assets}, Manager};
 
@@ -75,6 +76,83 @@ impl orbyte_platform::credentials::PasswordStore for TestPasswords {
 
 fn preset(value: &str) -> Option<PasswordChange> {
     Some(PasswordChange::Set { password: value.into() })
+}
+
+#[test]
+fn closing_a_remote_tab_stops_only_its_sessions_and_rejects_late_connects() {
+    let mut state = AppState::new();
+    state.ssh_passwords = std::sync::Arc::new(TestPasswords::default());
+    let db = tauri::async_runtime::block_on(Database::open(std::path::Path::new(":memory:"))).unwrap();
+    attach_host_store(&state.ssh, db.clone());
+    let app = mock_builder().manage(state).manage(StorageState(Ok(db.clone()))).build(mock_context(noop_assets())).unwrap();
+    tauri::async_runtime::block_on(async {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let connection = create_ssh_connection(app.state(), app.state(), "lab".into(), "127.0.0.1".into(), Some(listener.local_addr().unwrap().port()), "root".into(), "password".into(), None, None).await.unwrap();
+        let project = save_remote_project(app.state(), None, "Remote project".into()).await.unwrap();
+        let first = open_remote_connection_tab(app.state(), app.state(), project.clone(), connection.clone()).await.unwrap();
+        let second = open_remote_connection_tab(app.state(), app.state(), project, connection.clone()).await.unwrap();
+        let batch = begin_ssh_connect(app.state(), app.state(), connection.clone(), Channel::new(|_| Ok(()))).await.unwrap();
+        let first_shell = connect_ssh_terminal(app.state(), app.state(), batch.batch_id.clone(), connection.clone(), first.terminals[0].id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+        let second_shell = connect_ssh_terminal(app.state(), app.state(), batch.batch_id.clone(), connection.clone(), second.terminals[0].id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+        connect_sftp(app.state(), app.state(), batch.batch_id.clone(), connection.clone(), first.id.clone()).await.unwrap();
+        connect_sftp(app.state(), app.state(), batch.batch_id.clone(), connection.clone(), second.id.clone()).await.unwrap();
+        close_remote_connection_tab(app.state(), app.state(), first.id.clone()).await.unwrap();
+        assert!(db.load_remote_workspace(&first.id).await.is_err());
+        assert!(db.load_remote_workspace(&second.id).await.is_ok());
+        let ssh = &app.state::<AppState>().ssh;
+        assert!(ssh.list_directory(&first.id, ".", "closed", std::sync::Arc::new(|_| {})).is_err());
+        assert!(ssh.list_directory(&second.id, ".", "kept", std::sync::Arc::new(|_| {})).is_ok());
+        assert!(matches!(ssh.terminal(&first_shell.terminal_id).unwrap().info().status, orbyte_terminal::TerminalStatus::Exited { .. } | orbyte_terminal::TerminalStatus::Failed { .. }));
+        assert!(ssh.terminal(&second_shell.terminal_id).is_some());
+        assert!(connect_ssh_terminal(app.state(), app.state(), batch.batch_id.clone(), connection.clone(), first.terminals[0].id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.is_err());
+        assert!(connect_sftp(app.state(), app.state(), batch.batch_id.clone(), connection, first.id).await.is_err());
+        seal_ssh_connect(app.state(), batch.batch_id).unwrap();
+        ssh.shutdown();
+    });
+}
+
+#[test]
+fn editing_connection_identity_disconnects_its_tabs_but_preserves_layouts() {
+    let mut state = AppState::new();
+    state.ssh_passwords = std::sync::Arc::new(TestPasswords::default());
+    let db = tauri::async_runtime::block_on(Database::open(std::path::Path::new(":memory:"))).unwrap();
+    attach_host_store(&state.ssh, db.clone());
+    let app = mock_builder().manage(state).manage(StorageState(Ok(db.clone()))).build(mock_context(noop_assets())).unwrap();
+    tauri::async_runtime::block_on(async {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let connection = create_ssh_connection(app.state(), app.state(), "lab".into(), "127.0.0.1".into(), Some(port), "root".into(), "password".into(), None, None).await.unwrap();
+        let other = create_ssh_connection(app.state(), app.state(), "other".into(), "127.0.0.1".into(), Some(port), "root".into(), "password".into(), None, None).await.unwrap();
+        let project = save_remote_project(app.state(), None, "Remote project".into()).await.unwrap();
+        let mut workspaces = Vec::new();
+        let mut shells = Vec::new();
+        let mut batches = Vec::new();
+        for id in [&connection, &connection, &other] {
+            let workspace = open_remote_connection_tab(app.state(), app.state(), project.clone(), id.clone()).await.unwrap();
+            let batch = begin_ssh_connect(app.state(), app.state(), id.clone(), Channel::new(|_| Ok(()))).await.unwrap();
+            let shell = connect_ssh_terminal(app.state(), app.state(), batch.batch_id.clone(), id.clone(), workspace.terminals[0].id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+            connect_sftp(app.state(), app.state(), batch.batch_id.clone(), id.clone(), workspace.id.clone()).await.unwrap();
+            workspaces.push(workspace);
+            shells.push(shell);
+            batches.push(batch);
+        }
+        let ssh = &app.state::<AppState>().ssh;
+        update_ssh_connection(app.state(), app.state(), connection.clone(), "renamed".into(), "127.0.0.1".into(), Some(port), "root".into(), "password".into(), None, None).await.unwrap();
+        assert!(ssh.list_directory(&workspaces[0].id, ".", "renamed", std::sync::Arc::new(|_| {})).is_ok());
+        assert!(ssh.check_batch_connection(&batches[0].batch_id, &connection).is_ok());
+        update_ssh_connection(app.state(), app.state(), connection.clone(), "renamed".into(), "127.0.0.1".into(), Some(port), "other-user".into(), "password".into(), None, None).await.unwrap();
+        for index in 0..2 {
+            assert!(ssh.list_directory(&workspaces[index].id, ".", "changed", std::sync::Arc::new(|_| {})).is_err());
+            assert!(matches!(ssh.terminal(&shells[index].terminal_id).unwrap().info().status, orbyte_terminal::TerminalStatus::Exited { .. } | orbyte_terminal::TerminalStatus::Failed { .. }));
+            assert!(ssh.check_batch_connection(&batches[index].batch_id, &connection).is_err());
+            let preserved = db.load_remote_workspace(&workspaces[index].id).await.unwrap();
+            assert_eq!(preserved.terminals[0].id, workspaces[index].terminals[0].id);
+            assert_eq!(serde_json::to_value(&preserved.layout).unwrap(), serde_json::to_value(&workspaces[index].layout).unwrap());
+        }
+        assert!(ssh.list_directory(&workspaces[2].id, ".", "other", std::sync::Arc::new(|_| {})).is_ok());
+        assert!(ssh.check_batch_connection(&batches[2].batch_id, &other).is_ok());
+        ssh.shutdown();
+    });
 }
 
 #[test]

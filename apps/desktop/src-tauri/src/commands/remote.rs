@@ -184,14 +184,20 @@ pub async fn update_ssh_connection(
     let db = storage.database()?;
     let previous = db.ssh_connection(&id).await?;
     let identity_changed = previous.host != input.host || previous.port != input.port
-        || previous.username != input.username || previous.auth_type != input.auth_type.as_str();
+        || previous.username != input.username || previous.auth_type != input.auth_type.as_str()
+        || previous.private_key_path != input.private_key_path;
     if identity_changed && matches!(change, PasswordChange::Keep) { change = PasswordChange::Clear; }
-    if identity_changed { state.ssh.cancel_connection_batches(&id); }
     let old_password = state.ssh_passwords.read(&id)?;
     apply_password(state.ssh_passwords.as_ref(), &id, change)?;
     if let Err(error) = db.update_ssh_connection(&id, input).await {
         restore_password(state.ssh_passwords.as_ref(), &id, old_password.as_ref().map(|s| s.as_str()))?;
         return Err(error);
+    }
+    if identity_changed {
+        state.ssh.cancel_connection_batches(&id);
+        let ids = db.list_remote_connection_tabs().await?.into_iter()
+            .filter(|tab| tab.connection_id == id).map(|tab| tab.id).collect::<Vec<_>>();
+        close_remote_workspaces(&state.ssh, db, &ids).await?;
     }
     Ok(())
 }
@@ -204,22 +210,71 @@ pub async fn delete_ssh_connection(state: tauri::State<'_, AppState>, storage: t
     state.ssh_passwords.delete(&id)?;
     state.ssh.cancel_connection_batches(&id);
     let ssh = state.ssh.clone();
-    let workspace = db.open_remote_workspace(&id).await.ok();
-    if let Some(workspace) = workspace {
-        let (_, transfers) = ssh.list_transfers();
-        for transfer in transfers {
-            if transfer.workspace_id == workspace.id && transfer_is_active(&transfer.state) {
-                let _ = ssh.cancel_transfer(&transfer.id);
-            }
-        }
-        let configs: std::collections::HashSet<_> = workspace.terminals.iter().map(|terminal| terminal.id.clone()).collect();
-        for session in ssh.list_terminals() {
-            if session.terminal_config_id.as_ref().is_some_and(|id| configs.contains(id)) {
-                let _ = ssh.stop_terminal(&session.terminal_id);
-            }
+    let ids = db.list_remote_connection_tabs().await?.into_iter()
+        .filter(|tab| tab.connection_id == id).map(|tab| tab.id).collect::<Vec<_>>();
+    close_remote_workspaces(&ssh, &db, &ids).await?;
+    db.delete_ssh_connection(&id).await
+}
+
+async fn close_remote_workspaces(ssh: &orbyte_ssh::SshHub, db: &orbyte_storage::Database, ids: &[String]) -> CmdResult<()> {
+    let configs = db.remote_terminal_ids(ids).await?;
+    let (_, transfers) = ssh.list_transfers();
+    for transfer in transfers {
+        if ids.contains(&transfer.workspace_id) && transfer_is_active(&transfer.state) {
+            let _ = ssh.cancel_transfer(&transfer.id);
         }
     }
-    db.delete_ssh_connection(&id).await
+    for session in ssh.list_terminals() {
+        if session.terminal_config_id.as_ref().is_some_and(|id| configs.contains(id)) {
+            let _ = ssh.stop_terminal(&session.terminal_id);
+        }
+    }
+    for id in ids { ssh.disconnect_sftp(id); }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_remote_projects(storage: tauri::State<'_, StorageState>) -> CmdResult<Vec<orbyte_storage::RemoteProject>> {
+    storage.database()?.list_remote_projects().await
+}
+
+#[tauri::command]
+pub async fn save_remote_project(storage: tauri::State<'_, StorageState>, id: Option<String>, name: String) -> CmdResult<String> {
+    storage.database()?.save_remote_project(id.as_deref(), &name).await
+}
+
+#[tauri::command]
+pub async fn delete_remote_project(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, id: String) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
+    let db = storage.database()?;
+    let ids = db.list_remote_connection_tabs().await?.into_iter()
+        .filter(|tab| tab.project_id.as_deref() == Some(&id)).map(|tab| tab.id).collect::<Vec<_>>();
+    close_remote_workspaces(&state.ssh, db, &ids).await?;
+    db.delete_remote_project(&id).await
+}
+
+#[tauri::command]
+pub async fn list_remote_connection_tabs(storage: tauri::State<'_, StorageState>) -> CmdResult<Vec<orbyte_storage::RemoteConnectionTab>> {
+    storage.database()?.list_remote_connection_tabs().await
+}
+
+#[tauri::command]
+pub async fn open_remote_connection_tab(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, project_id: String, connection_id: String) -> CmdResult<orbyte_storage::RemoteWorkspaceRecord> {
+    let _guard = state.ssh_connections.lock().await;
+    storage.database()?.open_scoped_remote_workspace(&connection_id, Some(&project_id)).await
+}
+
+#[tauri::command]
+pub async fn get_remote_workspace(storage: tauri::State<'_, StorageState>, workspace_id: String) -> CmdResult<orbyte_storage::RemoteWorkspaceRecord> {
+    storage.database()?.load_remote_workspace(&workspace_id).await
+}
+
+#[tauri::command]
+pub async fn close_remote_connection_tab(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, workspace_id: String) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
+    let db = storage.database()?;
+    close_remote_workspaces(&state.ssh, db, &[workspace_id.clone()]).await?;
+    db.delete_remote_connection_tab(&workspace_id).await
 }
 
 #[tauri::command]
@@ -290,6 +345,9 @@ pub async fn connect_ssh_terminal(
 ) -> CmdResult<ConnectedTerminal> {
     let _guard = state.ssh_connections.lock().await;
     state.ssh.check_batch_connection(&batch_id, &connection_id).map_err(err_text)?;
+    if storage.database()?.remote_terminal_connection(&config_id).await? != connection_id {
+        return Err("Terminal does not belong to this connection.".into());
+    }
     let connection = storage.database()?.ssh_connection(&connection_id).await?;
     let size = TerminalSize { cols, rows }.validate().map_err(err_text)?;
     let terminal_id = Uuid::new_v4().to_string();
@@ -323,6 +381,9 @@ pub async fn connect_sftp(
 ) -> CmdResult<ConnectedSftp> {
     let _guard = state.ssh_connections.lock().await;
     state.ssh.check_batch_connection(&batch_id, &connection_id).map_err(err_text)?;
+    if storage.database()?.remote_workspace_connection(&workspace_id).await? != connection_id {
+        return Err("Workspace does not belong to this connection.".into());
+    }
     let connection = storage.database()?.ssh_connection(&connection_id).await?;
     let attempt_id = Uuid::new_v4().to_string();
     let credential = credential(&connection)?;

@@ -396,6 +396,13 @@ impl SshHub {
         self.lock().terminals.get(id).cloned()
     }
 
+    pub fn disconnect_sftp(&self, workspace_id: &str) {
+        if let Some(link) = self.lock().sftp.remove(workspace_id) {
+            link.cancel.cancel();
+            let _ = link.tx.try_send(SftpJob::Shutdown);
+        }
+    }
+
     pub fn list_terminals(&self) -> Vec<TerminalSessionInfo> {
         self.lock().terminals.values().map(|terminal| terminal.info()).collect()
     }

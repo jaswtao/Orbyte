@@ -1,92 +1,85 @@
 <!-- Author: jaswtao · Date: 2026-10-31 -->
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NAlert, NButton, NModal } from 'naive-ui'
-import ConnectionDialog from './ConnectionDialog.vue'
-import { remoteApi, type SshConnection } from '../../services/remoteApi'
-import { clearRemoteLink, remoteLinks } from '../../services/remote/status'
-import { endpointLabel } from '../../services/remote/workspace'
-import { t, type MessageKey } from '../../i18n'
+import { NButton, NInput, NModal } from 'naive-ui'
+import ConnectionManager from './ConnectionManager.vue'
+import { useRemote } from '../../stores/remote'
+import { remoteApi, type RemoteProject } from '../../services/remoteApi'
+import { t } from '../../i18n'
+import './remote.css'
 
-defineProps<{ activeId: string | null }>()
-const emit = defineEmits<{ open: [connection: SshConnection]; error: [message: string]; deleted: [id: string] }>()
-const connections = ref<SshConnection[]>([])
-const dialog = ref(false)
-const editing = ref<SshConnection | null>(null)
-const deleting = ref<SshConnection | null>(null)
+const emit = defineEmits<{ error: [message: string] }>()
+const remote = useRemote()
+const manager = ref(false)
+const editing = ref<RemoteProject | null>(null)
+const projectDialog = ref(false)
+const name = ref('')
+const deleting = ref<RemoteProject | null>(null)
 const busy = ref(false)
-const error = ref('')
-const linkText: Record<string, MessageKey> = {
-  idle: 'remote.status.idle',
-  connecting: 'remote.status.connecting',
-  verifyingHost: 'remote.status.verifyingHost',
-  authenticating: 'remote.status.authenticating',
-  ready: 'remote.status.ready',
-  failed: 'remote.status.failed',
-  closed: 'remote.status.closed',
-  closing: 'remote.status.closed',
+function fail(reason: unknown) { emit('error', String(reason)) }
+async function reload() { try { await remote.reload() } catch (reason) { fail(reason) } }
+function edit(project?: RemoteProject) {
+  editing.value = project ?? null
+  name.value = project?.name ?? ''
+  projectDialog.value = true
 }
-function statusLabel(id: string) {
-  const state = remoteLinks[id]?.state
-  const key = state ? linkText[state] : undefined
-  return t(key ?? 'remote.status.idle')
-}
-async function reload() {
-  try { connections.value = await remoteApi.listConnections() }
-  catch (reason) { error.value = String(reason); emit('error', error.value) }
-}
-async function edit(connection?: SshConnection) {
-  try {
-    if (connection) {
-      connections.value = await remoteApi.listConnections()
-      const current = connections.value.find((item) => item.id === connection.id)
-      if (!current) return
-      editing.value = current
-    } else editing.value = null
-    dialog.value = true
-  } catch (reason) { error.value = String(reason); emit('error', error.value) }
-}
-async function remove() {
-  const connection = deleting.value
-  if (!connection || busy.value) return
+async function save() {
+  if (busy.value || !name.value.trim()) return
   busy.value = true
   try {
-    await remoteApi.deleteConnection(connection.id)
-    clearRemoteLink(connection.id)
-    deleting.value = null
-    emit('deleted', connection.id)
-    await reload()
-  } catch (reason) {
-    error.value = String(reason)
-    emit('error', error.value)
-  } finally { busy.value = false }
+    const id = await remoteApi.saveProject(editing.value?.id ?? null, name.value.trim())
+    await remote.reload()
+    remote.selectProject(id)
+    projectDialog.value = false
+  } catch (reason) { fail(reason) }
+  finally { busy.value = false }
 }
-onMounted(() => { void reload() })
-defineExpose({ reload })
+async function remove() {
+  if (!deleting.value || busy.value) return
+  busy.value = true
+  try {
+    await remoteApi.deleteProject(deleting.value.id)
+    await remote.reload()
+    deleting.value = null
+  } catch (reason) { fail(reason) }
+  finally { busy.value = false }
+}
+onMounted(reload)
 </script>
 <template>
   <div class="remote-sidebar">
     <div class="sidebar-heading">
-      <strong>{{ t('remote.heading') }}</strong>
-      <NButton size="small" @click="edit()">{{ t('remote.add') }}</NButton>
+      <strong>{{ t('remote.projects') }}</strong>
+      <NButton size="small" @click="edit()">{{ t('remote.addProject') }}</NButton>
     </div>
-    <NAlert v-if="error" type="error">{{ error }}</NAlert>
-    <p v-if="!connections.length" class="remote-empty">{{ t('remote.empty') }}</p>
-    <div v-else class="project-list" role="list">
-      <button v-for="connection in connections" :key="connection.id" type="button" class="remote-connection" :class="{ active: connection.id === activeId }" role="listitem" @click="emit('open', connection)">
-        <span class="remote-connection-name">{{ connection.name }}</span>
-        <span class="remote-connection-endpoint">{{ endpointLabel(connection.username, connection.host, connection.port) }}</span>
-        <span class="remote-connection-status">{{ statusLabel(connection.id) }}</span>
-        <span v-if="remoteLinks[connection.id]?.message" class="remote-connection-message">{{ remoteLinks[connection.id]?.message }}</span>
-        <span class="remote-connection-actions">
-          <span role="button" tabindex="0" @click.stop="edit(connection)" @keydown.enter.stop="edit(connection)">{{ t('remote.edit') }}</span>
-          <span role="button" tabindex="0" @click.stop="deleting = connection" @keydown.enter.stop="deleting = connection">{{ t('remote.delete') }}</span>
-        </span>
-      </button>
+    <p v-if="!remote.projects.length" class="remote-empty">{{ t('remote.noProjects') }}</p>
+    <div class="project-list" role="list">
+      <div v-for="project in remote.projects" :key="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem">
+        <button class="remote-project-select" :aria-pressed="project.id === remote.activeProjectId" @click="remote.selectProject(project.id)">
+          <strong>{{ project.name }}</strong>
+          <span>{{ t('remote.connectionCount', { count: remote.tabs.filter((tab) => tab.projectId === project.id).length }) }}</span>
+        </button>
+        <div class="remote-project-actions">
+          <NButton size="tiny" @click="edit(project)">{{ t('remote.renameProject') }}</NButton>
+          <NButton size="tiny" @click="deleting = project">{{ t('common.delete') }}</NButton>
+        </div>
+      </div>
     </div>
-    <ConnectionDialog v-model:show="dialog" :connection="editing" @saved="reload" @error="emit('error', $event)" />
-    <NModal :show="!!deleting" preset="card" :title="t('remote.delete')" class="form-modal" @update:show="(show) => { if (!show) deleting = null }">
-      <p>{{ t('remote.deleteBody', { name: deleting?.name ?? '' }) }}</p>
+    <NButton class="remote-manage-button" @click="manager = true">{{ t('remote.manageConnections') }}</NButton>
+    <NModal v-model:show="manager" preset="card" :title="t('remote.manageConnections')" class="form-modal">
+      <ConnectionManager @changed="reload" @error="emit('error', $event)" />
+    </NModal>
+    <NModal v-model:show="projectDialog" preset="card" :title="t(editing ? 'remote.renameProject' : 'remote.addProject')" class="form-modal" :mask-closable="!busy">
+      <form @submit.prevent="save">
+        <NInput v-model:value="name" :maxlength="100" :placeholder="t('remote.projectName')" :disabled="busy" />
+        <div class="dialog-actions">
+          <NButton :disabled="busy" @click="projectDialog = false">{{ t('common.cancel') }}</NButton>
+          <NButton attr-type="submit" type="primary" :disabled="!name.trim() || busy" :loading="busy">{{ t('common.save') }}</NButton>
+        </div>
+      </form>
+    </NModal>
+    <NModal :show="!!deleting" preset="card" :title="t('remote.deleteProject')" class="form-modal" :mask-closable="!busy" @update:show="(show) => { if (!show && !busy) deleting = null }">
+      <p>{{ t('remote.deleteProjectBody', { name: deleting?.name ?? '' }) }}</p>
       <div class="dialog-actions">
         <NButton :disabled="busy" @click="deleting = null">{{ t('common.cancel') }}</NButton>
         <NButton type="error" :loading="busy" @click="remove">{{ t('common.delete') }}</NButton>

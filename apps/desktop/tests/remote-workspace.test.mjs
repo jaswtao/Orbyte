@@ -55,6 +55,155 @@ test('a remote pane mounts a session bound after its first render and follows re
   } finally { stop() }
 })
 
+test('switching a remote pane replaces the previous terminal host', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteLayoutPane.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('function attach()'), source.indexOf('onMounted(attach)'))
+  const first = { id: 'first' }, second = { id: 'second' }
+  let resized = 0
+  const mount = { children: [], get firstChild() { return this.children[0] }, replaceChildren(...nodes) { this.children = nodes } }
+  const entry = ref({ host: first, client: { refreshSize() { resized++ } } })
+  const context = { mount: { value: mount }, entry, props: { visible: true } }
+  vm.createContext(context)
+  vm.runInContext(script, context)
+  vm.runInContext('attach()', context)
+  assert.deepEqual(mount.children.map((node) => node.id), ['first'])
+  entry.value = { host: second, client: { refreshSize() { resized++ } } }
+  vm.runInContext('attach()', context)
+  vm.runInContext('attach()', context)
+  assert.deepEqual(mount.children.map((node) => node.id), ['second'])
+  assert.equal(resized, 3)
+})
+
+test('selecting a remote terminal tab moves focus to a pane in that tab', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('function selectTab('), source.indexOf('function askClose('))
+  const js = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+  const record = ref({ layout: { activeTabId: 'first', tabs: [
+    { id: 'first', root: { type: 'terminal', terminalConfigId: 'pane-first' } },
+    { id: 'second', root: { type: 'terminal', terminalConfigId: 'pane-second' } },
+  ] } })
+  const context = {
+    record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root],
+    persist: async (layout) => { record.value.layout = layout }, fail: (reason) => { throw reason },
+  }
+  vm.createContext(context)
+  vm.runInContext(js, context)
+  vm.runInContext("selectTab('second')", context)
+  assert.equal(record.value.layout.activeTabId, 'second')
+  assert.equal(context.focused.value, 'pane-second')
+})
+
+test('remote projects retain independent tabs without automatically connecting restored tabs', async () => {
+  const source = await readFile(new URL('../src/stores/remote.ts', import.meta.url), 'utf8')
+  const script = source.replace(/^import .*$/gm, '').replace('export const useRemote', 'const useRemote')
+  const js = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+  let tabs = [
+    { id: 'one', projectId: 'p1', connectionId: 'server' },
+    { id: 'two', projectId: 'p2', connectionId: 'server' },
+  ]
+  const context = {
+    computed, reactive, ref, defineStore: (_id, setup) => setup, clearRemoteLink() {}, markSftpReady() {},
+    remoteApi: {
+      listProjects: async () => [{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }],
+      listConnections: async () => [{ id: 'server' }],
+      listConnectionTabs: async () => [...tabs],
+      openConnectionTab: async (projectId, connectionId) => {
+        const tab = { id: 'new', projectId, connectionId }
+        tabs.push(tab)
+        return tab
+      },
+      closeConnectionTab: async (id) => { tabs = tabs.filter((tab) => tab.id !== id) },
+    },
+  }
+  vm.createContext(context)
+  vm.runInContext(js + '\nconst store = useRemote()', context)
+  const store = vm.runInContext('store', context)
+  await store.reload()
+  assert.equal(store.visited.size, 0)
+  store.selectProject('p2')
+  assert.equal(store.activeTabId.value, 'two')
+  assert.deepEqual([...store.visited], ['two'])
+  store.selectProject('p1')
+  await store.openConnection('server')
+  assert.deepEqual(store.projectTabs.value.map((tab) => tab.id), ['one', 'new'])
+  assert.equal(store.activeTabId.value, 'new')
+  store.selectProject('p2')
+  assert.equal(store.activeTabId.value, 'two')
+  await store.closeTab('new')
+  assert.equal(store.visited.has('new'), false)
+  assert.equal(store.activeTabId.value, 'two')
+})
+
+async function remoteStoreFixture(remoteApi, overrides = {}) {
+  const source = await readFile(new URL('../src/stores/remote.ts', import.meta.url), 'utf8')
+  const script = source.replace(/^import .*$/gm, '').replace('export const useRemote', 'const useRemote')
+  const context = {
+    computed, reactive, ref, defineStore: (_id, setup) => setup,
+    Channel: class {}, clearRemoteLink() {}, markSftpReady() {}, remoteApi, ...overrides,
+  }
+  vm.createContext(context)
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
+    + '\nconst store = useRemote()', context)
+  return vm.runInContext('store', context)
+}
+
+test('connection identity changes discard mounted views and readiness while preserving tabs', async (t) => {
+  for (const change of [{ host: 'new-host' }, { port: 2222 }, { username: 'other' }, { authType: 'privateKey' }, { privateKeyPath: '/new-key' }]) {
+    await t.test(Object.keys(change)[0], async () => {
+      let connection = { id: 'server', host: 'old-host', port: 22, username: 'root', authType: 'password', privateKeyPath: null }
+      const tabs = [{ id: 'one', projectId: 'p', connectionId: 'server' }, { id: 'two', projectId: 'p', connectionId: 'server' }, { id: 'other', projectId: 'p', connectionId: 'other-server' }]
+      const cleared = [], readiness = []
+      const store = await remoteStoreFixture({
+        listProjects: async () => [{ id: 'p' }], listConnections: async () => [connection], listConnectionTabs: async () => tabs,
+      }, { clearRemoteLink: (id) => cleared.push(id), markSftpReady: (...args) => readiness.push(args) })
+      await store.reload()
+      for (const tab of tabs) store.selectTab(tab.id)
+      connection = { ...connection, name: 'renamed' }
+      await store.reload()
+      assert.equal(store.visited.size, 3)
+      connection = { ...connection, ...change }
+      await store.reload()
+      assert.deepEqual([...store.visited], ['other'])
+      assert.deepEqual(cleared, ['one', 'two'])
+      assert.deepEqual(readiness, [['one', false], ['two', false]])
+      assert.equal(store.tabs.value.length, 3)
+    })
+  }
+})
+
+test('remote workspaces share one transfer subscription and keep live updates over a stale snapshot', async () => {
+  let channel, subscriptions = 0, finishSubscription, finishSnapshot
+  const subscribed = new Promise((resolve) => { finishSubscription = resolve })
+  const snapshot = new Promise((resolve) => { finishSnapshot = resolve })
+  const store = await remoteStoreFixture({
+    subscribeTransfers: (events) => { channel = events; subscriptions++; return subscribed },
+    listTransfers: () => snapshot,
+  })
+  const first = store.listenTransfers()
+  const second = store.listenTransfers()
+  assert.equal(subscriptions, 1)
+  finishSubscription(0)
+  channel.onmessage({ transfers: [{ id: 'live', workspaceId: 'one' }, { id: 'other', workspaceId: 'two' }] })
+  finishSnapshot({ transfers: [{ id: 'stale' }] })
+  await Promise.all([first, second])
+  await store.listenTransfers()
+  assert.equal(subscriptions, 1)
+  assert.deepEqual(store.transfers.value.map((item) => item.id), ['live', 'other'])
+})
+
+test('a failed transfer subscription can retry without duplicating a successful listener', async () => {
+  let subscriptions = 0
+  const store = await remoteStoreFixture({
+    subscribeTransfers: async () => { if (++subscriptions === 1) throw new Error('offline'); return 0 },
+    listTransfers: async () => ({ transfers: [{ id: 'initial' }] }),
+  })
+  await assert.rejects(store.listenTransfers(), /offline/)
+  await store.listenTransfers()
+  await store.listenTransfers()
+  assert.equal(subscriptions, 2)
+  assert.equal(store.transfers.value[0].id, 'initial')
+})
+
 test('remote panes always ask before closing, independent of the local confirm setting', () => {
   assert.equal(remotePaneNeedsCloseConfirm(), true)
   assert.equal(endpointLabel('root', 'example.com', 22), 'root@example.com:22')

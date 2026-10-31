@@ -42,8 +42,7 @@ import GroupDialog from './components/dialogs/GroupDialog.vue'
 import DeleteConfirmDialog from './components/dialogs/DeleteConfirmDialog.vue'
 import CloseConfirmDialog from './components/dialogs/CloseConfirmDialog.vue'
 import RemoteSidebar from './components/remote/RemoteSidebar.vue'
-import RemoteWorkspace from './components/remote/RemoteWorkspace.vue'
-import type { SshConnection } from './services/remoteApi'
+import RemoteDeck from './components/remote/RemoteDeck.vue'
 import { bindTerminalActivation } from './services/terminal/activation'
 import { terminalApi } from './services/terminalApi'
 const unbindTerminalActivation = bindTerminalActivation(document, terminalApi.setActiveTerminal)
@@ -56,7 +55,10 @@ function openWorktree(project: Project) { worktreeProject.value = project; workt
 async function windowFocus() {
   if (store.active) git.schedule(store.active.id)
   await nextTick()
-  if (!disposed && document.hasFocus()) deck.value?.focusTerminal()
+  if (!disposed && document.hasFocus()) {
+    if (sidebarView.value === 'remote') remoteDeck.value?.focusTerminal()
+    else deck.value?.focusTerminal()
+  }
 }
 const settingsDialog = ref(false)
 const closeDialog = ref(false)
@@ -69,17 +71,7 @@ let unlistenClose: (() => void) | undefined
 let disposed = false
 const deck = ref<InstanceType<typeof WorkspaceDeck>>()
 const sidebarView = ref<'projects' | 'files' | 'remote'>('projects')
-const activeRemote = ref<SshConnection | null>(null)
-const remoteWorkspace = ref<InstanceType<typeof RemoteWorkspace>>()
-function openRemote(connection: SshConnection) {
-  const same = activeRemote.value?.id === connection.id
-  activeRemote.value = connection
-  sidebarView.value = 'remote'
-  if (same) void remoteWorkspace.value?.connectMissing()
-}
-function remoteDeleted(id: string) {
-  if (activeRemote.value?.id === id) activeRemote.value = null
-}
+const remoteDeck = ref<InstanceType<typeof RemoteDeck>>()
 const sidebarVisible = ref(readSidebarVisible())
 function readSidebarVisible(): boolean {
   try { return localStorage.getItem('orbyte.sidebar-visible') !== 'false' }
@@ -292,7 +284,8 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
     <div class="workbench" :class="{ light: !theme, 'sidebar-resizing': sidebarResizing }" :style="{ '--sidebar-width': `${sidebarWidth}px` }">
       <TitleBar :sidebar-visible="sidebarVisible" :settings-disabled="!store.ready || store.busy || closeDialog"
         @toggle-sidebar="setSidebarVisible(!sidebarVisible)" @settings="settingsDialog = true" @error="reportError">
-        <div id="workspace-titlebar-tabs" data-tauri-drag-region />
+        <div id="workspace-titlebar-tabs" v-show="sidebarView !== 'remote'" data-tauri-drag-region />
+        <div id="remote-titlebar-tabs" v-show="sidebarView === 'remote'" data-tauri-drag-region />
       </TitleBar>
       <div class="body">
         <aside id="workbench-sidebar" v-show="sidebarVisible" class="sidebar">
@@ -304,7 +297,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
           <FileTree v-if="sidebarView === 'files' && store.active" :key="`${store.active.id}:${store.active.path}`"
             :project-id="store.active.id" :disabled="deck?.mutationBusy ?? true" :change="fileChanges.get(store.active.id) ?? null"
             @open="deck?.openFile($event)" @rename="(from, to) => deck?.renamed(from, to)" @error="reportError" />
-          <RemoteSidebar v-else-if="sidebarView === 'remote'" :active-id="activeRemote?.id ?? null" @open="openRemote" @error="reportError" @deleted="remoteDeleted" />
+          <RemoteSidebar v-else-if="sidebarView === 'remote'" @error="reportError" />
           <KeepAlive v-else>
           <ProjectSidebar v-if="sidebarView !== 'files' || !store.active" ref="sidebar" :activities="activities" @worktree="openWorktree"
             @edit-project="editProject" @edit-group="editGroup" @delete-item="deleting = $event" />
@@ -317,11 +310,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
             <NButton :disabled="store.busy" @click="editProject(store.active)">{{ t('app.editProject') }}</NButton>
             <NButton :disabled="store.busy" @click="deleting = { kind: 'project', id: store.active.id, name: store.active.name }">{{ t('app.deleteProject') }}</NButton>
           </header>
-          <div v-if="sidebarView === 'remote' && !activeRemote" class="workspace-placeholder">
-            <div class="welcome-mark"><UiIcon name="terminal" :size="32" /></div>
-            <div class="welcome-copy"><h1>{{ t('remote.heading') }}</h1><p>{{ t('remote.placeholder') }}</p></div>
-          </div>
-          <RemoteWorkspace v-if="store.ready && store.settings && activeRemote" v-show="sidebarView === 'remote'" ref="remoteWorkspace" :connection="activeRemote" :settings="store.settings" :appearance="appearance" :active="sidebarView === 'remote'" :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog" @error="reportError" />
+          <RemoteDeck v-if="store.ready && store.settings" ref="remoteDeck" :settings="store.settings" :appearance="appearance" :active="sidebarView === 'remote'" :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog" @error="reportError" />
           <div v-if="sidebarView !== 'remote' && !store.active" class="workspace-placeholder">
             <div class="welcome-mark"><UiIcon name="terminal" :size="32" /></div>
             <div class="welcome-copy"><h1>{{ t('app.welcomeTitle') }}</h1><p>{{ store.ready ? t('app.welcomeReady') : store.error ? t('app.welcomeError') : t('app.welcomeLoading') }}</p></div>
@@ -330,7 +319,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
             <NButton v-else-if="store.error" @click="store.run(async () => {})">{{ t('common.retry') }}</NButton>
           </div>
           <WorkspaceDeck @recovery-visibility="recoveryDialog = $event" @activate="store.activate($event)" ref="deck" v-if="store.ready && store.settings" v-show="sidebarView !== 'remote' && !!store.active" tabs-target="#workspace-titlebar-tabs"
-            :appearance="appearance" :projects="store.projects" :settings="store.settings" :active-id="store.active?.id ?? null"
+            :appearance="appearance" :projects="store.projects" :settings="store.settings" :active-id="sidebarView === 'remote' ? null : store.active?.id ?? null"
             :shortcuts-blocked="!!renamingProject || recoveryDialog || worktreeDialog || projectDialog || groupDialog || !!deleting || settingsDialog || closeDialog"
             @error="reportError" @activity="(id, state) => activities.set(id, state)"
             @files-changed="(id, change) => { fileChanges.set(id, change); git.schedule(id) }" />

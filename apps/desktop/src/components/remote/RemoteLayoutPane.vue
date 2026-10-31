@@ -30,7 +30,7 @@ const statusText = computed(() => {
 })
 function attach() {
   if (mount.value && entry.value) {
-    mount.value.appendChild(entry.value.host)
+    if (mount.value.firstChild !== entry.value.host) mount.value.replaceChildren(entry.value.host)
     if (props.visible) entry.value.client.refreshSize()
   }
 }

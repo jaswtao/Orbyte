@@ -24,6 +24,9 @@ export interface SshConnection {
 export type PasswordChange = { operation: 'keep' | 'clear' } | { operation: 'set'; password: string }
 export type SshConnectionInput = Omit<SshConnection, 'id' | 'sortOrder' | 'hasSavedPassword'> & { passwordChange?: PasswordChange }
 
+export interface RemoteProject { id: string; name: string }
+export interface RemoteConnectionTab { id: string; projectId: string | null; connectionId: string }
+
 export interface KnownHost {
   id: string
   host: string
@@ -114,6 +117,13 @@ export interface TransferView {
 }
 
 export const remoteApi = {
+  listProjects: () => invoke<RemoteProject[]>('list_remote_projects'),
+  saveProject: (id: string | null, name: string) => invoke<string>('save_remote_project', { id, name }),
+  deleteProject: (id: string) => invoke<void>('delete_remote_project', { id }),
+  listConnectionTabs: () => invoke<RemoteConnectionTab[]>('list_remote_connection_tabs'),
+  openConnectionTab: (projectId: string, connectionId: string) => invoke<RemoteWorkspace>('open_remote_connection_tab', { projectId, connectionId }),
+  closeConnectionTab: (workspaceId: string) => invoke<void>('close_remote_connection_tab', { workspaceId }),
+  getWorkspace: (workspaceId: string) => invoke<RemoteWorkspace>('get_remote_workspace', { workspaceId }),
   listConnections: () => invoke<SshConnection[]>('list_ssh_connections'),
   createConnection: (input: SshConnectionInput) => invoke<string>('create_ssh_connection', {
     name: input.name, host: input.host, port: input.port, username: input.username, authType: input.authType, privateKeyPath: input.privateKeyPath, passwordChange: input.passwordChange,
