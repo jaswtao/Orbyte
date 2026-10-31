@@ -210,13 +210,14 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
   const script = source.slice(source.indexOf('function cycleTab('), source.indexOf('function askClose('))
   const layout = ref({ activeTabId: 'one', tabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }] })
-  const selected = [], focused = []
+  const selected = [], focused = [], added = []
   const props = { active: true, shortcutsBlocked: false, settings: {} }
   const dialogOpen = ref(false)
   const context = vm.createContext({
     layout, props, dialogOpen, matchShortcut, nextTick,
     selectTab(id) { selected.push(id); layout.value.activeTabId = id },
     focusTerminal() { focused.push(layout.value.activeTabId) },
+    addTerminal() { added.push(true) },
   })
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   function press(code, extra = {}) {
@@ -241,6 +242,12 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   for (const extra of [{ ctrlKey: true }, { shiftKey: true }, { metaKey: true }, { isComposing: true }]) {
     assert.equal(press('ArrowRight', extra), false)
   }
+  const newTerminal = { altKey: false, ctrlKey: true, shiftKey: true }
+  assert.equal(press('KeyT', newTerminal), true)
+  assert.equal(added.length, 1)
+  press('KeyT', { ...newTerminal, repeat: true })
+  assert.equal(added.length, 1)
+  assert.equal(press('KeyT'), false)
   props.active = false
   assert.equal(press('ArrowRight'), false)
   props.active = true
@@ -260,6 +267,85 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   layout.value.tabs = []
   press('KeyN')
   assert.equal(selected.length, 3)
+})
+
+test('remote connection shortcuts cycle connection tabs and respect blocking and overrides', async () => {
+  const { matchShortcut } = await loadService('workspace/shortcuts')
+  const source = await readFile(new URL('../src/components/remote/RemoteDeck.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('function cycleConnection('), source.indexOf('defineExpose('))
+  const remote = { projectTabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], activeTabId: 'one' }
+  const selected = [], focused = []
+  const props = { active: true, shortcutsBlocked: false, settings: {} }
+  const choosing = ref(false), manager = ref(false), closing = ref(null)
+  let modalShown = false
+  const document = { querySelectorAll: () => modalShown ? [{ getClientRects: () => [{}] }] : [] }
+  const context = vm.createContext({
+    props, remote, choosing, manager, closing, matchShortcut, nextTick, document,
+    selectTab(id) { selected.push(id); remote.activeTabId = id },
+    focusTerminal() { focused.push(remote.activeTabId) },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  function press(code, extra = {}) {
+    let prevented = false, stopped = false
+    context.keydown({
+      code, altKey: false, ctrlKey: true, shiftKey: true, metaKey: false, repeat: false,
+      preventDefault() { prevented = true }, stopPropagation() { stopped = true }, ...extra,
+    })
+    assert.equal(prevented, stopped)
+    return prevented
+  }
+  assert.equal(press('ArrowRight'), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'two')
+  assert.equal(focused.at(-1), 'two')
+  assert.equal(press('ArrowLeft'), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'one')
+  assert.equal(focused.at(-1), 'one')
+  press('ArrowRight', { repeat: true })
+  assert.equal(selected.length, 2)
+  assert.equal(press('ArrowRight', { altKey: true, ctrlKey: false, shiftKey: false }), false)
+  props.active = false
+  assert.equal(press('ArrowRight'), false)
+  props.active = true
+  props.shortcutsBlocked = true
+  assert.equal(press('ArrowRight'), false)
+  props.shortcutsBlocked = false
+  choosing.value = true
+  assert.equal(press('ArrowRight'), false)
+  choosing.value = false
+  manager.value = true
+  assert.equal(press('ArrowRight'), false)
+  manager.value = false
+  closing.value = 'one'
+  assert.equal(press('ArrowRight'), false)
+  closing.value = null
+  modalShown = true
+  assert.equal(press('ArrowRight'), false)
+  modalShown = false
+  assert.equal(press('ArrowRight', { target: { tagName: 'INPUT', isContentEditable: false, closest: () => null } }), false)
+  const terminalTarget = { tagName: 'TEXTAREA', isContentEditable: false, closest: (selector) => selector === '.xterm' ? {} : null }
+  assert.equal(press('ArrowRight', { target: terminalTarget }), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'two')
+  assert.equal(press('ArrowLeft', { target: terminalTarget }), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'one')
+  props.settings.shortcuts = { remoteNext: [{ code: 'KeyN', altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }] }
+  assert.equal(press('ArrowRight'), false)
+  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'two')
+  remote.activeTabId = null
+  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), true)
+  await nextTick()
+  assert.equal(remote.activeTabId, 'one')
+  remote.projectTabs = [{ id: 'one' }]
+  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), false)
+  assert.equal(selected.length, 6)
+  remote.projectTabs = []
+  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), false)
+  assert.equal(selected.length, 6)
 })
 
 const {

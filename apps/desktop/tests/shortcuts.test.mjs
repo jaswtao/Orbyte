@@ -372,26 +372,27 @@ test('可见列表为空不切换，当前项目隐藏时下键从首项、上�
   assert.deepEqual(nav.selected, ['c', 'u'])
 })
 
-test('左右键保留原始顺序，上下键忽略长按和额外修饰键', async () => {
+test('左右键不再切换项目，上下键忽略长按和额外修饰键', async () => {
   const nav = projectNavigation(['a', 'u'])
   await nav.press('ArrowLeft')
   await nav.press('ArrowRight')
+  assert.deepEqual(nav.selected, [])
   await nav.press('ArrowDown', { repeat: true })
   await nav.press('ArrowDown', { altKey: true })
-  assert.deepEqual(nav.selected, ['u', 'c'])
+  await nav.press('ArrowDown')
+  assert.deepEqual(nav.selected, ['u'])
 })
 
-test('侧栏未挂载时所有项目切换快捷键遵守隐藏开关', async () => {
+test('侧栏未挂载时上下切换遵守隐藏开关', async () => {
   const nav = projectNavigation()
   nav.store.projects.find((p) => p.id === 'b').hidden = true
   nav.store.projects.find((p) => p.id === 'c').hidden = true
   await nav.press('ArrowDown')
-  await nav.press('ArrowRight')
-  assert.deepEqual(nav.selected, ['u', 'u'])
+  assert.deepEqual(nav.selected, ['u'])
   nav.store.settings = { show_hidden_projects: true }
   await nav.press('ArrowDown')
-  await nav.press('ArrowRight')
-  assert.deepEqual(nav.selected, ['u', 'u', 'b', 'c'])
+  await nav.press('ArrowUp')
+  assert.deepEqual(nav.selected, ['u', 'b', 'u'])
 })
 
 test('上下切换先展示并恢复侧栏，再读取导航顺序，激活成功后定位', async () => {
@@ -415,7 +416,7 @@ test('上下切换先展示并恢复侧栏，再读取导航顺序，激活成�
   assert.deepEqual(nav.revealed, ['c'])
 })
 
-test('首尾循环后定位当前激活项，左右键保持侧栏状态', async () => {
+test('首尾循环后定位当前激活项，左右键不再切换项目', async () => {
   const nav = projectNavigation(['a', 'c', 'u'])
   nav.store.activate = async (id) => { nav.store.active = { id }; return true }
   await nav.press('ArrowUp')
@@ -423,6 +424,7 @@ test('首尾循环后定位当前激活项，左右键保持侧栏状态', async
   assert.deepEqual(nav.revealed, ['u', 'a'])
   nav.context.sidebarVisible = false
   nav.context.sidebarView.value = 'files'
+  await nav.press('ArrowLeft')
   await nav.press('ArrowRight')
   assert.equal(nav.context.sidebarVisible, false)
   assert.equal(nav.context.sidebarView.value, 'files')
@@ -509,17 +511,17 @@ test('侧栏宽度到达上下限后不再越界', () => {
   assert.equal(limited.sidebarWidth.value, 520)
 })
 
-test('弹窗打开时不调整侧栏，无 Alt 的左右键仍只切换项目', () => {
+test('弹窗打开时不调整侧栏，左右键不再切换项目', () => {
   const blocked = sidebarResize()
   blocked.context.settingsDialog.value = true
   assert.equal(blocked.press('ArrowLeft'), false)
   assert.equal(blocked.sidebarWidth.value, 280)
   assert.equal(blocked.stored.size, 0)
   const nav = sidebarResize()
-  assert.equal(nav.press('ArrowLeft', { altKey: false }), true)
-  assert.equal(nav.press('ArrowRight', { altKey: false }), true)
+  assert.equal(nav.press('ArrowLeft', { altKey: false }), false)
+  assert.equal(nav.press('ArrowRight', { altKey: false }), false)
   assert.equal(nav.sidebarWidth.value, 280)
-  assert.deepEqual(nav.selected, ['b', 'a'])
+  assert.deepEqual(nav.selected, [])
 })
 
 test('Alt+1 到 Alt+9 对应第 1 到第 9 个 Tab', () => {

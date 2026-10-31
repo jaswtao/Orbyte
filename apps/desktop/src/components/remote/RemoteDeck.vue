@@ -1,6 +1,6 @@
 <!-- Author: jaswtao · Date: 2026-10-31 -->
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { NButton, NModal, NSelect } from 'naive-ui'
 import RemoteWorkspace from './RemoteWorkspace.vue'
 import ConnectionManager from './ConnectionManager.vue'
@@ -9,9 +9,10 @@ import type { Settings } from '../../services/projectApi'
 import type { AppearanceMode } from '../../services/appearance'
 import { endpointLabel } from '../../services/remote/workspace'
 import { remoteLinks } from '../../services/remote/status'
+import { matchShortcut } from '../../services/workspace/shortcuts'
 import { t } from '../../i18n'
 
-defineProps<{ active: boolean; settings: Settings; appearance: AppearanceMode; shortcutsBlocked: boolean }>()
+const props = defineProps<{ active: boolean; settings: Settings; appearance: AppearanceMode; shortcutsBlocked: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const remote = useRemote()
 const choosing = ref(false)
@@ -34,6 +35,34 @@ function selectTab(id: string) {
 function focusTerminal() { if (remote.activeTabId) views.get(remote.activeTabId)?.focusTerminal() }
 function renameActiveTab() { return !!remote.activeTabId && (views.get(remote.activeTabId)?.renameActiveTab() ?? false) }
 function middleClose(id: string) { if (!busy.value) closing.value = id }
+function cycleConnection(delta: number) {
+  const tabs = remote.projectTabs
+  if (tabs.length < 2) return
+  const index = tabs.findIndex((tab) => tab.id === remote.activeTabId)
+  const tab = tabs[index < 0 ? (delta < 0 ? tabs.length - 1 : 0) : (index + delta + tabs.length) % tabs.length]
+  if (!tab) return
+  selectTab(tab.id)
+  void nextTick(focusTerminal)
+}
+function editingText(target: EventTarget | null) {
+  const element = target as HTMLElement | null
+  if (!element?.tagName || element.closest?.('.xterm')) return false
+  return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable
+}
+function modalVisible() {
+  // Dialogs inside RemoteWorkspace (rename, credentials, conflicts) also block connection switching.
+  return Array.from(document.querySelectorAll('[aria-modal="true"]')).some((element) => element.getClientRects().length > 0)
+}
+function keydown(event: KeyboardEvent) {
+  if (!props.active || props.shortcutsBlocked || choosing.value || manager.value || closing.value) return
+  const command = matchShortcut(event, props.settings.shortcuts, ['remote'])
+  if (command !== 'remotePrevious' && command !== 'remoteNext') return
+  if (modalVisible() || editingText(event.target) || remote.projectTabs.length < 2) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.repeat) return
+  cycleConnection(command === 'remotePrevious' ? -1 : 1)
+}
 defineExpose({ focusTerminal, renameActiveTab })
 async function choose() {
   try { await remote.reload(); chosen.value = null; choosing.value = true }
@@ -56,6 +85,8 @@ async function close() {
 async function refreshConnections() {
   try { await remote.reload() } catch (reason) { fail(reason) }
 }
+onMounted(() => { document.addEventListener('keydown', keydown, true) })
+onBeforeUnmount(() => { document.removeEventListener('keydown', keydown, true) })
 </script>
 <template>
   <div v-show="active" class="remote-deck">

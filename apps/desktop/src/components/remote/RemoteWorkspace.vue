@@ -505,10 +505,12 @@ function cycleTab(delta: number) {
 function keydown(event: KeyboardEvent) {
   if (!props.active || props.shortcutsBlocked || dialogOpen.value) return
   const command = matchShortcut(event, props.settings.shortcuts, ['workspace'])
-  if (command !== 'previousTab' && command !== 'nextTab') return
+  if (command !== 'previousTab' && command !== 'nextTab' && command !== 'newTerminal') return
   event.preventDefault()
   event.stopPropagation()
-  if (!event.repeat) cycleTab(command === 'previousTab' ? -1 : 1)
+  if (event.repeat) return
+  if (command === 'newTerminal') void addTerminal()
+  else cycleTab(command === 'previousTab' ? -1 : 1)
 }
 function askClose(ids: string[], title: string, tabId?: string) {
   if (!ids.length) return

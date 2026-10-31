@@ -115,7 +115,8 @@ pnpm build
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | 下一个 / 上一个 Tab |
 | `Alt+←` / `Alt+→` | 上一个 / 下一个 Tab |
 | `Alt+1` … `Alt+9` | 打开第 1–9 个 Tab |
-| `Ctrl+Shift+←` / `→` | 切换项目 |
+| `Ctrl+Shift+↑` / `↓` | 上一个 / 下一个项目 |
+| `Ctrl+Shift+←` / `→` | 上一个 / 下一个远程连接页签（仅远程视图） |
 | `Ctrl+Shift+Alt+←` / `→` | 侧栏变窄 / 变宽 |
 | `Ctrl+Shift+F` | 项目搜索 |
 | `Ctrl+P` | 按文件名打开，遵守 ignore 规则 |

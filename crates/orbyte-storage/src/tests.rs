@@ -203,7 +203,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 8);
+            assert_eq!(count, 9);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();
@@ -557,6 +557,50 @@ async fn rename_shortcut_migration_only_changes_conflicting_implicit_defaults() 
         let actual: Value = serde_json::from_str(result).unwrap();
         assert_eq!(&actual, expected);
         validate_setting("shortcuts", &actual).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn legacy_project_arrow_shortcut_migration_removes_unknown_commands() {
+    let db = memory().await;
+    sqlx::raw_sql("CREATE TEMP TABLE shortcut_cases (key TEXT, value_json TEXT);")
+        .execute(&db.pool).await.unwrap();
+    let key = json!({"code":"KeyN","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let values = vec![
+        (
+            "shortcuts",
+            json!({"projectPrevious":[key.clone()],"projectNext":[key.clone()]}),
+            json!({}),
+        ),
+        (
+            "shortcuts",
+            json!({"projectPrevious":[],"newTerminal":[key.clone()]}),
+            json!({"newTerminal":[key.clone()]}),
+        ),
+        ("shortcuts", json!({"projectNext":[key.clone()]}), json!({})),
+        ("shortcuts", json!({"newTerminal":[]}), json!({"newTerminal":[]})),
+        ("shortcuts", json!({}), json!({})),
+        (
+            "other",
+            json!({"projectPrevious":[key.clone()],"projectNext":[key.clone()]}),
+            json!({"projectPrevious":[key.clone()],"projectNext":[key.clone()]}),
+        ),
+    ];
+    let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("INSERT INTO shortcut_cases(key, value_json) ");
+    query.push_values(&values, |mut row, (setting, before, _)| {
+        row.push_bind(*setting).push_bind(before.to_string());
+    });
+    query.build().execute(&db.pool).await.unwrap();
+    let sql = include_str!("../migrations/0009_remove_legacy_project_arrow_shortcuts.sql").replace("t_app_setting", "shortcut_cases");
+    sqlx::raw_sql(&sql).execute(&db.pool).await.unwrap();
+    let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
+        .fetch_all(&db.pool).await.unwrap();
+    for (result, (setting, _, expected)) in results.iter().zip(&values) {
+        let actual: Value = serde_json::from_str(result).unwrap();
+        assert_eq!(&actual, expected);
+        if *setting == "shortcuts" {
+            validate_setting("shortcuts", &actual).unwrap();
+        }
     }
 }
 

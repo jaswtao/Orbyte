@@ -13,7 +13,7 @@ export interface ShortcutKey {
 }
 export type ShortcutOverrides = Record<string, ShortcutKey[]>
 export const shortcutCommands = manifest
-export const shortcutScopes = ['project', 'workspace', 'terminal', 'editor'] as const
+export const shortcutScopes = ['project', 'workspace', 'remote', 'terminal', 'editor'] as const
 export { commandLabel, shortcutGroupLabel }
 export function bindings(id: string, overrides: ShortcutOverrides = {}): ShortcutKey[] {
   return overrides[id] ?? shortcutCommands.find((command) => command.id === id)?.defaults ?? []
@@ -46,7 +46,7 @@ export function shortcutConflicts(overrides: ShortcutOverrides): string[] {
   }
   return errors
 }
-export function matchShortcut(event: ShortcutKey & { isComposing?: boolean }, overrides: ShortcutOverrides = {}, scopes = ['project', 'workspace', 'terminal', 'editor']): string | undefined {
+export function matchShortcut(event: ShortcutKey & { isComposing?: boolean }, overrides: ShortcutOverrides = {}, scopes = ['project', 'workspace', 'remote', 'terminal', 'editor']): string | undefined {
   if (event.isComposing) return
   return shortcutCommands.find((command) => scopes.includes(command.scope) && bindings(command.id, overrides).some((key) => sameKey(event, key)))?.id
 }

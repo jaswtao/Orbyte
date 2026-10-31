@@ -20,34 +20,6 @@
     ]
   },
   {
-    "id": "projectPrevious",
-    "label": "上一个项目（原始顺序）",
-    "scope": "project",
-    "defaults": [
-      {
-        "code": "ArrowLeft",
-        "ctrlKey": true,
-        "altKey": false,
-        "shiftKey": true,
-        "metaKey": false
-      }
-    ]
-  },
-  {
-    "id": "projectNext",
-    "label": "下一个项目（原始顺序）",
-    "scope": "project",
-    "defaults": [
-      {
-        "code": "ArrowRight",
-        "ctrlKey": true,
-        "altKey": false,
-        "shiftKey": true,
-        "metaKey": false
-      }
-    ]
-  },
-  {
     "id": "projectUp",
     "label": "上一个项目（侧栏顺序）",
     "scope": "project",
@@ -98,6 +70,34 @@
         "code": "ArrowRight",
         "ctrlKey": true,
         "altKey": true,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "remotePrevious",
+    "label": "上一个远程连接页签",
+    "scope": "remote",
+    "defaults": [
+      {
+        "code": "ArrowLeft",
+        "ctrlKey": true,
+        "altKey": false,
+        "shiftKey": true,
+        "metaKey": false
+      }
+    ]
+  },
+  {
+    "id": "remoteNext",
+    "label": "下一个远程连接页签",
+    "scope": "remote",
+    "defaults": [
+      {
+        "code": "ArrowRight",
+        "ctrlKey": true,
+        "altKey": false,
         "shiftKey": true,
         "metaKey": false
       }
