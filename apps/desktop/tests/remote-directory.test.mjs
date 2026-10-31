@@ -8,8 +8,8 @@ import xterm from '@xterm/xterm'
 import { computed, effectScope, nextTick, reactive, ref, shallowReactive, watch } from 'vue'
 import { loadService } from './load-service.mjs'
 
-const { remoteDirectory } = await loadService('remote/directory')
-const { joinRemote, parentPath } = await loadService('remote/workspace')
+const { remoteDirectory, nextRemotePrompt } = await loadService('remote/directory')
+const { joinRemote, parentPath, remoteCdCommand } = await loadService('remote/workspace')
 const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
@@ -49,12 +49,15 @@ test('binding a new remote session clears its directory while resubscribing pres
   }).outputText
   const context = vm.createContext({})
   vm.runInContext(`${code}; globalThis.registry = new Registry()`, context)
-  const entry = { remote: true, shell: { cwd: '/old' }, client: { id: 'old', attach(id) { this.id = id } } }
+  const entry = { remote: true, remotePrompt: 'ready', shell: { cwd: '/old' }, client: { id: 'old', attach(id) { this.id = id } } }
   context.registry.bind('terminal', entry, 'new')
   assert.equal(entry.shell.cwd, null)
+  assert.equal(entry.remotePrompt, 'unknown')
   entry.shell = { cwd: '/new' }
+  entry.remotePrompt = 'ready'
   context.registry.bind('terminal', entry, 'new')
   assert.equal(entry.shell.cwd, '/new')
+  assert.equal(entry.remotePrompt, 'ready')
 })
 
 function fixture(t) {
@@ -72,6 +75,7 @@ function fixture(t) {
     selected: ref([]), entries: ref([]), sftpError: ref(''), browseId: '', browseGeneration: 0,
     Channel: class {}, isSftpReady: () => context.sftpUp.value,
     fail: (error) => { const message = String(error); errors.push(message); return message },
+    remoteCdCommand,
     remoteApi: {
       listDirectory: async (workspace, path, channel) => {
         const id = `browse-${requests.length}`
@@ -265,4 +269,202 @@ test('transfers capture the listed directory before a picker or terminal changes
   assert.equal(enqueued[0][3], '/home')
   await f.run('makeDirectory()')
   assert.deepEqual(created, [['workspace', '/changed/child']])
+})
+
+test('remote cd commands quote absolute POSIX paths', () => {
+  assert.equal(remoteCdCommand('/home/one'), " cd -- '/home/one'\r")
+  assert.equal(remoteCdCommand("/home/o'neill"), " cd -- '/home/o'\\''neill'\r")
+  assert.equal(remoteCdCommand('/home/中文 folder'), " cd -- '/home/中文 folder'\r")
+  assert.equal(remoteCdCommand('/'), " cd -- '/'\r")
+  for (const path of ['relative', '', '/bad\npath', 'C:/folder']) assert.equal(remoteCdCommand(path), null)
+})
+
+test('remote prompt tracks unfinished input even before the first directory report', () => {
+  assert.equal(nextRemotePrompt('unknown', 'input'), 'dirty')
+  assert.equal(nextRemotePrompt('unknown', 'submit'), 'busy')
+  assert.equal(nextRemotePrompt('unknown', 'cwd'), 'ready')
+  assert.equal(nextRemotePrompt('ready', 'input'), 'dirty')
+  assert.equal(nextRemotePrompt('dirty', 'input'), 'dirty')
+  assert.equal(nextRemotePrompt('dirty', 'submit'), 'busy')
+  assert.equal(nextRemotePrompt('busy', 'input'), 'dirty')
+  assert.equal(nextRemotePrompt('busy', 'cwd'), 'ready')
+  assert.equal(nextRemotePrompt('dirty', 'cwd'), 'dirty')
+})
+
+function arm(f, id, prompt = 'ready') {
+  const commands = []
+  const entry = f.registry.byConfig.get(id)
+  entry.remotePrompt = prompt
+  entry.status = { state: 'running' }
+  entry.client = { id: `term-${id}`, term: { input(data) { commands.push(data); entry.remotePrompt = 'busy' } } }
+  return commands
+}
+
+test('late directory reports preserve unfinished input until it is submitted', async (t) => {
+  for (const initial of ['unknown', 'ready', 'busy']) {
+    const f = fixture(t)
+    const commands = arm(f, 'one', initial)
+    const entry = f.registry.byConfig.get('one')
+    entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, 'input')
+    await f.run("browse('/target', false, true)")
+    f.batch(0)
+    entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, 'cwd')
+    await nextTick()
+    assert.deepEqual(commands, [], initial)
+    entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, 'submit')
+    await nextTick()
+    assert.deepEqual(commands, [])
+    entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, 'cwd')
+    await nextTick()
+    assert.deepEqual(commands, [" cd -- '/target'\r"])
+  }
+})
+
+test('pending directory changes are cancelled when their SSH session changes or ends', async (t) => {
+  for (const action of ['replace', 'exited', 'failed']) {
+    const f = fixture(t)
+    const commands = arm(f, 'one', 'busy')
+    await f.run("browse('/old-target', false, true)")
+    f.batch(0)
+    const entry = f.registry.byConfig.get('one')
+    if (action === 'replace') entry.client = { ...entry.client, id: 'replacement' }
+    else entry.status = { state: action }
+    entry.shell = { cwd: null }
+    entry.remotePrompt = 'unknown'
+    await nextTick()
+    entry.status = { state: 'running' }
+    entry.shell = { cwd: '/fresh-home' }
+    entry.remotePrompt = 'ready'
+    await nextTick()
+    assert.deepEqual(commands, [], action)
+    assert.equal(f.requests.at(-1).path, '/fresh-home', action)
+  }
+})
+
+test('late listings do not queue a cd for a replacement SSH session', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one', 'busy')
+  await f.run("browse('/old-target', false, true)")
+  const entry = f.registry.byConfig.get('one')
+  entry.client = { ...entry.client, id: 'replacement' }
+  entry.shell = { cwd: null }
+  entry.remotePrompt = 'unknown'
+  await nextTick()
+  f.batch(0)
+  entry.shell = { cwd: '/fresh-home' }
+  entry.remotePrompt = 'ready'
+  await nextTick()
+  assert.deepEqual(commands, [])
+})
+
+test('an idle terminal cds when a user listing succeeds and a matching cwd does not list again', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one')
+  await f.run("browse('/var/log', false, true)")
+  f.batch(0, { path: '/var/log' })
+  assert.deepEqual(commands, [" cd -- '/var/log'\r"])
+  const entry = f.registry.byConfig.get('one')
+  entry.shell = { cwd: '/var/log' }
+  entry.remotePrompt = 'ready'
+  await nextTick()
+  assert.equal(commands.length, 1)
+  assert.equal(f.requests.length, 1)
+})
+
+test('a busy terminal cds once when its prompt is empty again', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one', 'busy')
+  await f.run("browse('/var/log', false, true)")
+  f.batch(0, { path: '/var/log' })
+  assert.deepEqual(commands, [])
+  f.registry.byConfig.get('one').remotePrompt = 'ready'
+  await nextTick()
+  assert.deepEqual(commands, [" cd -- '/var/log'\r"])
+})
+
+test('a cd that does not land resumes following the terminal', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one')
+  await f.run("browse('/var/log', false, true)")
+  f.batch(0, { path: '/var/log' })
+  assert.deepEqual(commands, [" cd -- '/var/log'\r"])
+  f.registry.byConfig.get('one').remotePrompt = 'ready'
+  await nextTick()
+  assert.equal(commands.length, 1)
+  assert.equal(f.requests.at(-1).path, '/home/one')
+})
+
+test('following, refreshing, and failed listings do not cd', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one')
+  f.run('followTerminalDirectory()')
+  await flush()
+  f.batch(0)
+  await f.run('browse(directory.value)')
+  f.batch(1)
+  await f.run("browse('/denied', false, true)")
+  f.batch(2, { entries: [], message: 'Permission denied' })
+  assert.deepEqual(commands, [])
+})
+
+test('switching panes drops a pending cd and follows the newly focused terminal', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one', 'busy')
+  await f.run("browse('/var/log', false, true)")
+  f.batch(0, { path: '/var/log' })
+  f.focused.value = 'two'
+  await nextTick()
+  assert.deepEqual(commands, [])
+  assert.equal(f.requests.at(-1).path, '/home/two')
+  f.registry.byConfig.get('one').remotePrompt = 'ready'
+  await nextTick()
+  assert.deepEqual(commands, [])
+})
+
+test('a terminal that is not running cds after it is running', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one')
+  f.registry.byConfig.get('one').status = { state: 'starting' }
+  await f.run("browse('/var/log', false, true)")
+  f.batch(0, { path: '/var/log' })
+  assert.deepEqual(commands, [])
+  f.registry.byConfig.get('one').status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(commands, [" cd -- '/var/log'\r"])
+})
+
+test('double-click, parent, and submitted paths cd the focused terminal', async (t) => {
+  const f = fixture(t)
+  const commands = arm(f, 'one')
+  const extra = [
+    source.slice(source.indexOf('function openEntry('), source.indexOf('function toggleSelect(')),
+    source.slice(source.indexOf('async function submitPath('), source.indexOf('async function makeDirectory(')),
+  ].join('\n')
+  vm.runInContext(ts.transpileModule(extra, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, f.context)
+  f.context.joinRemote = joinRemote
+  f.context.directory.value = '/home'
+  f.run("openEntry({ kind: 'dir', name: 'proj' })")
+  await flush()
+  f.batch(f.requests.length - 1, { path: '/home/proj' })
+  assert.equal(commands.at(-1), " cd -- '/home/proj'\r")
+
+  const entry = f.registry.byConfig.get('one')
+  entry.shell = { cwd: '/home/proj' }
+  entry.remotePrompt = 'ready'
+  await nextTick()
+  f.context.directory.value = '/var/log'
+  f.context.parent = { value: '/var' }
+  f.run('openParent()')
+  await flush()
+  f.batch(f.requests.length - 1, { path: '/var' })
+  assert.equal(commands.at(-1), " cd -- '/var'\r")
+
+  entry.shell = { cwd: '/var' }
+  entry.remotePrompt = 'ready'
+  await nextTick()
+  f.context.remoteApi.canonicalize = async () => "/home/o'neill"
+  f.context.pathInput.value = 'neill'
+  await f.run('submitPath()')
+  f.batch(f.requests.length - 1)
+  assert.equal(commands.at(-1), " cd -- '/home/o'\\''neill'\r")
 })

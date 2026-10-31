@@ -9,6 +9,7 @@ import { matchShortcut } from '../workspace/shortcuts'
 import { t } from '../../i18n/translate'
 import { withTimeout } from './recovery'
 import { terminalApi } from '../terminalApi'
+import { nextRemotePrompt, type RemotePrompt } from '../remote/directory'
 
 export interface TerminalEntry {
   client: TerminalClient
@@ -24,6 +25,8 @@ export interface TerminalEntry {
   droppedBytes: number
   /** Remote SSH sessions are not in the local PTY list and must not be marked exited by that poll. */
   remote: boolean
+  /** Prompt safety for an injected remote cd. Local sessions stay unknown. */
+  remotePrompt: RemotePrompt
 }
 
 export class TerminalRegistry {
@@ -103,6 +106,7 @@ export class TerminalRegistry {
         if (entry.visible) entry.client.markContentRead()
         entry.unread = !entry.visible && unread
       },
+      onRemotePrompt: remote ? (event) => { entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, event) } : undefined,
       onShell: (event) => {
         const shell = { ...entry.shell, integrated: true }
         if (event.type === 'cwd') shell.cwd = event.path
@@ -117,7 +121,7 @@ export class TerminalRegistry {
       onError,
       onGap: (bytes) => { onWarning?.(t('terminal.outputGap', { bytes: bytes.toLocaleString() })) },
     }))
-    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected', displayPaused: false, droppedBytes: 0, remote })
+    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected', displayPaused: false, droppedBytes: 0, remote, remotePrompt: 'unknown' })
     entry.client.term.attachCustomKeyEventHandler((event) => {
       // Windows 输入法会把 Esc 标记为 229，xterm 6 会在编码前丢弃它。
       // 正在组词时仍交给输入法取消候选，避免误中断终端程序。
@@ -193,6 +197,7 @@ export class TerminalRegistry {
   bind(configId: string, entry: TerminalEntry, sessionId: string): void {
     if (entry.remote && entry.client.id !== sessionId) {
       entry.shell = { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }
+      entry.remotePrompt = 'unknown'
     }
     this.byConfig.set(configId, entry)
     entry.client.attach(sessionId)

@@ -368,6 +368,7 @@ const registrySource = await readFile(new URL('../src/services/terminal/registry
 const shortcuts = await loadService('workspace/shortcuts')
 const appearance = await loadService('appearance')
 const recovery = await loadService('terminal/recovery')
+const directoryModule = await loadService('remote/directory')
 const clipboard = { read: async () => [], readText: async () => '', writeText: async () => {}, nativePaste: async () => false }
 // Node 的 EventTarget 没有 DOM 父子传播；分开调度捕获和冒泡以覆盖宿主拦截。
 class TerminalHost extends EventTarget {
@@ -411,6 +412,7 @@ const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
   } }
   if (name === 'vue') return { markRaw: (value) => value, shallowReactive: (value) => value }
   if (name === '../workspace/shortcuts') return shortcuts
+  if (name === '../remote/directory') return directoryModule
   if (name === '../../i18n/translate') return { t: translate }
   if (name === './terminalClient') return { TerminalClient: class {
     term = new xterm.Terminal()

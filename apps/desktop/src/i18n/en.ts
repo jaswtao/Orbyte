@@ -9,7 +9,7 @@ export const en = {
   'sidebar.hiddenProject': 'Hidden',
   'terminal.reconnect': 'Reconnect output',
   'terminal.reconnecting': 'Reconnecting…',
-    'terminal.displayPaused': 'Output is too fast. Display paused; the task is still running. Discarded {bytes} bytes.',
+    'terminal.displayPaused': 'Output is too fast. Display paused; recovering automatically. The task is still running. Discarded {bytes} bytes.',
     'terminal.displayPausedEnded': 'Display was paused. The task has ended. Discarded {bytes} bytes.',
     'terminal.resumeDisplay': 'Resume display',
     'terminal.pauseFailed': 'Could not pause backend output. Display remains paused; you can stop this terminal.',

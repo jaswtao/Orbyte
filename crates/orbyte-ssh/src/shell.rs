@@ -3,6 +3,7 @@
 //! Author: jaswtao
 //! Date: 2026-10-31
 
+use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
@@ -270,6 +271,12 @@ fn directory_initialization(connected: &mut connect::Connected, cancel: &CancelT
     directory_initialization_command(&probe.unwrap_or_default())
 }
 
+// The injected line always starts with this text, which survives wrapped redraws.
+const INITIALIZATION_ECHO_PREFIX: &[u8] = b" eval $'";
+// Printed by the injected line after the directory hook is installed.
+const INITIALIZATION_READY: &[u8] = b"\x1b]6973;D\x07";
+const INITIALIZATION_DROP_LIMIT: usize = 16 * 1024;
+
 fn directory_initialization_command(output: &[u8]) -> String {
     let text = String::from_utf8_lossy(output);
     let shell = text.split_once('\u{1e}').and_then(|(_, value)| value.strip_prefix("orbyte-shell:"))
@@ -277,7 +284,115 @@ fn directory_initialization_command(output: &[u8]) -> String {
     if !matches!(shell, Some("bash" | "zsh")) { return String::new(); }
     // A single eval line keeps multiline initialization out of the interactive line editor.
     let script = include_str!("directory-integration.sh").replace('\r', "");
-    format!(" eval $'{}'\r", script.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n"))
+    format!(
+        " eval $'{}';command printf '\\033]6973;D\\007'\r",
+        script.replace('\\', "\\\\").replace('\'', "\\'").replace('\n', "\\n")
+    )
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EchoState {
+    Searching,
+    Dropping,
+    Suppressed,
+}
+
+// The shell echoes the injected line before running it, and line editors can
+// redraw wrapped text, so the echo is not one contiguous copy of the command.
+// Drop output from the start of the command until the line reports that the
+// hook is installed, then pass the prompt and its directory report through.
+struct InitializationEcho {
+    state: EchoState,
+    pending: Vec<u8>,
+    dropped: usize,
+}
+
+impl InitializationEcho {
+    fn new(enabled: bool) -> Self {
+        Self {
+            state: if enabled { EchoState::Searching } else { EchoState::Suppressed },
+            pending: Vec::new(),
+            dropped: 0,
+        }
+    }
+
+    fn filter<'a>(&mut self, data: &'a [u8]) -> Cow<'a, [u8]> {
+        if self.state == EchoState::Suppressed {
+            return Cow::Borrowed(data);
+        }
+        self.pending.extend_from_slice(data);
+        if self.state == EchoState::Searching {
+            if let Some(start) = find(&self.pending, INITIALIZATION_ECHO_PREFIX) {
+                let mut output = self.pending[..start].to_vec();
+                match find(&self.pending[start..], INITIALIZATION_READY) {
+                    Some(offset) => {
+                        let end = start + offset + INITIALIZATION_READY.len();
+                        output.extend_from_slice(&self.pending[end..]);
+                        self.pending.clear();
+                        self.state = EchoState::Suppressed;
+                    }
+                    None => {
+                        // Keep a marker that was split by this read before dropping the echo.
+                        let retained = matching_suffix(&self.pending, INITIALIZATION_READY);
+                        let discarded = self.pending.len() - retained;
+                        self.pending.drain(..discarded);
+                        self.dropped = discarded;
+                        self.state = EchoState::Dropping;
+                    }
+                }
+                return Cow::Owned(output);
+            }
+            if let Some(start) = find(&self.pending, INITIALIZATION_READY) {
+                // The server disabled echo, so the hook runs without an echoed command.
+                let mut output = self.pending[..start].to_vec();
+                output.extend_from_slice(&self.pending[start + INITIALIZATION_READY.len()..]);
+                self.pending.clear();
+                self.state = EchoState::Suppressed;
+                return Cow::Owned(output);
+            }
+            let retained = matching_suffix(&self.pending, INITIALIZATION_ECHO_PREFIX)
+                .max(matching_suffix(&self.pending, INITIALIZATION_READY));
+            let emitted = self.pending.len() - retained;
+            return Cow::Owned(self.pending.drain(..emitted).collect());
+        }
+        if let Some(start) = find(&self.pending, INITIALIZATION_READY) {
+            let output = self.pending[start + INITIALIZATION_READY.len()..].to_vec();
+            self.pending.clear();
+            self.state = EchoState::Suppressed;
+            return Cow::Owned(output);
+        }
+        let retained = matching_suffix(&self.pending, INITIALIZATION_READY);
+        let discarded = self.pending.len() - retained;
+        self.pending.drain(..discarded);
+        self.dropped += discarded;
+        if self.dropped > INITIALIZATION_DROP_LIMIT {
+            // The line never reported ready; stop discarding shell output.
+            log::warn!(
+                target: "orbyte_terminal",
+                "shell_initialization_ready_missing dropped={}",
+                self.dropped
+            );
+            self.pending.clear();
+            self.state = EchoState::Suppressed;
+        }
+        Cow::Borrowed(&[])
+    }
+
+    fn finish(&mut self) -> Vec<u8> {
+        let pending = std::mem::take(&mut self.pending);
+        let searching = self.state == EchoState::Searching;
+        self.state = EchoState::Suppressed;
+        if searching { pending } else { Vec::new() }
+    }
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|window| window == needle)
+}
+
+fn matching_suffix(haystack: &[u8], needle: &[u8]) -> usize {
+    let max = needle.len().saturating_sub(1).min(haystack.len());
+    (1..=max).rev().find(|&len| haystack.ends_with(&needle[..len])).unwrap_or(0)
 }
 
 fn open_shell(connected: &mut connect::Connected, cols: u16, rows: u16, cancel: &CancelToken) -> SshResult<Channel> {
@@ -305,6 +420,7 @@ fn shell_loop(
     initialization: &[u8],
 ) -> SshResult<()> {
     let mut buffered = VecDeque::from(initialization.to_vec());
+    let mut initialization_echo = InitializationEcho::new(!initialization.is_empty());
     let mut keepalive = Keepalive::default();
     let mut probing = false;
     let mut probe_written = false;
@@ -339,12 +455,21 @@ fn shell_loop(
         for _ in 0..4 {
             let inbound = readable_now(stream);
             match channel.read(&mut scratch) {
-                Ok(0) => return Ok(()),
+                Ok(0) => {
+                    let output = initialization_echo.finish();
+                    if !output.is_empty() {
+                        push_output(shared, &output, cancel)?;
+                    }
+                    return Ok(());
+                }
                 Ok(n) => {
                     keepalive.note_reply();
                     probing = false;
                     probe_written = false;
-                    push_output(shared, &scratch[..n], cancel)?;
+                    let output = initialization_echo.filter(&scratch[..n]);
+                    if !output.is_empty() {
+                        push_output(shared, &output, cancel)?;
+                    }
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     // A readable socket with no channel bytes means libssh2 consumed the keepalive reply.
@@ -493,7 +618,7 @@ fn collect(state: &mut OutputState) -> Vec<Vec<u8>> {
 
 #[cfg(test)]
 mod directory_tests {
-    use super::directory_initialization_command;
+    use super::{directory_initialization_command, InitializationEcho};
 
     #[test]
     fn directory_initialization_requires_a_supported_shell_marker() {
@@ -510,11 +635,13 @@ mod directory_tests {
     fn initialization_is_one_quoted_line_with_no_literal_escape_sequences() {
         let command = directory_initialization_command(b"\x1eorbyte-shell:/bin/bash\x1f");
         assert!(command.starts_with(" eval $'"));
-        assert!(command.ends_with("'\r"));
+        assert!(command.ends_with("';command printf '\\033]6973;D\\007'\r"));
         assert!(!command.contains(['\n', '\x1b', '\x07']));
         // Decode the ANSI-C quoted payload to verify quotes, newlines and printf escapes survive.
+        let payload = command.strip_prefix(" eval $'").unwrap()
+            .strip_suffix("';command printf '\\033]6973;D\\007'\r").unwrap();
         let mut decoded = String::new();
-        let mut chars = command[8..command.len() - 2].chars();
+        let mut chars = payload.chars();
         while let Some(ch) = chars.next() {
             if ch == '\\' {
                 match chars.next().unwrap() {
@@ -525,6 +652,62 @@ mod directory_tests {
             } else { decoded.push(ch); }
         }
         assert_eq!(decoded, include_str!("directory-integration.sh").replace('\r', ""));
+    }
+
+    #[test]
+    fn initialization_echo_is_dropped_even_when_the_line_editor_redraws_it() {
+        let initialization = directory_initialization_command(b"\x1eorbyte-shell:/bin/bash\x1f");
+        let echo = initialization.strip_suffix('\r').unwrap();
+        // Line editors wrap long lines with explicit newlines and may redraw them.
+        let redrawn = echo.replace("    __orbyte_report_directory", "\r\n    __orbyte_report_directory");
+        let input = [
+            b"Welcome\r\n$ ".as_slice(),
+            redrawn.as_bytes(),
+            b"\r\n".as_slice(),
+            super::INITIALIZATION_READY,
+            b"\x1b]9;9;/home/user\x07$ ".as_slice(),
+        ].concat();
+        let expected = b"Welcome\r\n$ \x1b]9;9;/home/user\x07$ ";
+        let mut filter = InitializationEcho::new(true);
+        let mut output = Vec::new();
+        for byte in input.chunks(1) {
+            output.extend_from_slice(filter.filter(byte).as_ref());
+        }
+        output.extend(filter.finish());
+        assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn ready_marker_split_right_after_the_echo_is_still_detected() {
+        let split = 4;
+        let head = [
+            b"$ ".as_slice(),
+            super::INITIALIZATION_ECHO_PREFIX,
+            b"echo\r\n".as_slice(),
+            &super::INITIALIZATION_READY[..split],
+        ].concat();
+        let tail = [
+            &super::INITIALIZATION_READY[split..],
+            b"\x1b]9;9;/tmp\x07$ ".as_slice(),
+        ].concat();
+        let mut filter = InitializationEcho::new(true);
+        let mut output = filter.filter(&head).into_owned();
+        output.extend_from_slice(filter.filter(&tail).as_ref());
+        output.extend(filter.finish());
+        assert_eq!(output, b"$ \x1b]9;9;/tmp\x07$ ".as_slice());
+    }
+
+    #[test]
+    fn output_without_initialization_echo_keeps_everything_but_the_ready_marker() {
+        let input = b"prompt$ \x1b]6973;D\x07\r\nmore";
+        let expected = b"prompt$ \r\nmore";
+        let mut filter = InitializationEcho::new(true);
+        let mut output = Vec::new();
+        for chunk in input.chunks(3) {
+            output.extend_from_slice(filter.filter(chunk).as_ref());
+        }
+        output.extend(filter.finish());
+        assert_eq!(output, expected);
     }
 
     #[test]

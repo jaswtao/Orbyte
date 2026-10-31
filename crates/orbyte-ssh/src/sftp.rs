@@ -213,12 +213,17 @@ fn serve(connected: &connect::Connected, sftp: Sftp, rx: Receiver<SftpJob>, canc
 }
 
 fn list_dir(sftp: &Sftp, path: &str, request_id: &str, cancel: &AtomicBool, emit: &Arc<dyn Fn(DirBatch) + Send + Sync>) {
-    let normalized = match normalize_remote(path).or_else(|_| realpath(sftp, path).map_err(|e| e.to_string())) {
-        Ok(path) => path,
-        Err(message) => {
-            emit(DirBatch { request_id: request_id.into(), path: path.into(), entries: Vec::new(), done: true, message: Some(message) });
-            return;
-        }
+    // The UI syncs the terminal cwd from batch paths, so relative listings are resolved to absolute ones.
+    let normalized = match normalize_remote(path) {
+        Ok(value) if value.starts_with('/') => value,
+        Ok(value) => realpath(sftp, &value).ok().filter(|resolved| resolved.starts_with('/')).unwrap_or(value),
+        Err(_) => match realpath(sftp, path) {
+            Ok(value) => value,
+            Err(error) => {
+                emit(DirBatch { request_id: request_id.into(), path: path.into(), entries: Vec::new(), done: true, message: Some(error.to_string()) });
+                return;
+            }
+        },
     };
     let mut dir = match sftp.opendir(Path::new(&normalized)) {
         Ok(dir) => dir,

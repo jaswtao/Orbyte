@@ -11,7 +11,7 @@ export const zh: Record<MessageKey, string> = {
   'sidebar.hiddenProject': '已隐藏',
   'terminal.reconnect': '重连输出',
   'terminal.reconnecting': '正在重连…',
-    'terminal.displayPaused': '输出过快，已暂停显示，任务仍在运行。已丢弃 {bytes} 字节。',
+    'terminal.displayPaused': '输出过快，已暂停显示，正在自动恢复，任务仍在运行。已丢弃 {bytes} 字节。',
     'terminal.displayPausedEnded': '显示已暂停，任务已结束。已丢弃 {bytes} 字节。',
     'terminal.resumeDisplay': '恢复显示',
     'terminal.pauseFailed': '暂停后端输出失败，显示仍保持暂停；可终止该终端。',

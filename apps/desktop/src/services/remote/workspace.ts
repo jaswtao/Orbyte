@@ -52,6 +52,13 @@ export function parentPath(path: string): string | null {
   return index === 0 ? '/' : trimmed.slice(0, index)
 }
 
+/** POSIX cd for an absolute remote path. Control characters cannot break out of the quotes. */
+export function remoteCdCommand(path: string): string | null {
+  if (!path.startsWith('/') || /[\x00-\x1f\x7f-\x9f]/.test(path)) return null
+  // The leading space keeps the command out of history when the shell ignores space-prefixed lines.
+  return ` cd -- '${path.replaceAll("'", "'\\''")}'\r`
+}
+
 export function joinRemote(directory: string, name: string): string {
   if (!name || name.includes('/') || name.includes('\0')) return directory
   if (directory === '/' || directory === '') return `/${name}`

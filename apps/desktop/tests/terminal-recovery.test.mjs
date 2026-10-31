@@ -38,11 +38,11 @@ const clientSource = ts.transpileModule(await readFile(new URL('../src/services/
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText
 
-function clientFixture(t, events = {}) {
+function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, performance }) {
   const callbacks = new Map()
   let next = 0
   const previous = globalThis.window
-  const window = globalThis.window = { setTimeout, clearTimeout, __TAURI_INTERNALS__: {
+  const window = globalThis.window = { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, __TAURI_INTERNALS__: {
     transformCallback(callback) { callbacks.set(++next, callback); return next }, unregisterCallback(id) { callbacks.delete(id) },
   } }
   const statuses = []
@@ -62,7 +62,7 @@ function clientFixture(t, events = {}) {
   }
   const exports = {}
   const document = { visibilityState: 'visible' }
-  vm.runInNewContext(clientSource, { exports, window, document, performance, queueMicrotask, ArrayBuffer,
+  vm.runInNewContext(clientSource, { exports, window, document, performance: clock.performance, queueMicrotask, ArrayBuffer,
     ResizeObserver: class { observe() {} disconnect() {} },
     require(name) {
       if (name === '@tauri-apps/api/core') return { Channel }
@@ -101,11 +101,13 @@ function clientFixture(t, events = {}) {
 
 test('remote clients deliver directory reports without enabling local command tracking', (t) => {
   const events = []
-  const f = clientFixture(t, { shellIntegration: false, onShell: (event) => events.push(event) })
+  const prompts = []
+  const f = clientFixture(t, { shellIntegration: false, onShell: (event) => events.push(event), onRemotePrompt: (event) => prompts.push(event) })
   assert.equal(f.client.term.oscHandlers.has(133), false)
   f.client.term.oscHandlers.get(9)('9;/home/中文 space')
   f.client.term.oscHandlers.get(7)('file://remote.example/var/log')
   f.client.term.oscHandlers.get(9)('9;relative')
+  assert.deepEqual(prompts, ['cwd'])
   assert.deepEqual(events.map((event) => ({ ...event })), [{ type: 'cwd', path: '/home/中文 space' }, { type: 'cwd', path: '/var/log' }])
 })
 
@@ -235,6 +237,155 @@ async function waitForOutput(fixture, suffix) {
   while (!fixture.client.term.writes.join('').endsWith(suffix) && performance.now() < deadline) await flush()
   assert.ok(fixture.client.term.writes.join('').endsWith(suffix))
 }
+
+function displayClock() {
+  let now = 0
+  let next = 0
+  const timers = new Map()
+  return {
+    performance: { now: () => now },
+    setTimeout(action, delay) { const id = ++next; timers.set(id, { action, at: now + delay }); return id },
+    clearTimeout(id) { timers.delete(id) },
+    advance(ms) {
+      const end = now + ms
+      while (true) {
+        const entry = [...timers].sort((a, b) => a[1].at - b[1].at)[0]
+        if (!entry || entry[1].at > end) break
+        timers.delete(entry[0])
+        now = entry[1].at
+        entry[1].action()
+      }
+      now = end
+    },
+  }
+}
+
+function automaticDisplayFixture(t) {
+  const clock = displayClock()
+  const f = clientFixture(t, {}, clock)
+  let subscriptions = 0
+  f.api.listTerminalSessions = async () => [{ terminalId: f.client.id, status: { state: 'running' } }]
+  f.api.subscribeTerminal = async (_id, channel) => {
+    subscriptions++
+    channel.onmessage(outputFrame(2, '{"state":"running"}'))
+    channel.onmessage(outputFrame(1, 'fresh redraw'))
+  }
+  f.client.updateStatus({ state: 'running' })
+  return { ...f, clock, subscriptions: () => subscriptions }
+}
+
+test('display resumes automatically in the background and backs off until stable', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.client.setVisible(false)
+  for (const delay of [1000, 2000, 4000, 8000, 10000, 10000]) {
+    f.client.pauseDisplay(42)
+    const before = f.subscriptions()
+    f.clock.advance(delay - 1)
+    await flush()
+    assert.equal(f.subscriptions(), before)
+    f.clock.advance(1)
+    await flush()
+    assert.equal(f.subscriptions(), before + 1)
+    assert.equal(f.displays.at(-1).paused, false)
+    assert.equal(f.client.id, 'session')
+  }
+  f.clock.advance(30000)
+  f.client.pauseDisplay(1)
+  f.clock.advance(1000)
+  await flush()
+  assert.equal(f.subscriptions(), 7, 'Stable display resets the retry interval')
+})
+
+test('automatic display recovery waits for pause completion and shares the manual lock', async (t) => {
+  const f = automaticDisplayFixture(t)
+  let release
+  f.api.pauseOutput = () => new Promise((resolve) => { release = resolve })
+  f.client.pauseDisplay(1)
+  f.clock.advance(1000)
+  await f.client.resumeDisplay()
+  await flush()
+  assert.equal(f.subscriptions(), 0)
+  release()
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  f.clock.advance(10000)
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+})
+
+test('overload during a replacement subscription schedules another automatic recovery', async (t) => {
+  const f = automaticDisplayFixture(t)
+  const subscribe = f.api.subscribeTerminal
+  f.api.subscribeTerminal = async (_id, channel) => {
+    channel.onmessage(outputFrame(2, '{"state":"running"}'))
+    channel.onmessage(outputFrame(1, 'x'.repeat(outputModule.OUTPUT_QUEUE_LIMIT + 1)))
+  }
+  f.client.pauseDisplay(1)
+  f.clock.advance(1000)
+  await flush()
+  assert.equal(f.displays.at(-1).paused, true)
+  assert.equal(f.client.reconnecting, false)
+  f.api.subscribeTerminal = subscribe
+  f.clock.advance(2000)
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
+test('failed display recovery keeps retrying and manual recovery cancels its timer', async (t) => {
+  const f = automaticDisplayFixture(t)
+  const subscribe = f.api.subscribeTerminal
+  let failures = 0
+  f.api.subscribeTerminal = async () => { failures++; throw new Error('temporarily unavailable') }
+  f.client.pauseDisplay(1)
+  for (const delay of [1000, 2000, 4000, 8000, 10000]) {
+    f.clock.advance(delay)
+    await flush()
+    assert.equal(f.displays.at(-1).paused, true)
+  }
+  assert.equal(failures, 5)
+  f.api.subscribeTerminal = subscribe
+  await f.client.resumeDisplay()
+  f.clock.advance(10000)
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
+test('display retry is cancelled on stop, exit, disposal and session replacement', async (t) => {
+  for (const action of ['stop', 'exit', 'dispose', 'replace']) {
+    const f = automaticDisplayFixture(t)
+    f.client.pauseDisplay(1)
+    if (action === 'stop') f.client.pauseInput()
+    if (action === 'exit') f.client.updateStatus({ state: 'exited', exitCode: 0 })
+    if (action === 'dispose') f.client.dispose()
+    if (action === 'replace') f.client.attach('replacement')
+    f.clock.advance(20000)
+    await flush()
+    assert.equal(f.subscriptions(), 0, action)
+    if (action === 'stop') {
+      f.client.resumeInput()
+      f.clock.advance(1000)
+      await flush()
+      assert.equal(f.subscriptions(), 1, 'An unsuccessful stop may resume automatic recovery')
+    }
+  }
+})
+
+test('a late pause cannot resume a replaced session', async (t) => {
+  const f = automaticDisplayFixture(t)
+  let release
+  f.api.pauseOutput = () => new Promise((resolve) => { release = resolve })
+  f.client.pauseDisplay(1)
+  f.clock.advance(1000)
+  f.client.attach('replacement')
+  f.client.updateStatus({ state: 'running' })
+  release()
+  await flush()
+  assert.equal(f.subscriptions(), 0)
+  assert.equal(f.client.id, 'replacement')
+  assert.equal(f.displays.at(-1).paused, false)
+})
 
 test('overload pauses only display, keeps input alive, and resumes through an explicit subscription', async (t) => {
   const f = clientFixture(t)
@@ -599,6 +750,7 @@ function loadRegistry(terminalApi) {
     exports,
     require(name) {
       if (name === '../appearance') return { terminalAppearance: () => ({}) }
+      if (name === '../remote/directory') return directoryModule
       if (name === './recovery') return recoveryModule
       if (name === '../terminalApi') return { terminalApi }
       if (name === 'vue') return { markRaw: (value) => value, shallowReactive: (value) => value }

@@ -28,3 +28,6 @@ test-results/
 /release/
 .tools/
 __pycache__/
+
+# Tool runtime state
+.codebuddy/scheduled_task_executions.json

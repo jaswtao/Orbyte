@@ -16,7 +16,7 @@ import { InputQueue } from './inputQueue'
 import { bindTerminalIme } from './ime'
 import { bindTerminalSelection } from './selection'
 import { ShellIntegration, type ShellEvent } from './shellIntegration'
-import { remoteDirectory } from '../remote/directory'
+import { remoteDirectory, type RemotePromptEvent } from '../remote/directory'
 import { ContentActivity } from './contentActivity'
 import { OutputQueue, terminalOutputScheduler, OUTPUT_QUEUE_LIMIT } from './outputScheduler'
 import { t } from '../../i18n/translate'
@@ -25,6 +25,9 @@ const ACK_BYTES = 32 * 1024
 const ACK_IDLE_MS = 16
 const RESIZE_DEBOUNCE_MS = 100
 const CONTENT_CHECK_MS = 1000
+const DISPLAY_RETRY_INITIAL_MS = 1000
+const DISPLAY_RETRY_MAX_MS = 10000
+const DISPLAY_STABLE_MS = 30000
 export const INITIAL_SIZE: TerminalSize = { cols: 120, rows: 30 }
 
 export interface TerminalClientEvents {
@@ -38,6 +41,8 @@ export interface TerminalClientEvents {
   onDisplay?: (paused: boolean, droppedBytes: number) => void
   /** Remote sessions parse directory reports separately from local shell integration. */
   shellIntegration?: boolean
+  /** Remote prompt safety: directory reports and later keystrokes. */
+  onRemotePrompt?: (event: RemotePromptEvent) => void
   /** WebView resubscribe uses this list. Remote ids are absent from the local PTY list. */
   listSessions?: () => Promise<import('../terminalApi').TerminalSessionInfo[]>
 }
@@ -77,6 +82,10 @@ export class TerminalClient {
   private displayPaused = false
   private pauseRequest: Promise<void> | null = null
   private resumingDisplay = false
+  private displayRetryTimer: number | undefined
+  private displayRetryDelay = DISPLAY_RETRY_INITIAL_MS
+  private displayRestoredAt: number | null = null
+  private displayEpoch = 0
   private localDroppedBytes = 0
   private backendDroppedBytes = 0
   private readonly output = new OutputQueue(terminalOutputScheduler,
@@ -118,16 +127,20 @@ export class TerminalClient {
       for (const code of [9, 7]) this.term.parser.registerOscHandler(code, (data) => {
         this.safe(() => {
           const path = remoteDirectory(code, data)
-          if (path !== null) this.events.onShell?.({ type: 'cwd', path })
+          if (path !== null) {
+            // OSC 7 only reports a directory; it need not come from a shell prompt.
+            if (code === 9) this.events.onRemotePrompt?.('cwd')
+            this.events.onShell?.({ type: 'cwd', path })
+          }
         })
         return true
       })
     }
     this.term.onData((data) => this.safe(() => {
-      if (!this.term.options.disableStdin) {
-        if (shellIntegration) this.integration.input(data)
-        this.input.push(data)
-      }
+      if (this.term.options.disableStdin) return
+      if (shellIntegration) this.integration.input(data)
+      else if (data) this.events.onRemotePrompt?.(data.includes('\r') || data.includes('\n') ? 'submit' : 'input')
+      this.input.push(data)
     }))
     this.observer = new ResizeObserver(() => this.scheduleResize())
     this.observer.observe(container)
@@ -161,6 +174,12 @@ export class TerminalClient {
   attach(terminalId: string): void {
     const newSession = this.terminalId !== terminalId
     if (newSession) {
+      this.cancelDisplayRetry()
+      this.displayEpoch++
+      this.resumingDisplay = false
+      this.pauseRequest = null
+      this.displayRetryDelay = DISPLAY_RETRY_INITIAL_MS
+      this.displayRestoredAt = null
       this.output.clear()
       this.displayPaused = false
       this.localDroppedBytes = 0
@@ -265,11 +284,30 @@ export class TerminalClient {
     this.events.onDisplay?.(this.displayPaused, this.localDroppedBytes + this.backendDroppedBytes)
   }
 
+  private cancelDisplayRetry(): void {
+    window.clearTimeout(this.displayRetryTimer)
+    this.displayRetryTimer = undefined
+  }
+
+  private scheduleDisplayRetry(): void {
+    if (this.displayRetryTimer !== undefined || !this.displayPaused || this.disposed || this.operationPaused || this.status.state !== 'running') return
+    this.displayRetryTimer = window.setTimeout(() => {
+      this.displayRetryTimer = undefined
+      if (this.resumingDisplay || this.reconnecting) { this.scheduleDisplayRetry(); return }
+      this.displayRetryDelay = Math.min(this.displayRetryDelay * 2, DISPLAY_RETRY_MAX_MS)
+      void this.resumeDisplay()
+    }, this.displayRetryDelay)
+  }
+
   private pauseDisplay(discarded: number, request = true): void {
     this.localDroppedBytes += discarded
     if (this.displayPaused || this.disposed) return
+    if (this.displayRestoredAt !== null && performance.now() - this.displayRestoredAt >= DISPLAY_STABLE_MS) this.displayRetryDelay = DISPLAY_RETRY_INITIAL_MS
+    this.displayRestoredAt = null
     this.displayPaused = true
     this.recoveryAttempt++
+    // Release a reconnect waiting for output that this pause has discarded.
+    this.recoveredOutput?.()
     this.generation++
     this.ack.reset()
     window.clearTimeout(this.ackTimer)
@@ -287,23 +325,32 @@ export class TerminalClient {
         if (!this.disposed) this.events.onError?.(t('terminal.pauseFailed'))
       })
     }
+    this.scheduleDisplayRetry()
   }
 
   async resumeDisplay(): Promise<void> {
     if (!this.displayPaused || this.resumingDisplay || this.disposed || this.operationPaused || this.reconnecting || this.status.state !== 'running') return
+    this.cancelDisplayRetry()
     this.resumingDisplay = true
     const terminalId = this.terminalId
+    const epoch = this.displayEpoch
     try {
       await this.pauseRequest
-      if (this.disposed || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
+      if (this.disposed || this.displayEpoch !== epoch || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
       this.displayPaused = false
       this.reset()
       this.recovery.reset()
       await this.reconnect()
-      if (this.disposed || this.terminalId !== terminalId || this.operationPaused) return
+      if (this.disposed || this.displayEpoch !== epoch || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
       if (this.connection !== 'connected') this.pauseDisplay(this.output.clear())
+      if (!this.displayPaused) this.displayRestoredAt = performance.now()
       this.notifyDisplay()
-    } finally { this.resumingDisplay = false }
+    } finally {
+      if (this.displayEpoch === epoch) {
+        this.resumingDisplay = false
+        this.scheduleDisplayRetry()
+      }
+    }
   }
 
   dispose(): void {
@@ -331,6 +378,9 @@ export class TerminalClient {
   }
 
   pauseInput(): void {
+    this.cancelDisplayRetry()
+    this.displayEpoch++
+    this.resumingDisplay = false
     this.awaitingStatus = false
     this.recoveryAttempt++
     this.generation++
@@ -343,6 +393,7 @@ export class TerminalClient {
   resumeInput(): void {
     this.operationPaused = false
     this.syncInput()
+    this.scheduleDisplayRetry()
   }
 
   waitForStatus(): void { this.awaitingStatus = true }
@@ -353,11 +404,15 @@ export class TerminalClient {
     const changed = JSON.stringify(status) !== JSON.stringify(this.status)
     this.status = status
     if (status.state === 'exited' || status.state === 'failed') {
+      this.cancelDisplayRetry()
+      this.displayEpoch++
+      this.resumingDisplay = false
       this.pendingChannel = null
       // An independent status poll can finish before the last output. Still accept and acknowledge trailing frames.
       this.setConnection('connected')
     }
     this.syncInput()
+    this.scheduleDisplayRetry()
     if (changed) this.safe(() => this.events.onStatus?.(status))
   }
 

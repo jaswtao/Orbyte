@@ -12,7 +12,7 @@ import type { AppearanceMode } from '../../services/appearance'
 import type { Settings } from '../../services/projectApi'
 import { leaves, removeFromLayout, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
 import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
-import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent } from '../../services/remote/workspace'
+import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remoteCdCommand, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent } from '../../services/remote/workspace'
 import { isSftpReady, markSftpReady, setRemoteLink } from '../../services/remote/status'
 import { t, type MessageKey } from '../../i18n'
 import { useRemote } from '../../stores/remote'
@@ -245,9 +245,15 @@ async function reload() {
   } catch (reason) { if (token === reloadToken) fail(reason) }
 }
 let directorySaveChain: Promise<unknown> = Promise.resolve()
-async function browse(path: string, resolvePath = false) {
+let pendingTerminalPath: string | null = null
+let pendingTerminalConfig: string | null = null
+let pendingTerminalSession: string | null = null
+let injectedTerminalPath: string | null = null
+async function browse(path: string, resolvePath = false, syncTerminal = false) {
   if (!record.value || !isSftpReady(record.value.id)) return
   const generation = ++browseGeneration
+  const terminalConfig = syncTerminal ? focused.value : null
+  const terminalSession = terminalConfig ? registry.byConfig.get(terminalConfig)?.client?.id ?? null : null
   if (browseId) void remoteApi.cancelBrowse(browseId).catch(() => {})
   browseId = ''
   directory.value = path
@@ -273,6 +279,7 @@ async function browse(path: string, resolvePath = false) {
       directorySaveChain = directorySaveChain.catch(() => {}).then(() => {
         if (generation === browseGeneration) return remoteApi.setDirectory(workspaceId, batch.path)
       }).catch(fail)
+      if (syncTerminal) queueTerminalDirectory(batch.path, terminalConfig, terminalSession)
     }
   }
   try {
@@ -297,13 +304,71 @@ async function browse(path: string, resolvePath = false) {
   }
 }
 function followTerminalDirectory() {
+  if (pendingTerminalPath && pendingTerminalConfig === focused.value) return
   const path = terminalDirectory.value
   if (props.active && sftpUp.value && path && path !== directory.value) void browse(path)
 }
+function queueTerminalDirectory(path: string, configId: string | null, sessionId: string | null) {
+  if (!configId || !sessionId || focused.value !== configId || !path.startsWith('/')) return
+  if (registry.byConfig.get(configId)?.client?.id !== sessionId) return
+  pendingTerminalPath = path
+  pendingTerminalConfig = configId
+  pendingTerminalSession = sessionId
+  injectedTerminalPath = null
+  flushTerminalDirectory()
+}
+function clearTerminalDirectory() {
+  pendingTerminalPath = null
+  pendingTerminalConfig = null
+  pendingTerminalSession = null
+  injectedTerminalPath = null
+}
+function flushTerminalDirectory() {
+  const path = pendingTerminalPath
+  const configId = pendingTerminalConfig
+  if (!path || !configId) return
+  if (focused.value !== configId) {
+    clearTerminalDirectory()
+    return
+  }
+  const entry = registry.byConfig.get(configId)
+  if (!entry || entry.client?.id !== pendingTerminalSession || entry.status?.state === 'exited' || entry.status?.state === 'failed') {
+    clearTerminalDirectory()
+    followTerminalDirectory()
+    return
+  }
+  if (!entry.client?.id || entry.status?.state !== 'running') return
+  if (entry.shell.cwd === path) {
+    clearTerminalDirectory()
+    return
+  }
+  if (injectedTerminalPath === path && entry.remotePrompt === 'ready' && entry.shell.cwd && entry.shell.cwd !== path) {
+    clearTerminalDirectory()
+    followTerminalDirectory()
+    return
+  }
+  if (injectedTerminalPath === path || entry.remotePrompt !== 'ready') return
+  const command = remoteCdCommand(path)
+  if (!command) {
+    clearTerminalDirectory()
+    followTerminalDirectory()
+    return
+  }
+  injectedTerminalPath = path
+  entry.client.term.input(command, true)
+}
 watch(() => [focused.value, terminalDirectory.value, props.active], followTerminalDirectory)
+watch(() => {
+  const entry = focused.value ? registry.byConfig.get(focused.value) : undefined
+  return [entry?.remotePrompt, entry?.shell?.cwd, entry?.client?.id, entry?.status?.state, focused.value]
+}, flushTerminalDirectory)
+function openParent() {
+  const path = parent.value
+  if (path) void browse(path, false, true)
+}
 function openEntry(entry: DirEntry) {
   if (entry.kind !== 'dir') return
-  void browse(joinRemote(directory.value, entry.name))
+  void browse(joinRemote(directory.value, entry.name), false, true)
 }
 function toggleSelect(name: string) {
   selected.value = selected.value.includes(name) ? selected.value.filter((item) => item !== name) : [...selected.value, name]
@@ -311,7 +376,7 @@ function toggleSelect(name: string) {
 async function submitPath() {
   if (!record.value) return
   try {
-    await browse(pathInput.value, true)
+    await browse(pathInput.value, true, true)
   } catch (reason) { sftpError.value = fail(reason) }
 }
 async function makeDirectory() {
@@ -601,7 +666,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
         <div class="remote-current-path" :title="directory">{{ t('remote.path') }}: {{ directory }}</div>
         <div v-if="terminalDirectory && terminalDirectory !== directory" class="remote-current-path" :title="terminalDirectory">{{ t('remote.terminalPath') }}: {{ terminalDirectory }}</div>
         <div class="remote-path">
-          <NButton size="tiny" :disabled="!parent" @click="parent && browse(parent)">{{ t('remote.parent') }}</NButton>
+          <NButton size="tiny" :disabled="!parent" @click="openParent">{{ t('remote.parent') }}</NButton>
           <NInput v-model:value="pathInput" :title="directory" :placeholder="t('remote.path')" @keydown.enter="submitPath" />
         </div>
         <div class="remote-file-toolbar">
