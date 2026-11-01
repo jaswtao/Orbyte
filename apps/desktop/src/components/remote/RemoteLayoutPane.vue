@@ -80,6 +80,7 @@ function label(key: MessageKey) { return t(key) }
       <button v-if="entry.status.state === 'running'" :disabled="entry.connection === 'reconnecting'" @click.stop="entry.client.resumeDisplay()">{{ t(entry.connection === 'reconnecting' ? 'terminal.reconnecting' : 'terminal.resumeDisplay') }}</button>
     </div>
     <div ref="mount" class="terminal-mount" />
+    <div v-if="entry?.sudoPasswordAvailable && entry.connection === 'connected' && !entry.displayPaused" class="terminal-sudo-hint" role="status">{{ t('remote.sudoSavedPassword') }}</div>
     <div class="pane-status" :title="endpoint">{{ endpoint }}</div>
   </div>
 </template>

@@ -170,6 +170,24 @@ async function workspaceShortcut(event: KeyboardEvent) {
   if (renamingProject.value || projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
   if (!command || command === 'rename') return
+  if (command === 'sidebarViewPrevious' || command === 'sidebarViewNext') {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.repeat) return
+    const views = (['projects', 'files', 'remote'] as const).filter((view) => view !== 'files' || store.active)
+    const index = views.indexOf(sidebarView.value)
+    const start = index < 0 ? 0 : index
+    const delta = command === 'sidebarViewPrevious' ? -1 : 1
+    const next = views[(start + delta + views.length) % views.length]
+    if (!next || next === sidebarView.value) return
+    setSidebarVisible(true)
+    sidebarView.value = next
+    await nextTick()
+    if (disposed || sidebarView.value !== next) return
+    if (next === 'remote') remoteDeck.value?.focusTerminal()
+    else deck.value?.focusTerminal()
+    return
+  }
   if (sidebarView.value === 'remote' && command.startsWith('project')) {
     if (command === 'projectSearch') return
     if (disposed || event.repeat) return

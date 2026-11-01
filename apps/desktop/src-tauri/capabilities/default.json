@@ -61,6 +61,7 @@
     "allow-ack-terminal",
     "allow-pause-terminal-output",
     "allow-write-terminal",
+    "allow-submit-sudo-saved-password",
     "allow-terminal-uses-native-paste",
     "allow-set-active-terminal",
     "allow-resize-terminal",

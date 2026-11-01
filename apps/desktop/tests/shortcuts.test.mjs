@@ -339,11 +339,12 @@ function projectNavigation(visible) {
   // 原始数组顺序与分组显示顺序故意不同。
   const projects = [{ id: 'b', groupId: 'second' }, { id: 'u', groupId: null }, { id: 'a', groupId: 'first' }, { id: 'c', groupId: 'second' }]
   const store = { projects, groups: [{ id: 'first' }, { id: 'second' }], active: projects[2], activate: (id) => { selected.push(id); return true } }
-  const context = { matchShortcut, filterProjects, store, nextTick, disposed: false, sidebarView: { value: 'projects' }, sidebarVisible: false, setSidebarVisible(value) { context.sidebarVisible = value }, sidebar: { value: visible === undefined ? undefined : { revealProject: (id) => revealed.push(id), getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
+  const focused = []
+  const context = { matchShortcut, filterProjects, store, nextTick, disposed: false, sidebarView: { value: 'projects' }, sidebarVisible: false, setSidebarVisible(value) { context.sidebarVisible = value }, focused, deck: { value: { focusTerminal() { focused.push('local') } } }, remoteDeck: { value: { focusTerminal() { focused.push('remote') } } }, sidebar: { value: visible === undefined ? undefined : { revealProject: (id) => revealed.push(id), getNavigationProjects: () => visible.map((id) => projects.find((p) => p.id === id)) } } }
   for (const name of ['renamingProject', 'projectDialog', 'groupDialog', 'deleting', 'settingsDialog', 'closeDialog', 'worktreeDialog', 'recoveryDialog']) context[name] = { value: false }
   vm.createContext(context)
   vm.runInContext(handlerJs, context)
-  return { store, selected, revealed, context, press(key, overrides = {}) { return context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
+  return { store, selected, revealed, focused, context, press(key, overrides = {}) { return context.workspaceShortcut({ key, code: key, ctrlKey: true, shiftKey: true, altKey: false, metaKey: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...overrides }) } }
 }
 
 test('上下键按侧栏提供的可见顺序切换，跳过隐藏项目并首尾循环', async () => {
@@ -406,15 +407,48 @@ test('可见列表为空不切换，当前项目隐藏时下键从首项、上�
   assert.deepEqual(nav.selected, ['c', 'u'])
 })
 
-test('左右键不再切换项目，上下键忽略长按和额外修饰键', async () => {
+test('左右键切换侧栏视图且不切换项目，上下键忽略长按和额外修饰键', async () => {
   const nav = projectNavigation(['a', 'u'])
   await nav.press('ArrowLeft')
+  assert.equal(nav.context.sidebarView.value, 'remote')
   await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'projects')
   assert.deepEqual(nav.selected, [])
   await nav.press('ArrowDown', { repeat: true })
   await nav.press('ArrowDown', { altKey: true })
   await nav.press('ArrowDown')
   assert.deepEqual(nav.selected, ['u'])
+})
+
+test('Ctrl+Shift+左右循环切换侧栏视图，无项目时跳过文件，长按和弹窗不切换', async () => {
+  const nav = projectNavigation(['a', 'u'])
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'files')
+  assert.equal(nav.context.sidebarVisible, true)
+  assert.deepEqual(nav.focused, ['local'])
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  assert.deepEqual(nav.focused, ['local', 'remote'])
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'projects')
+  assert.deepEqual(nav.focused, ['local', 'remote', 'local'])
+  await nav.press('ArrowLeft')
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  nav.store.active = null
+  nav.context.sidebarView.value = 'projects'
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  await nav.press('ArrowLeft')
+  assert.equal(nav.context.sidebarView.value, 'projects')
+  nav.context.sidebarView.value = 'files'
+  await nav.press('ArrowRight')
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  await nav.press('ArrowRight', { repeat: true })
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  nav.context.settingsDialog.value = true
+  await nav.press('ArrowLeft')
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  assert.deepEqual(nav.selected, [])
 })
 
 test('侧栏未挂载时上下切换遵守隐藏开关', async () => {
@@ -450,7 +484,7 @@ test('上下切换先展示并恢复侧栏，再读取导航顺序，激活成�
   assert.deepEqual(nav.revealed, ['c'])
 })
 
-test('首尾循环后定位当前激活项，左右键不再切换项目', async () => {
+test('首尾循环后定位当前激活项，左右键切换侧栏视图且不切换项目', async () => {
   const nav = projectNavigation(['a', 'c', 'u'])
   nav.store.activate = async (id) => { nav.store.active = { id }; return true }
   await nav.press('ArrowUp')
@@ -459,10 +493,10 @@ test('首尾循环后定位当前激活项，左右键不再切换项目', async
   nav.context.sidebarVisible = false
   nav.context.sidebarView.value = 'files'
   await nav.press('ArrowLeft')
-  await nav.press('ArrowRight')
-  assert.equal(nav.context.sidebarVisible, false)
-  assert.equal(nav.context.sidebarView.value, 'files')
+  assert.equal(nav.context.sidebarVisible, true)
+  assert.equal(nav.context.sidebarView.value, 'projects')
   assert.deepEqual(nav.revealed, ['u', 'a'])
+  assert.deepEqual(nav.selected, [])
 })
 
 test('激活失败、忙碌或无候选时不定位，等待渲染时再次忙碌不激活', async () => {
@@ -500,7 +534,10 @@ function sidebarResize(innerWidth = 1200) {
   const sidebarWidth = { value: 280 }
   const store = { projects, groups: [], active: projects[0], settings: { shortcuts: {} }, activate: (id) => { selected.push(id); store.active = projects.find((project) => project.id === id) } }
   const context = {
-    matchShortcut, filterProjects, store, sidebarWidth, sidebarView: { value: 'projects' }, sidebar: { value: undefined },
+    matchShortcut, filterProjects, store, sidebarWidth, nextTick, disposed: false, sidebarVisible: true,
+    setSidebarVisible(value) { context.sidebarVisible = value },
+    deck: { value: { focusTerminal() {} } }, remoteDeck: { value: { focusTerminal() {} } },
+    sidebarView: { value: 'projects' }, sidebar: { value: undefined },
     SIDEBAR_MIN: 220, SIDEBAR_MAX: 640, window: { innerWidth },
     localStorage: { setItem: (name, value) => stored.set(name, value) },
   }
@@ -545,15 +582,16 @@ test('侧栏宽度到达上下限后不再越界', () => {
   assert.equal(limited.sidebarWidth.value, 520)
 })
 
-test('弹窗打开时不调整侧栏，左右键不再切换项目', () => {
+test('弹窗打开时不调整侧栏，左右键切换侧栏视图且不切换项目', () => {
   const blocked = sidebarResize()
   blocked.context.settingsDialog.value = true
   assert.equal(blocked.press('ArrowLeft'), false)
   assert.equal(blocked.sidebarWidth.value, 280)
   assert.equal(blocked.stored.size, 0)
   const nav = sidebarResize()
-  assert.equal(nav.press('ArrowLeft', { altKey: false }), false)
-  assert.equal(nav.press('ArrowRight', { altKey: false }), false)
+  assert.equal(nav.press('ArrowLeft', { altKey: false }), true)
+  assert.equal(nav.press('ArrowRight', { altKey: false }), true)
+  assert.equal(nav.context.sidebarView.value, 'projects')
   assert.equal(nav.sidebarWidth.value, 280)
   assert.deepEqual(nav.selected, [])
 })

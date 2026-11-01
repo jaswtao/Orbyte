@@ -203,7 +203,7 @@ async fn crlf_migrations_preserve_data_and_history_on_upgrade() {
             assert_eq!(checksums, original_checksums);
             let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations")
                 .fetch_one(&db.pool).await.unwrap();
-            assert_eq!(count, 10);
+            assert_eq!(count, sqlx::migrate!("./migrations").migrations.len() as i64);
             db.pool.close().await;
         }
         std::fs::remove_dir_all(directory).unwrap();
@@ -592,6 +592,77 @@ async fn legacy_project_arrow_shortcut_migration_removes_unknown_commands() {
     });
     query.build().execute(&db.pool).await.unwrap();
     let sql = include_str!("../migrations/0009_remove_legacy_project_arrow_shortcuts.sql").replace("t_app_setting", "shortcut_cases");
+    sqlx::raw_sql(&sql).execute(&db.pool).await.unwrap();
+    let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
+        .fetch_all(&db.pool).await.unwrap();
+    for (result, (setting, _, expected)) in results.iter().zip(&values) {
+        let actual: Value = serde_json::from_str(result).unwrap();
+        assert_eq!(&actual, expected);
+        if *setting == "shortcuts" {
+            validate_setting("shortcuts", &actual).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn sidebar_view_shortcut_migration_drops_only_the_old_remote_arrow_defaults() {
+    let db = memory().await;
+    sqlx::raw_sql("CREATE TEMP TABLE shortcut_cases (key TEXT, value_json TEXT);")
+        .execute(&db.pool).await.unwrap();
+    let arrow_left = json!({"code":"ArrowLeft","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let arrow_right = json!({"code":"ArrowRight","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let custom = json!({"code":"KeyN","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let custom_b = json!({"code":"KeyM","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let values = vec![
+        // Single legacy bindings are removed together with their keys.
+        (
+            "shortcuts",
+            json!({"remotePrevious":[arrow_left.clone()],"remoteNext":[arrow_right.clone()],"newTerminal":[custom.clone()]}),
+            json!({"newTerminal":[custom.clone()]}),
+        ),
+        (
+            "shortcuts",
+            json!({"remotePrevious":[custom.clone()],"remoteNext":[arrow_right.clone()]}),
+            json!({"remotePrevious":[custom.clone()]}),
+        ),
+        // Legacy bindings are dropped from multi-binding arrays and the rest keeps its order.
+        (
+            "shortcuts",
+            json!({"remotePrevious":[arrow_left.clone(), custom.clone()],"remoteNext":[custom_b.clone(), arrow_right.clone()]}),
+            json!({"remotePrevious":[custom.clone()],"remoteNext":[custom_b.clone()]}),
+        ),
+        (
+            "shortcuts",
+            json!({"remotePrevious":[custom.clone(), arrow_left.clone(), custom_b.clone()]}),
+            json!({"remotePrevious":[custom.clone(), custom_b.clone()]}),
+        ),
+        // Duplicate legacy bindings leave an empty array.
+        (
+            "shortcuts",
+            json!({"remotePrevious":[arrow_left.clone(), arrow_left.clone()]}),
+            json!({"remotePrevious":[]}),
+        ),
+        // Arrays without the legacy binding are untouched.
+        (
+            "shortcuts",
+            json!({"remotePrevious":[custom.clone(), custom_b.clone()]}),
+            json!({"remotePrevious":[custom.clone(), custom_b.clone()]}),
+        ),
+        ("shortcuts", json!({"remotePrevious":[]}), json!({"remotePrevious":[]})),
+        ("shortcuts", json!({"newTerminal":[]}), json!({"newTerminal":[]})),
+        ("shortcuts", json!({}), json!({})),
+        (
+            "other",
+            json!({"remotePrevious":[arrow_left.clone()],"remoteNext":[arrow_right.clone()]}),
+            json!({"remotePrevious":[arrow_left],"remoteNext":[arrow_right]}),
+        ),
+    ];
+    let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("INSERT INTO shortcut_cases(key, value_json) ");
+    query.push_values(&values, |mut row, (setting, before, _)| {
+        row.push_bind(*setting).push_bind(before.to_string());
+    });
+    query.build().execute(&db.pool).await.unwrap();
+    let sql = include_str!("../migrations/0011_sidebar_view_shortcuts.sql").replace("t_app_setting", "shortcut_cases");
     sqlx::raw_sql(&sql).execute(&db.pool).await.unwrap();
     let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
         .fetch_all(&db.pool).await.unwrap();

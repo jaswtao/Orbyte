@@ -416,6 +416,7 @@ const { TerminalRegistry } = loadCommonJs(registrySource, (name) => {
   if (name === '../../i18n/translate') return { t: translate }
   if (name === './terminalClient') return { TerminalClient: class {
     term = new xterm.Terminal()
+    handleSudoKey() { return true }
   } }
   throw new Error(`未预期的依赖：${name}`)
 }, { document: { querySelector: () => null, createElement: () => new TerminalHost() }, navigator: { clipboard: {

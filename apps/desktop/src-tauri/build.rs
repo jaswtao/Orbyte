@@ -49,6 +49,7 @@ const COMMANDS: &[&str] = &[
     "ack_terminal",
     "pause_terminal_output",
     "write_terminal",
+    "submit_sudo_saved_password",
     "terminal_uses_native_paste",
     "set_active_terminal",
     "resize_terminal",

@@ -76,9 +76,9 @@
     ]
   },
   {
-    "id": "remotePrevious",
-    "label": "上一个远程连接页签",
-    "scope": "remote",
+    "id": "sidebarViewPrevious",
+    "label": "上一个侧栏视图",
+    "scope": "project",
     "defaults": [
       {
         "code": "ArrowLeft",
@@ -90,9 +90,9 @@
     ]
   },
   {
-    "id": "remoteNext",
-    "label": "下一个远程连接页签",
-    "scope": "remote",
+    "id": "sidebarViewNext",
+    "label": "下一个侧栏视图",
+    "scope": "project",
     "defaults": [
       {
         "code": "ArrowRight",
@@ -102,6 +102,18 @@
         "metaKey": false
       }
     ]
+  },
+  {
+    "id": "remotePrevious",
+    "label": "上一个远程连接页签",
+    "scope": "remote",
+    "defaults": []
+  },
+  {
+    "id": "remoteNext",
+    "label": "下一个远程连接页签",
+    "scope": "remote",
+    "defaults": []
   },
   {
     "id": "newTerminal",

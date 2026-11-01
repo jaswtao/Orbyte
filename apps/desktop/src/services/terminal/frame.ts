@@ -10,6 +10,7 @@ export const FrameKind = {
   Status: 2,
   Error: 3,
   Gap: 4,
+  SudoPrompt: 5,
 } as const
 
 export const FRAME_HEADER_LEN = 17
@@ -35,7 +36,7 @@ export function decodeFrame(data: TerminalFrameData): TerminalFrame {
   } else buffer = data
   if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < FRAME_HEADER_LEN) throw new Error('Invalid terminal frame')
   const view = new DataView(buffer)
-  if (![1, 2, 3, 4].includes(view.getUint8(0))) throw new Error('Unknown terminal frame kind')
+  if (![1, 2, 3, 4, 5].includes(view.getUint8(0))) throw new Error('Unknown terminal frame kind')
   return {
     kind: view.getUint8(0),
     seq: Number(view.getBigUint64(1, true)),

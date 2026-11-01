@@ -8,7 +8,7 @@
 export type InputSender = (data: string) => Promise<void>
 
 export class InputQueue {
-  private pending = ''
+  private pending: Array<string | (() => Promise<void>)> = []
   private inFlight = false
   private sender: InputSender | null = null
   private generation = 0
@@ -29,22 +29,31 @@ export class InputQueue {
 
   push(data: string): void {
     if (!data || this.paused) return
-    this.pending += data
+    const last = this.pending.length - 1
+    if (typeof this.pending[last] === 'string') this.pending[last] += data
+    else this.pending.push(data)
+    this.pump()
+  }
+
+  /** Queue a backend operation at the same ordering boundary as terminal bytes. */
+  pushAction(action: () => Promise<void>): void {
+    if (this.paused) return
+    this.pending.push(action)
     this.pump()
   }
 
   /** 丢弃尚未发送的输入。 */
   clear(): void {
-    this.pending = ''
+    this.pending = []
   }
 
   private pump(): void {
-    if (this.inFlight || !this.sender || !this.pending) return
-    const data = this.pending
+    if (this.inFlight || !this.sender || !this.pending.length) return
+    const data = this.pending.shift()!
     const generation = this.generation
-    this.pending = ''
     this.inFlight = true
-    this.sender(data)
+    const operation = typeof data === 'string' ? this.sender(data) : data()
+    operation
       .catch((error) => { if (generation === this.generation) this.onError(error) })
       .finally(() => {
         if (generation !== this.generation) return

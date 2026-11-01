@@ -343,6 +343,7 @@ impl SshHub {
                 Box::new(move || hub.finish_auth(&batch_id))
             },
             on_state,
+            saved_password: request.saved_password,
         };
         let terminal = match SshTerminal::start(launch) {
             Ok(terminal) => terminal,
@@ -869,6 +870,7 @@ pub struct ShellRequest {
     pub cols: u16,
     pub rows: u16,
     pub sink: SharedSink,
+    pub saved_password: Option<crate::shell::SavedPasswordReader>,
 }
 
 pub struct SftpRequest {

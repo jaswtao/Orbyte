@@ -6,15 +6,18 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import ts from 'typescript'
 import { Channel } from '@tauri-apps/api/core'
+import xterm from '@xterm/xterm'
 
 const { OutputRecovery, AckQueue } = await loadService('terminal/recovery')
 const flush = () => new Promise((resolve) => setTimeout(resolve, 25))
 const { InputQueue } = await loadService('terminal/inputQueue')
+const sudoInputModule = await loadService('terminal/sudoInput')
 const frameModule = await loadService('terminal/frame')
 const recoveryModule = await loadService('terminal/recovery')
 const contentModule = await loadService('terminal/contentActivity')
 const outputModule = await loadService('terminal/outputScheduler')
 const directoryModule = await loadService('remote/directory')
+const imeModule = await loadService('terminal/ime')
 
 test('停止期间丢弃后续输入，旧写入失败不再误报到新会话', async () => {
   const errors = []
@@ -38,7 +41,7 @@ const clientSource = ts.transpileModule(await readFile(new URL('../src/services/
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText
 
-function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, performance }) {
+function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, performance }, realTerminal = false) {
   const callbacks = new Map()
   let next = 0
   const previous = globalThis.window
@@ -60,6 +63,19 @@ function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, perfo
     write(data, callback) { if (this.failWrite) throw new Error('parser failed'); this.writes.push(new TextDecoder().decode(data)); callback?.() }
     dispose() {} reset() {}
   }
+  // Use the actual parser and buffers, with only layout and rendering events simulated.
+  class ParsedTerminal extends xterm.Terminal {
+    writes = []
+    textarea = Object.assign(new EventTarget(), { style: {}, value: '' })
+    composition = { style: {} }
+    element = { querySelector: (selector) => selector === '.xterm-screen'
+      ? { clientWidth: 800, clientHeight: 480 } : this.composition }
+    loadAddon() {} open() {}
+    onRender(callback) { return this.onWriteParsed(callback) }
+    write(data, callback) {
+      super.write(data, () => { this.writes.push(typeof data === 'string' ? data : new TextDecoder().decode(data)); callback?.() })
+    }
+  }
   const exports = {}
   const document = { visibilityState: 'visible' }
   vm.runInNewContext(clientSource, { exports, window, document, performance: clock.performance, queueMicrotask, ArrayBuffer,
@@ -67,12 +83,13 @@ function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, perfo
     require(name) {
       if (name === '@tauri-apps/api/core') return { Channel }
       if (name === '@xterm/addon-fit') return { FitAddon: class { fit() {} proposeDimensions() { return { cols: 80, rows: 24 } } } }
-      if (name === '@xterm/xterm') return { Terminal }
+      if (name === '@xterm/xterm') return { Terminal: realTerminal ? ParsedTerminal : Terminal }
       if (name === '../terminalApi') return { terminalApi: api }
       if (name === './recovery') return recoveryModule
       if (name === './frame') return frameModule
       if (name === './inputQueue') return { InputQueue }
-      if (name === './ime') return { bindTerminalIme: () => ({ dispose() {}, reset() {} }) }
+      if (name === './sudoInput') return sudoInputModule
+      if (name === './ime') return realTerminal ? imeModule : { bindTerminalIme: () => ({ dispose() {}, reset() {}, recover() {}, refresh() {} }) }
       if (name === './selection') return { bindTerminalSelection: () => ({ dispose() {} }) }
       if (name === './shellIntegration') return { ShellIntegration: class { reset() {} input() {} } }
       if (name === '../remote/directory') return directoryModule
@@ -99,6 +116,49 @@ function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, perfo
   return { client, deliver, statuses, outputActivity, diagnostics, displays, api, callbacks, channel, container, document }
 }
 
+for (const [name, hidden, glyph] of [
+  ['inverse cursor', true, '\x1b[7m \x1b[0m'],
+  ['RGB cursor', true, '\x1b[38;2;30;30;30;48;2;220;220;220m \x1b[0m'],
+  ['hardware cursor', false, ' '],
+]) test(`display recovery retains ${name} when redraw omits DECTCEM`, async (t) => {
+  const f = clientFixture(t, {}, undefined, true)
+  f.container.offsetWidth = 800
+  f.container.offsetHeight = 480
+  f.client.term.resize(80, 24)
+  f.client.updateStatus({ state: 'running' })
+  const normal = '\x1b[38;2;220;220;220;48;2;30;30;30m'
+  const redraw = `\x1b[2J\x1b[3;4H${normal}x${glyph}${normal}x\x1b[0m\x1b[24;80H`
+  f.deliver(1, (hidden ? '\x1b[?25l' : '\x1b[?25h') + redraw)
+  await waitForOutput(f, redraw)
+  const { textarea } = f.client.term
+  textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(textarea.style.left, hidden ? '40px' : '790px')
+  assert.equal(textarea.style.top, hidden ? '40px' : '460px')
+  f.api.listTerminalSessions = async () => [{ terminalId: 'session', status: { state: 'running' } }]
+  const staleChannel = f.channel
+  for (const background of [false, true]) {
+    f.client.setVisible(!background)
+    f.api.subscribeTerminal = async (_id, channel) => {
+      // Late output from the old subscription must not change cursor modes.
+      staleChannel.onmessage(outputFrame(1, hidden ? '\x1b[?25h' : '\x1b[?25l'))
+      channel.onmessage(outputFrame(1, redraw))
+    }
+    f.client.pauseDisplay(1)
+    await f.client.resumeDisplay()
+    f.client.setVisible(true)
+    textarea.dispatchEvent(new Event('compositionupdate'))
+    assert.equal(textarea.style.left, hidden ? '40px' : '790px')
+    assert.equal(textarea.style.top, hidden ? '40px' : '460px')
+    const cell = f.client.term.buffer.active.getLine(2).getCell(4)
+    if (name === 'inverse cursor') assert.ok(cell.isInverse())
+    if (name === 'RGB cursor') assert.equal(cell.getBgColor(), 0xdcdcdc)
+  }
+  await new Promise((resolve) => f.client.term.write('\x1b[?25h\x1b[5;7H', resolve))
+  textarea.dispatchEvent(new Event('compositionend'))
+  assert.equal(textarea.style.left, '60px')
+  assert.equal(textarea.style.top, '80px')
+})
+
 test('remote clients deliver directory reports without enabling local command tracking', (t) => {
   const events = []
   const prompts = []
@@ -109,6 +169,56 @@ test('remote clients deliver directory reports without enabling local command tr
   f.client.term.oscHandlers.get(9)('9;relative')
   assert.deepEqual(prompts, ['cwd'])
   assert.deepEqual(events.map((event) => ({ ...event })), [{ type: 'cwd', path: '/home/中文 space' }, { type: 'cwd', path: '/var/log' }])
+})
+
+test('remote sudo frames offer physical Enter while paste and manual input use ordinary writes', async (t) => {
+  const prompts = [], submissions = [], written = []
+  const f = clientFixture(t, { shellIntegration: false, onSudoPrompt: (available) => prompts.push(available) })
+  f.api.submitSudoSavedPassword = async (...args) => { submissions.push(args) }
+  f.api.writeTerminal = async (_, data) => { written.push(data) }
+  f.deliver(2, '{"state":"running"}')
+  f.deliver(5, '{"promptId":"first"}')
+  assert.equal(prompts.at(-1), true)
+  const key = () => ({ type: 'keydown', key: 'Enter', keyCode: 13, preventDefault() {}, stopPropagation() {} })
+  assert.equal(f.client.handleSudoKey(key()), false)
+  assert.equal(f.client.handleSudoKey(key()), false)
+  await flush()
+  assert.deepEqual(submissions, [['session', 'first']])
+  assert.deepEqual(written, [])
+  f.deliver(5, '{"promptId":"second"}')
+  f.client.term.data('\r')
+  assert.equal(prompts.at(-1), false)
+  assert.equal(f.client.handleSudoKey(key()), true)
+  await flush()
+  assert.deepEqual(written, ['\r'])
+  assert.equal(submissions.length, 1)
+  f.deliver(5, '{"promptId":"third"}')
+  f.client.term.data('manual\x7f')
+  assert.equal(prompts.at(-1), false)
+  f.deliver(5, '{"promptId":null}')
+  f.deliver(2, '{"state":"exited","exitCode":0}')
+  assert.equal(prompts.at(-1), false)
+})
+
+test('failed sudo IPC reports a localized error without forwarding an empty Enter', async (t) => {
+  const errors = [], written = []
+  const f = clientFixture(t, { shellIntegration: false, onError: (error) => errors.push(error) })
+  f.api.submitSudoSavedPassword = async () => { throw new Error('missing credential') }
+  f.api.writeTerminal = async (_, data) => { written.push(data) }
+  f.deliver(2, '{"state":"running"}')
+  f.deliver(5, '{"promptId":"first"}')
+  f.client.handleSudoKey({ type: 'keydown', key: 'Enter', keyCode: 13, preventDefault() {}, stopPropagation() {} })
+  await flush()
+  assert.deepEqual(errors, ['remote.sudoPasswordFailed'])
+  assert.deepEqual(written, [])
+})
+
+test('sudo metadata never enables saved-password handling in a local terminal', (t) => {
+  const prompts = []
+  const f = clientFixture(t, { onSudoPrompt: (available) => prompts.push(available) })
+  f.deliver(2, '{"state":"running"}')
+  f.deliver(5, '{"promptId":"first"}')
+  assert.equal(prompts.includes(true), false)
 })
 
 test('终端回传恢复已读内容的状态，真实输出保持未读直到查看', (t) => {

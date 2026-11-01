@@ -80,7 +80,7 @@ function visualCarets(term: Terminal): { col: number; row: number }[] {
   return found
 }
 
-export function bindTerminalIme(term: Terminal, visible: () => boolean = () => true): IDisposable & { reset(): void } {
+export function bindTerminalIme(term: Terminal, visible: () => boolean = () => true): IDisposable & { reset(): void; recover(): void; refresh(): void } {
   const textarea = term.textarea!
   const screen = term.element!.querySelector<HTMLElement>('.xterm-screen')!
   const composition = term.element!.querySelector<HTMLElement>('.composition-view')!
@@ -146,7 +146,19 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
   textarea.addEventListener('compositionupdate', resync)
   textarea.addEventListener('compositionend', end)
   textarea.addEventListener('focus', sync)
-  const reset = () => { cursorHidden = false; pinned = null; sync() }
+  const clearPosition = () => {
+    pinned = null
+    clearTimeout(delayed)
+    delayed = undefined
+    if (frame !== undefined) cancelAnimationFrame(frame)
+    frame = undefined
+    sync()
+  }
+  const reset = () => { cursorHidden = false; composing = false; clearPosition() }
+  // xterm.reset() preserves DECTCEM. A resize redraw need not repeat that mode,
+  // so keep tracking it while discarding coordinates from the previous screen.
+  // Leave an active native composition intact to avoid losing unsent text.
+  const recover = () => { clearPosition() }
   const subscriptions = [
     term.onRender(schedule), term.onCursorMove(schedule), term.onResize(schedule), term.onScroll(schedule),
     // 返回 false，继续交由 xterm 执行原有模式切换和重置。
@@ -168,7 +180,7 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
     watch()
   }
   sync()
-  return { reset, dispose() {
+  return { reset, recover, refresh: schedule, dispose() {
     disposed = true
     clearTimeout(delayed)
     if (frame !== undefined) cancelAnimationFrame(frame)

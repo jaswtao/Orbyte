@@ -192,11 +192,8 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   assert.equal(selected.length, 3)
   layout.value.tabs = [{ id: 'one' }, { id: 'two' }]
   layout.value.activeTabId = 'one'
-  assert.equal(press('ArrowRight', newTerminal), true)
-  await nextTick()
-  assert.equal(layout.value.activeTabId, 'two')
-  assert.equal(press('ArrowLeft', newTerminal), true)
-  await nextTick()
+  assert.equal(press('ArrowRight', newTerminal), false)
+  assert.equal(press('ArrowLeft', newTerminal), false)
   assert.equal(layout.value.activeTabId, 'one')
   assert.equal(press('Digit2'), true)
   await nextTick()

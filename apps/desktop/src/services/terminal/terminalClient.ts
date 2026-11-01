@@ -13,6 +13,7 @@ import { terminalApi, type TerminalSize, type TerminalStatus, type TerminalSessi
 import { AckQueue, OutputRecovery, withTimeout } from './recovery'
 import { decodeFrame, decodeJsonPayload, FrameKind, type TerminalFrameData } from './frame'
 import { InputQueue } from './inputQueue'
+import { SudoInput } from './sudoInput'
 import { bindTerminalIme } from './ime'
 import { bindTerminalSelection } from './selection'
 import { ShellIntegration, type ShellEvent } from './shellIntegration'
@@ -28,6 +29,7 @@ const CONTENT_CHECK_MS = 1000
 const DISPLAY_RETRY_INITIAL_MS = 1000
 const DISPLAY_RETRY_MAX_MS = 10000
 const DISPLAY_STABLE_MS = 30000
+const SUDO_PASSWORD_TIMEOUT_MS = 15000
 export const INITIAL_SIZE: TerminalSize = { cols: 120, rows: 30 }
 
 export interface TerminalClientEvents {
@@ -39,6 +41,7 @@ export interface TerminalClientEvents {
   onConnection?: (state: 'connected' | 'reconnecting' | 'disconnected') => void
   onWarning?: (message: string) => void
   onDisplay?: (paused: boolean, droppedBytes: number) => void
+  onSudoPrompt?: (available: boolean) => void
   /** Remote sessions parse directory reports separately from local shell integration. */
   shellIntegration?: boolean
   /** Remote prompt safety: directory reports and later keystrokes. */
@@ -59,6 +62,7 @@ export class TerminalClient {
   })
   private readonly fit = new FitAddon()
   private readonly input = new InputQueue((error) => this.events.onError?.(t('terminal.inputFailed', { reason: String(error) })))
+  private readonly sudo = new SudoInput((available) => this.events.onSudoPrompt?.(available))
   private terminalId: string | null = null
   private processedSeq: number | null = null
   private readonly ack = new AckQueue((seq) => this.terminalId
@@ -138,6 +142,7 @@ export class TerminalClient {
     }
     this.term.onData((data) => this.safe(() => {
       if (this.term.options.disableStdin) return
+      if (data) this.sudo.manualInput()
       if (shellIntegration) this.integration.input(data)
       else if (data) this.events.onRemotePrompt?.(data.includes('\r') || data.includes('\n') ? 'submit' : 'input')
       this.input.push(data)
@@ -148,6 +153,20 @@ export class TerminalClient {
 
   get id(): string | null {
     return this.terminalId
+  }
+
+  /** Only a physical Enter may authorize sending the saved password. */
+  handleSudoKey(event: KeyboardEvent): boolean {
+    if (this.term.options.disableStdin || this.events.shellIntegration !== false || this.connection !== 'connected' || this.displayPaused) return true
+    return this.sudo.key(event, (promptId, complete) => {
+      const id = this.terminalId
+      if (!id) { complete(); return }
+      this.input.pushAction(async () => {
+        try { await withTimeout(terminalApi.submitSudoSavedPassword(id, promptId), SUDO_PASSWORD_TIMEOUT_MS) }
+        catch { if (!this.disposed && this.terminalId === id) this.events.onError?.(t('remote.sudoPasswordFailed')) }
+        finally { complete() }
+      })
+    })
   }
 
   /** 创建绑定到本实例的 Channel，用于 create / start / subscribe 命令。 */
@@ -173,6 +192,8 @@ export class TerminalClient {
   /** 命令返回 terminal_id 后绑定，之前排队的输入和 ack 随之发出。 */
   attach(terminalId: string): void {
     const newSession = this.terminalId !== terminalId
+    if (newSession) this.sudo.reset()
+    else this.sudo.manualInput()
     if (newSession) {
       this.cancelDisplayRetry()
       this.displayEpoch++
@@ -337,8 +358,13 @@ export class TerminalClient {
     try {
       await this.pauseRequest
       if (this.disposed || this.displayEpoch !== epoch || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
+      // Isolate discarded output before resetting the screen and its IME anchor.
+      this.activeChannel = null
+      this.pendingChannel = null
+      this.output.clear()
       this.displayPaused = false
-      this.reset()
+      this.term.reset()
+      this.ime.recover()
       this.recovery.reset()
       await this.reconnect()
       if (this.disposed || this.displayEpoch !== epoch || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
@@ -378,6 +404,7 @@ export class TerminalClient {
   }
 
   pauseInput(): void {
+    this.sudo.reset()
     this.cancelDisplayRetry()
     this.displayEpoch++
     this.resumingDisplay = false
@@ -404,6 +431,7 @@ export class TerminalClient {
     const changed = JSON.stringify(status) !== JSON.stringify(this.status)
     this.status = status
     if (status.state === 'exited' || status.state === 'failed') {
+      this.sudo.reset()
       this.cancelDisplayRetry()
       this.displayEpoch++
       this.resumingDisplay = false
@@ -461,6 +489,7 @@ export class TerminalClient {
       }
       await withTimeout(parsed)
       if (cancelled() || this.status.state !== 'running') return
+      this.ime.refresh()
       this.setConnection('connected')
       this.recovery.restored()
       this.diagnostic('reconnect_succeeded')
@@ -503,6 +532,7 @@ export class TerminalClient {
   private setConnection(state: 'connected' | 'reconnecting' | 'disconnected'): void {
     if (this.connection === state) return
     this.connection = state
+    if (state !== 'connected') this.sudo.manualInput()
     try { this.events.onConnection?.(state) } catch { /* Connection notifications must not block recovery. */ }
   }
 
@@ -544,6 +574,12 @@ export class TerminalClient {
       case FrameKind.Gap:
         if (!this.displayPaused) this.events.onGap?.(decodeJsonPayload<{ droppedBytes: number }>(frame.payload).droppedBytes)
         break
+      case FrameKind.SudoPrompt: {
+        const { promptId } = decodeJsonPayload<{ promptId: string | null }>(frame.payload)
+        if (promptId !== null && typeof promptId !== 'string') throw new Error('Invalid sudo prompt')
+        if (this.events.shellIntegration === false && this.status.state === 'running') this.sudo.update(promptId)
+        break
+      }
     }
   }
 

@@ -14,6 +14,7 @@ pub const FRAME_OUTPUT: u8 = 1;
 pub const FRAME_STATUS: u8 = 2;
 pub const FRAME_ERROR: u8 = 3;
 pub const FRAME_GAP: u8 = 4;
+pub const FRAME_SUDO_PROMPT: u8 = 5;
 
 /// 帧头长度：kind + seq + timestamp。
 pub const FRAME_HEADER_LEN: usize = 1 + 8 + 8;

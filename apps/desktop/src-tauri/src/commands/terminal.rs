@@ -320,6 +320,12 @@ pub async fn terminal_uses_native_paste(state: State<'_, AppState>, terminal_id:
 }
 
 #[tauri::command]
+pub async fn submit_sudo_saved_password(state: State<'_, AppState>, terminal_id: String, prompt_id: String) -> CmdResult<()> {
+    let terminal = state.ssh.terminal(&terminal_id).ok_or("The SSH session has ended.")?;
+    blocking(move || terminal.submit_saved_password(prompt_id)).await
+}
+
+#[tauri::command]
 pub async fn write_terminal(state: State<'_, AppState>, terminal_id: String, data: String) -> CmdResult<()> {
     if let Some(terminal) = state.ssh.terminal(&terminal_id) {
         return terminal.write(data.into_bytes()).map_err(err_text);

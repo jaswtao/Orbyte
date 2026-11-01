@@ -87,6 +87,7 @@ export const terminalApi = {
   pauseOutput: (terminalId: string) => invoke<void>('pause_terminal_output', { terminalId }),
 
   writeTerminal: (terminalId: string, data: string) => invoke<void>('write_terminal', { terminalId, data }),
+  submitSudoSavedPassword: (terminalId: string, promptId: string) => invoke<void>('submit_sudo_saved_password', { terminalId, promptId }),
   terminalUsesNativePaste: (terminalId: string) => invoke<boolean>('terminal_uses_native_paste', { terminalId }),
 
   resizeTerminal: (terminalId: string, size: TerminalSize, nudge = false) =>

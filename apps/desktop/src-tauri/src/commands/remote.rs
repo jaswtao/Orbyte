@@ -394,6 +394,10 @@ pub async fn connect_ssh_terminal(
         cols: size.cols,
         rows: size.rows,
         sink: output_sink(channel),
+        saved_password: {
+            let passwords = state.ssh_passwords.clone();
+            Some(std::sync::Arc::new(move || passwords.read(&connection_id)))
+        },
     };
     let ssh = state.ssh.clone();
     tauri::async_runtime::spawn_blocking(move || ssh.connect_shell(request).map_err(err_text)).await.map_err(err_text)??;

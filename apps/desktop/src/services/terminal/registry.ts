@@ -27,6 +27,7 @@ export interface TerminalEntry {
   remote: boolean
   /** Prompt safety for an injected remote cd. Local sessions stay unknown. */
   remotePrompt: RemotePrompt
+  sudoPasswordAvailable: boolean
 }
 
 export class TerminalRegistry {
@@ -107,6 +108,7 @@ export class TerminalRegistry {
         entry.unread = !entry.visible && unread
       },
       onRemotePrompt: remote ? (event) => { entry.remotePrompt = nextRemotePrompt(entry.remotePrompt, event) } : undefined,
+      onSudoPrompt: (available) => { entry.sudoPasswordAvailable = available },
       onShell: (event) => {
         const shell = { ...entry.shell, integrated: true }
         if (event.type === 'cwd') shell.cwd = event.path
@@ -121,8 +123,9 @@ export class TerminalRegistry {
       onError,
       onGap: (bytes) => { onWarning?.(t('terminal.outputGap', { bytes: bytes.toLocaleString() })) },
     }))
-    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected', displayPaused: false, droppedBytes: 0, remote, remotePrompt: 'unknown' })
+    const entry = shallowReactive<TerminalEntry>({ host: markRaw(host), client, status: { state: 'starting' }, shell: { integrated: false, cwd: null, command: 'idle', commandStartedAt: null, lastExitCode: null }, unread: false, visible: false, intentionalStop: false, connection: 'connected', displayPaused: false, droppedBytes: 0, remote, remotePrompt: 'unknown', sudoPasswordAvailable: false })
     entry.client.term.attachCustomKeyEventHandler((event) => {
+      if (!entry.client.handleSudoKey(event)) return false
       // Windows 输入法会把 Esc 标记为 229，xterm 6 会在编码前丢弃它。
       // 正在组词时仍交给输入法取消候选，避免误中断终端程序。
       if (event.keyCode === 229 && event.code === 'Escape' && !event.isComposing &&

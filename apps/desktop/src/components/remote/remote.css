@@ -159,6 +159,16 @@
   background: var(--surface);
 }
 
+.terminal-sudo-hint {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  background: var(--selection);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .remote-current-path {
   padding: 8px 12px 0;
   color: var(--muted);

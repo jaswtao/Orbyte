@@ -17,6 +17,7 @@ mod keepalive;
 mod path;
 mod sftp;
 mod shell;
+mod sudo;
 mod transfer;
 
 pub use connect::Credential;
@@ -24,7 +25,7 @@ pub use path::normalize_remote;
 pub use error::SshError;
 pub use hub::{EnqueueRequest, LocalGrant, LocalGrantKind, NewHostKey, SftpRequest, ShellRequest, SshHub, SshUiEvent, StoredHostKey, TransferView, UiSink};
 pub use sftp::DirBatch;
-pub use shell::SshTerminal;
+pub use shell::{SavedPasswordReader, SshTerminal};
 
 /// Internal surface for the ignored real-server protocol probe.
 /// Not part of the application API; enabled only by the `probe` feature.

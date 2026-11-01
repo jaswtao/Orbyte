@@ -6,12 +6,13 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::io::{Read, Write};
-use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use orbyte_terminal::output::{encode_frame, FlowConfig, FlowState, PushOutcome, FRAME_ERROR, FRAME_STATUS};
+use orbyte_terminal::output::{encode_frame, FlowConfig, FlowState, PushOutcome, FRAME_ERROR, FRAME_STATUS, FRAME_SUDO_PROMPT};
 use orbyte_terminal::{SessionRuntime, SharedSink, TerminalResult, TerminalSessionInfo, TerminalSize, TerminalStatus};
 use ssh2::{Channel, Session};
 
@@ -23,9 +24,26 @@ use crate::hostkey::PresentedKey;
 use crate::error::{SshError, SshResult};
 use crate::io_wait::{readable_now, wait_session};
 use crate::keepalive::{Keepalive, KeepaliveAction};
+use crate::sudo::{SudoDetector, SudoPrompt};
+
+pub type SavedPasswordReader = Arc<dyn Fn() -> Result<Option<Zeroizing<String>>, String> + Send + Sync>;
+
+enum InputRequest {
+    Data(Vec<u8>),
+    SavedPassword { prompt_id: String, reply: mpsc::Sender<Result<(), String>>, cancelled: Arc<AtomicBool> },
+}
+
+struct SecretWrite {
+    bytes: Zeroizing<Vec<u8>>,
+    offset: usize,
+    reply: mpsc::Sender<Result<(), String>>,
+    cancelled: Arc<AtomicBool>,
+}
 
 const INPUT_CAP: usize = 256 * 1024;
 const READ_CHUNK: usize = 64 * 1024;
+const SAVED_PASSWORD_TIMEOUT: Duration = Duration::from_secs(5);
+const SAVED_PASSWORD_EXPIRED: &str = "The saved password request expired. Enter the password manually.";
 
 struct OutputState {
     flow: FlowState,
@@ -35,6 +53,9 @@ struct OutputState {
     pending_errors: VecDeque<String>,
     exited: bool,
     disposed: bool,
+    sudo: SudoDetector,
+    sudo_prompt: SudoPrompt,
+    sudo_dirty: bool,
 }
 
 struct OutputShared {
@@ -52,7 +73,7 @@ pub struct SshTerminal {
     id: String,
     config_id: String,
     shared: Arc<OutputShared>,
-    input_tx: Mutex<Option<SyncSender<Vec<u8>>>>,
+    input_tx: Mutex<Option<SyncSender<InputRequest>>>,
     resize: Arc<Mutex<Option<(TerminalSize, bool)>>>,
     cancel: Arc<CancelToken>,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -74,6 +95,7 @@ pub struct ShellLaunch {
     pub prepare_auth: Box<dyn FnOnce(&PresentedKey) -> SshResult<Zeroizing<String>> + Send>,
     pub finish_auth: Box<dyn FnOnce() + Send>,
     pub on_state: Box<dyn Fn(&str, Option<String>) + Send + Sync>,
+    pub saved_password: Option<SavedPasswordReader>,
 }
 
 impl SshTerminal {
@@ -90,6 +112,9 @@ impl SshTerminal {
                 pending_errors: VecDeque::new(),
                 exited: false,
                 disposed: false,
+                sudo: SudoDetector::default(),
+                sudo_prompt: SudoPrompt::default(),
+                sudo_dirty: true,
             }),
             cv: Condvar::new(),
         });
@@ -128,18 +153,47 @@ impl SshTerminal {
     pub fn cancel_token(&self) -> Arc<CancelToken> {
         self.cancel.clone()
     }
+
+    /// Wait on a blocking task; the SSH worker validates the prompt before reading credentials.
+    pub fn submit_saved_password(&self, prompt_id: String) -> Result<(), String> {
+        let (reply, result) = mpsc::channel();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        {
+            let state = self.shared.lock();
+            if state.exited || state.sudo_prompt.prompt_id.as_ref() != Some(&prompt_id) {
+                return Err("The sudo prompt is no longer available. Enter the password manually.".into());
+            }
+            let guard = self.input_tx.lock().unwrap_or_else(|err| err.into_inner());
+            let tx = guard.as_ref().ok_or("The SSH session has ended.")?;
+            tx.try_send(InputRequest::SavedPassword { prompt_id, reply, cancelled: cancelled.clone() })
+                .map_err(|_| "The terminal input queue is full. Enter the password manually.")?;
+        }
+        match result.recv_timeout(SAVED_PASSWORD_TIMEOUT) {
+            Ok(result) => result,
+            Err(RecvTimeoutError::Timeout) => {
+                cancelled.store(true, Ordering::SeqCst);
+                Err("Timed out sending the saved password. Enter the password manually.".into())
+            }
+            Err(RecvTimeoutError::Disconnected) => Err("The SSH session has ended. Enter the password manually.".into()),
+        }
+    }
 }
 
 impl SessionRuntime for SshTerminal {
     fn write(&self, data: Vec<u8>) -> TerminalResult<()> {
-        if self.shared.lock().exited {
+        let state = self.shared.lock();
+        if state.exited {
             return Err(orbyte_terminal::TerminalError::NotRunning);
         }
         let guard = self.input_tx.lock().unwrap_or_else(|err| err.into_inner());
         let Some(tx) = guard.as_ref() else {
             return Err(orbyte_terminal::TerminalError::NotRunning);
         };
-        tx.try_send(data).map_err(|_| orbyte_terminal::TerminalError::Io("输入队列已满".into()))
+        // The worker applies this input to its sudo detector in queue order.
+        tx.try_send(InputRequest::Data(data)).map_err(|_| orbyte_terminal::TerminalError::Io("输入队列已满".into()))?;
+        drop(state);
+        self.shared.cv.notify_all();
+        Ok(())
     }
 
     fn resize(&self, size: TerminalSize) -> TerminalResult<()> {
@@ -167,6 +221,7 @@ impl SessionRuntime for SshTerminal {
         let status = state.status.clone();
         state.pending_status.clear();
         state.pending_status.push_back(status);
+        state.sudo_dirty = true;
         drop(state);
         self.shared.cv.notify_all();
         Ok(())
@@ -211,8 +266,8 @@ impl SessionRuntime for SshTerminal {
     }
 }
 
-fn worker(launch: ShellLaunch, shared: Arc<OutputShared>, input_rx: Receiver<Vec<u8>>, resize: Arc<Mutex<Option<(TerminalSize, bool)>>>) {
-    let ShellLaunch { host, port, saved_algorithms, username, credential, cols, rows, cancel, prepare_auth, finish_auth, on_state, .. } = launch;
+fn worker(launch: ShellLaunch, shared: Arc<OutputShared>, input_rx: Receiver<InputRequest>, resize: Arc<Mutex<Option<(TerminalSize, bool)>>>) {
+    let ShellLaunch { host, port, saved_algorithms, username, credential, cols, rows, cancel, prepare_auth, finish_auth, on_state, saved_password, .. } = launch;
     let result = (|| -> SshResult<()> {
         let finish_auth = Defer(Some(finish_auth));
         on_state("connecting", None);
@@ -227,7 +282,7 @@ fn worker(launch: ShellLaunch, shared: Arc<OutputShared>, input_rx: Receiver<Vec
         let mut channel = open_shell(&mut connected, cols, rows, &cancel)?;
         on_state("ready", None);
         set_status(&shared, TerminalStatus::Running);
-        shell_loop(&mut channel, &connected.session, &connected.stream, &shared, &input_rx, &resize, &cancel, initialization.as_bytes())?;
+        shell_loop(&mut channel, &connected.session, &connected.stream, &shared, &input_rx, &resize, &cancel, initialization.as_bytes(), saved_password.as_ref())?;
         Ok(())
     })();
     if let Err(error) = result {
@@ -414,12 +469,15 @@ fn shell_loop(
     session: &Session,
     stream: &std::net::TcpStream,
     shared: &OutputShared,
-    input_rx: &Receiver<Vec<u8>>,
+    input_rx: &Receiver<InputRequest>,
     resize: &Mutex<Option<(TerminalSize, bool)>>,
     cancel: &CancelToken,
     initialization: &[u8],
+    saved_password: Option<&SavedPasswordReader>,
 ) -> SshResult<()> {
     let mut buffered = VecDeque::from(initialization.to_vec());
+    let mut pending_request = None;
+    let mut secret_write: Option<SecretWrite> = None;
     let mut initialization_echo = InitializationEcho::new(!initialization.is_empty());
     let mut keepalive = Keepalive::default();
     let mut probing = false;
@@ -452,6 +510,7 @@ fn shell_loop(
             }
         }
         // A continuously readable peer must still yield to input and resize requests.
+        let mut output_drained = false;
         for _ in 0..4 {
             let inbound = readable_now(stream);
             match channel.read(&mut scratch) {
@@ -468,6 +527,10 @@ fn shell_loop(
                     probe_written = false;
                     let output = initialization_echo.filter(&scratch[..n]);
                     if !output.is_empty() {
+                        let mut state = shared.lock();
+                        state.sudo.output(&output);
+                        update_sudo(&mut state);
+                        drop(state);
                         push_output(shared, &output, cancel)?;
                     }
                 }
@@ -478,20 +541,60 @@ fn shell_loop(
                         probing = false;
                         probe_written = false;
                     }
+                    output_drained = true;
                     break;
                 }
                 Err(_) if cancel.is_cancelled() => return Err(SshError::Cancelled),
                 Err(_) => return Err(SshError::Message("连接已断开".into())),
             }
         }
-        while buffered.len() < INPUT_CAP {
-            match input_rx.try_recv() {
-                Ok(chunk) => buffered.extend(chunk),
+        let candidate = {
+            let mut state = shared.lock();
+            let candidate = (output_drained && state.sudo.settle()).then(|| state.sudo.prompt());
+            if candidate.is_none() {
+                update_sudo(&mut state);
+            }
+            candidate
+        };
+        if let Some(candidate) = candidate {
+            // Only advertise a candidate that still exists in the OS credential store.
+            // The read can enter the OS credential vault, so keep it outside the shared lock.
+            let available = saved_password_usable(saved_password);
+            let mut state = shared.lock();
+            if state.sudo.prompt().prompt_id == candidate.prompt_id && !available {
+                state.sudo.disable();
+            }
+            update_sudo(&mut state);
+        }
+        shared.cv.notify_all();
+        while secret_write.is_none() && buffered.len() < INPUT_CAP {
+            match pending_request.take().map(Ok).unwrap_or_else(|| input_rx.try_recv()) {
+                Ok(InputRequest::Data(chunk)) => {
+                    let mut state = shared.lock();
+                    state.sudo.input(&chunk);
+                    update_sudo(&mut state);
+                    buffered.extend(chunk);
+                }
+                Ok(InputRequest::SavedPassword { prompt_id, reply, cancelled }) => {
+                    // A secret action must never overtake previously accepted bytes.
+                    if !buffered.is_empty() || !output_drained {
+                        pending_request = Some(InputRequest::SavedPassword { prompt_id, reply, cancelled });
+                        break;
+                    }
+                    if cancelled.load(Ordering::SeqCst) {
+                        let _ = reply.send(Err(SAVED_PASSWORD_EXPIRED.into()));
+                        continue;
+                    }
+                    match prepare_saved_password(shared, saved_password, &prompt_id) {
+                        Ok(bytes) => secret_write = Some(SecretWrite { bytes, offset: 0, reply, cancelled }),
+                        Err(message) => { let _ = reply.send(Err(message)); }
+                    }
+                }
                 Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => break,
             }
         }
         while !buffered.is_empty() {
-            let data: Vec<u8> = buffered.iter().copied().take(READ_CHUNK).collect();
+            let data = Zeroizing::new(buffered.iter().copied().take(READ_CHUNK).collect::<Vec<u8>>());
             match channel.write(&data) {
                 Ok(0) => break,
                 Ok(n) => {
@@ -499,6 +602,25 @@ fn shell_loop(
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
                 Err(_) => return Err(SshError::Message("连接已断开".into())),
+            }
+        }
+        if let Some(secret) = secret_write.as_mut() {
+            // A request that already timed out must not inject any password bytes.
+            if secret.offset == 0 && secret.cancelled.load(Ordering::SeqCst) {
+                let _ = secret.reply.send(Err(SAVED_PASSWORD_EXPIRED.into()));
+                secret_write = None;
+            } else {
+                match channel.write(&secret.bytes[secret.offset..]) {
+                    Ok(n) => {
+                        secret.offset += n;
+                        if secret.offset == secret.bytes.len() {
+                            let _ = secret.reply.send(Ok(()));
+                            secret_write = None;
+                        }
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(_) => return Err(SshError::Message("连接已断开".into())),
+                }
             }
         }
         if let Some((size, redraw)) = resize.lock().unwrap_or_else(|err| err.into_inner()).take() {
@@ -542,10 +664,66 @@ fn push_output(shared: &OutputShared, data: &[u8], cancel: &CancelToken) -> SshR
 
 fn set_status(shared: &OutputShared, status: TerminalStatus) {
     let mut state = shared.lock();
+    if !matches!(status, TerminalStatus::Running) {
+        state.sudo.disable();
+        update_sudo(&mut state);
+    }
     state.status = status.clone();
     state.pending_status.push_back(status);
     drop(state);
     shared.cv.notify_all();
+}
+
+fn update_sudo(state: &mut OutputState) {
+    let prompt = state.sudo.prompt();
+    if prompt != state.sudo_prompt {
+        state.sudo_prompt = prompt;
+        state.sudo_dirty = true;
+    }
+}
+
+fn acceptable_saved_password(password: &str) -> bool {
+    !password.is_empty() && !password.chars().any(char::is_control)
+}
+
+fn saved_password_usable(reader: Option<&SavedPasswordReader>) -> bool {
+    reader.and_then(|read| read().ok().flatten())
+        .is_some_and(|password| acceptable_saved_password(&password))
+}
+
+fn prepare_saved_password(shared: &OutputShared, reader: Option<&SavedPasswordReader>, id: &str) -> Result<Zeroizing<Vec<u8>>, String> {
+    let stale = "The sudo prompt has changed. Enter the password manually.";
+    {
+        let state = shared.lock();
+        if !matches!(state.status, TerminalStatus::Running) || state.sudo.prompt().prompt_id.as_deref() != Some(id) {
+            return Err(stale.into());
+        }
+    }
+    let result = (|| {
+        let reader = reader.ok_or("No saved password is available. Enter the password manually.")?;
+        let password = reader().map_err(|_| "Unable to read the saved password. Enter the password manually.")?
+            .ok_or("No saved password is available. Enter the password manually.")?;
+        // Terminal line discipline must not interpret password bytes as extra commands or signals.
+        if !acceptable_saved_password(&password) {
+            return Err("This saved password cannot be entered automatically. Enter the password manually.");
+        }
+        let mut state = shared.lock();
+        if !matches!(state.status, TerminalStatus::Running) || !state.sudo.consume(id) { return Err(stale); }
+        update_sudo(&mut state);
+        let mut bytes = Zeroizing::new(Vec::with_capacity(password.len() + 1));
+        bytes.extend_from_slice(password.as_bytes());
+        bytes.push(b'\r');
+        Ok(bytes)
+    })();
+    if result.is_err() {
+        let mut state = shared.lock();
+        if state.sudo.prompt().prompt_id.as_deref() == Some(id) {
+            state.sudo.disable();
+            update_sudo(&mut state);
+        }
+    }
+    shared.cv.notify_all();
+    result.map_err(String::from)
 }
 
 fn push_error(shared: &OutputShared, message: String) {
@@ -606,6 +784,11 @@ fn collect(state: &mut OutputState) -> Vec<Vec<u8>> {
         let payload = serde_json::json!({ "message": message }).to_string();
         frames.push(encode_frame(FRAME_ERROR, state.flow.alloc_seq(), payload.as_bytes()));
     }
+    if state.sudo_dirty {
+        state.sudo_dirty = false;
+        let payload = serde_json::to_vec(&state.sudo_prompt).unwrap_or_default();
+        frames.push(encode_frame(FRAME_SUDO_PROMPT, state.flow.alloc_seq(), &payload));
+    }
     let now = Instant::now();
     while frames.len() < 8 {
         match state.flow.take_frame(now) {
@@ -614,6 +797,121 @@ fn collect(state: &mut OutputState) -> Vec<Vec<u8>> {
         }
     }
     frames
+}
+
+#[cfg(test)]
+mod sudo_tests {
+    use super::*;
+
+    fn fixture() -> (Arc<OutputShared>, String) {
+        let mut flow = FlowState::new(FlowConfig::default(), Instant::now());
+        flow.subscribe(Instant::now());
+        let mut sudo = SudoDetector::default();
+        sudo.output(b"[sudo] password for user: ");
+        assert!(sudo.settle());
+        let sudo_prompt = sudo.prompt();
+        let id = sudo_prompt.prompt_id.clone().unwrap();
+        let shared = Arc::new(OutputShared {
+            state: Mutex::new(OutputState {
+                flow, sink: Some(Arc::new(Discard)), status: TerminalStatus::Running,
+                pending_status: VecDeque::new(), pending_errors: VecDeque::new(),
+                exited: false, disposed: false, sudo, sudo_prompt, sudo_dirty: true,
+            }),
+            cv: Condvar::new(),
+        });
+        (shared, id)
+    }
+
+    struct Discard;
+    impl orbyte_terminal::FrameSink for Discard {
+        fn send(&self, _: Vec<u8>) -> bool { true }
+    }
+
+    #[test]
+    fn saved_password_is_read_per_session_and_consumed_once() {
+        for expected in ["first password", "another password 中文"] {
+            let (shared, id) = fixture();
+            let value = expected.to_string();
+            let reader: SavedPasswordReader = Arc::new(move || Ok(Some(Zeroizing::new(value.clone()))));
+            let bytes = prepare_saved_password(&shared, Some(&reader), &id).unwrap();
+            assert_eq!(bytes.as_slice(), format!("{expected}\r").as_bytes());
+            assert!(prepare_saved_password(&shared, Some(&reader), &id).is_err());
+            assert!(shared.lock().sudo_prompt.prompt_id.is_none());
+        }
+    }
+
+    #[test]
+    fn stale_or_manually_used_prompts_never_read_credentials() {
+        let (shared, id) = fixture();
+        let reader: SavedPasswordReader = Arc::new(|| panic!("must not read credentials"));
+        assert!(prepare_saved_password(&shared, Some(&reader), "stale").is_err());
+        shared.lock().sudo.input(b"manual");
+        assert!(prepare_saved_password(&shared, Some(&reader), &id).is_err());
+    }
+
+    #[test]
+    fn credential_removal_read_errors_and_control_characters_require_manual_input() {
+        let readers: Vec<SavedPasswordReader> = vec![
+            Arc::new(|| Ok(None)),
+            Arc::new(|| Err("sensitive store error".into())),
+            Arc::new(|| Ok(Some(Zeroizing::new("secret\rcommand".into())))),
+        ];
+        for reader in readers {
+            let (shared, id) = fixture();
+            let error = prepare_saved_password(&shared, Some(&reader), &id).unwrap_err();
+            assert!(!error.contains("sensitive"));
+            assert!(!error.contains("secret"));
+            assert!(shared.lock().sudo_prompt.prompt_id.is_none());
+            assert!(!shared.lock().sudo.settle());
+        }
+    }
+
+    #[test]
+    fn hint_requires_a_usable_saved_password() {
+        let usable: SavedPasswordReader = Arc::new(|| Ok(Some(Zeroizing::new("secret".into()))));
+        assert!(saved_password_usable(Some(&usable)));
+        assert!(!saved_password_usable(None));
+        let readers: Vec<SavedPasswordReader> = vec![
+            Arc::new(|| Ok(None)),
+            Arc::new(|| Err("sensitive store error".into())),
+            Arc::new(|| Ok(Some(Zeroizing::new(String::new())))),
+            Arc::new(|| Ok(Some(Zeroizing::new("secret\rcommand".into())))),
+        ];
+        for reader in readers {
+            assert!(!saved_password_usable(Some(&reader)));
+        }
+    }
+
+    #[test]
+    fn prompt_is_revalidated_after_reading_the_store() {
+        let (shared, id) = fixture();
+        let changed = shared.clone();
+        let reader: SavedPasswordReader = Arc::new(move || {
+            changed.lock().sudo.input(&[3]);
+            Ok(Some(Zeroizing::new("secret".into())))
+        });
+        assert!(prepare_saved_password(&shared, Some(&reader), &id).is_err());
+    }
+
+    #[test]
+    fn resubscription_sends_only_the_current_prompt_and_exit_clears_it() {
+        let (shared, id) = fixture();
+        let terminal = SshTerminal {
+            id: "terminal".into(), config_id: "config".into(), shared: shared.clone(),
+            input_tx: Mutex::new(None), resize: Arc::new(Mutex::new(None)),
+            cancel: CancelToken::new(), thread: Mutex::new(None),
+        };
+        let metadata = |state: &mut OutputState| {
+            collect(state).into_iter().find(|frame| frame[0] == FRAME_SUDO_PROMPT)
+                .map(|frame| serde_json::from_slice::<serde_json::Value>(&frame[17..]).unwrap())
+        };
+        assert_eq!(metadata(&mut shared.lock()).unwrap()["promptId"], id);
+        assert!(metadata(&mut shared.lock()).is_none());
+        terminal.subscribe(Arc::new(Discard)).unwrap();
+        assert_eq!(metadata(&mut shared.lock()).unwrap()["promptId"], id);
+        set_status(&shared, TerminalStatus::Exited { exit_code: None });
+        assert!(metadata(&mut shared.lock()).unwrap()["promptId"].is_null());
+    }
 }
 
 #[cfg(test)]
@@ -742,6 +1040,7 @@ mod directory_tests {
             saved_algorithms: Vec::new(), username, credential: Credential::Password,
             cols: 120, rows: 30, sink: output.clone(), cancel: CancelToken::new(),
             prepare_auth: Box::new(move |_| Ok(secret)), finish_auth: Box::new(|| {}), on_state: Box::new(|_, _| {}),
+            saved_password: None,
         }).unwrap();
         let _stop = Stop(terminal.clone());
         let wait = |path: &str| {
