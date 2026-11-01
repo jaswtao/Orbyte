@@ -79,6 +79,55 @@ fn preset(value: &str) -> Option<PasswordChange> {
 }
 
 #[test]
+fn closing_mixed_project_terminals_preserves_other_sessions_and_sftp() {
+    let mut state = AppState::new();
+    state.ssh_passwords = std::sync::Arc::new(TestPasswords::default());
+    let db = tauri::async_runtime::block_on(Database::open(std::path::Path::new(":memory:"))).unwrap();
+    attach_host_store(&state.ssh, db.clone());
+    let app = mock_builder().manage(state).manage(StorageState(Ok(db))).build(mock_context(noop_assets())).unwrap();
+    tauri::async_runtime::block_on(async {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let first = create_ssh_connection(app.state(), app.state(), "one".into(), "127.0.0.1".into(), Some(port), "root".into(), "password".into(), None, None).await.unwrap();
+        let second = create_ssh_connection(app.state(), app.state(), "two".into(), "127.0.0.1".into(), Some(port), "other".into(), "password".into(), None, None).await.unwrap();
+        let project = save_remote_project(app.state(), None, "Mixed".into()).await.unwrap();
+        let a = create_remote_project_terminal(app.state(), app.state(), project.clone(), first.clone(), "A".into()).await.unwrap();
+        let b = create_remote_project_terminal(app.state(), app.state(), project.clone(), second.clone(), "B".into()).await.unwrap();
+        let kept = create_remote_project_terminal(app.state(), app.state(), project.clone(), first.clone(), "Kept".into()).await.unwrap();
+        let layout = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1, "activeTabId": "mixed", "tabs": [
+                {"id": "mixed", "title": "Mixed", "root": {"type":"split","direction":"horizontal","ratio":0.5,"children":[
+                    {"type":"terminal","terminalConfigId":a.id}, {"type":"terminal","terminalConfigId":b.id}
+                ]}},
+                {"id":"kept","title":"Kept","root":{"type":"terminal","terminalConfigId":kept.id}}
+            ]
+        })).unwrap();
+        save_remote_project_layout(app.state(), project.clone(), layout).await.unwrap();
+        let batch_a = begin_ssh_connect(app.state(), app.state(), first.clone(), Channel::new(|_| Ok(()))).await.unwrap();
+        let batch_b = begin_ssh_connect(app.state(), app.state(), second.clone(), Channel::new(|_| Ok(()))).await.unwrap();
+        assert!(connect_ssh_terminal(app.state(), app.state(), batch_a.batch_id.clone(), first.clone(), b.id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.is_err());
+        let shell_a = connect_ssh_terminal(app.state(), app.state(), batch_a.batch_id.clone(), first.clone(), a.id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+        let shell_b = connect_ssh_terminal(app.state(), app.state(), batch_b.batch_id.clone(), second.clone(), b.id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+        let shell_kept = connect_ssh_terminal(app.state(), app.state(), batch_a.batch_id.clone(), first.clone(), kept.id.clone(), 80, 24, Channel::new(|_| Ok(()))).await.unwrap();
+        connect_sftp(app.state(), app.state(), batch_a.batch_id.clone(), first.clone(), a.remote_workspace_id.clone()).await.unwrap();
+        connect_sftp(app.state(), app.state(), batch_b.batch_id.clone(), second, b.remote_workspace_id.clone()).await.unwrap();
+        remove_remote_project_terminals(app.state(), app.state(), project.clone(), vec![a.id.clone(), b.id]).await.unwrap();
+        let loaded = get_remote_project_workspace(app.state(), project).await.unwrap();
+        assert_eq!(loaded.layout.tabs.len(), 1);
+        assert_eq!(loaded.layout.active_tab_id.as_deref(), Some("kept"));
+        assert_eq!(loaded.terminals[0].id, kept.id);
+        let ssh = &app.state::<AppState>().ssh;
+        assert!(matches!(ssh.terminal(&shell_a.terminal_id).unwrap().info().status, orbyte_terminal::TerminalStatus::Exited { .. } | orbyte_terminal::TerminalStatus::Failed { .. }));
+        assert!(matches!(ssh.terminal(&shell_b.terminal_id).unwrap().info().status, orbyte_terminal::TerminalStatus::Exited { .. } | orbyte_terminal::TerminalStatus::Failed { .. }));
+        assert!(matches!(ssh.terminal(&shell_kept.terminal_id).unwrap().info().status, orbyte_terminal::TerminalStatus::Starting | orbyte_terminal::TerminalStatus::Running));
+        assert!(ssh.list_directory(&a.remote_workspace_id, ".", "a", std::sync::Arc::new(|_| {})).is_ok());
+        assert!(ssh.list_directory(&b.remote_workspace_id, ".", "b", std::sync::Arc::new(|_| {})).is_ok());
+        assert!(connect_ssh_terminal(app.state(), app.state(), batch_a.batch_id, first, a.id, 80, 24, Channel::new(|_| Ok(()))).await.is_err());
+        ssh.shutdown();
+    });
+}
+
+#[test]
 fn closing_a_remote_tab_stops_only_its_sessions_and_rejects_late_connects() {
     let mut state = AppState::new();
     state.ssh_passwords = std::sync::Arc::new(TestPasswords::default());

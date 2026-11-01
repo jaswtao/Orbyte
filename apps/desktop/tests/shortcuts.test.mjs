@@ -355,6 +355,40 @@ test('上下键按侧栏提供的可见顺序切换，跳过隐藏项目并首�
   assert.deepEqual(nav.selected, ['c', 'u', 'a'])
 })
 
+test('remote project shortcuts delegate without changing the local project or view', async () => {
+  const nav = projectNavigation(['a', 'u'])
+  const cycled = [], revealed = []
+  nav.context.sidebarView.value = 'remote'
+  nav.context.remoteDeck = { value: { cycleProject(delta) { cycled.push(delta); return 'remote-two' } } }
+  nav.context.remoteSidebar = { value: { revealProject(id) { revealed.push(id) } } }
+  await nav.press('ArrowDown')
+  await nav.press('ArrowUp')
+  assert.deepEqual(cycled, [1, -1])
+  assert.deepEqual(revealed, ['remote-two', 'remote-two'])
+  assert.equal(nav.context.sidebarVisible, true)
+  assert.equal(nav.context.sidebarView.value, 'remote')
+  assert.equal(nav.store.active.id, 'a')
+  assert.deepEqual(nav.selected, [])
+  for (const extra of [{ repeat: true }, { isComposing: true }, { altKey: true }]) await nav.press('ArrowDown', extra)
+  nav.context.settingsDialog.value = true
+  await nav.press('ArrowDown')
+  nav.context.settingsDialog.value = false
+  await nav.press('KeyF')
+  assert.deepEqual(cycled, [1, -1])
+  nav.store.settings = { shortcuts: { projectDown: [{ code: 'KeyN', ctrlKey: false, shiftKey: false, altKey: true, metaKey: false }] } }
+  await nav.press('ArrowDown')
+  await nav.press('KeyN', { ctrlKey: false, shiftKey: false, altKey: true })
+  assert.deepEqual(cycled, [1, -1, 1])
+  nav.store.settings.shortcuts.projectDown = []
+  await nav.press('ArrowDown')
+  assert.equal(cycled.length, 3)
+  nav.context.remoteDeck.value.cycleProject = () => undefined
+  nav.context.sidebarVisible = false
+  await nav.press('ArrowUp')
+  assert.equal(nav.context.sidebarVisible, false)
+  assert.equal(revealed.length, 3)
+})
+
 test('侧栏未挂载时按分组顺序切换，未分组排最后', async () => {
   const nav = projectNavigation()
   await nav.press('ArrowDown')

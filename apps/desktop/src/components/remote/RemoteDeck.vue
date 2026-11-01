@@ -1,128 +1,43 @@
 <!-- Author: jaswtao · Date: 2026-10-31 -->
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { NButton, NModal, NSelect } from 'naive-ui'
+import { computed, nextTick, watch } from 'vue'
 import RemoteWorkspace from './RemoteWorkspace.vue'
-import ConnectionManager from './ConnectionManager.vue'
 import { useRemote } from '../../stores/remote'
 import type { Settings } from '../../services/projectApi'
 import type { AppearanceMode } from '../../services/appearance'
-import { endpointLabel } from '../../services/remote/workspace'
-import { remoteLinks } from '../../services/remote/status'
-import { matchShortcut } from '../../services/workspace/shortcuts'
 import { t } from '../../i18n'
 
 const props = defineProps<{ active: boolean; settings: Settings; appearance: AppearanceMode; shortcutsBlocked: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const remote = useRemote()
-const choosing = ref(false)
-const manager = ref(false)
-const chosen = ref<string | null>(null)
-const closing = ref<string | null>(null)
-const busy = ref(false)
 const views = new Map<string, InstanceType<typeof RemoteWorkspace>>()
-const retained = computed(() => remote.tabs.filter((tab) => remote.visited.has(tab.id)))
-const connectionOptions = computed(() => remote.connections.map((connection) => ({
-  value: connection.id, label: `${connection.name} · ${endpointLabel(connection.username, connection.host, connection.port)}`,
-})))
-function connection(id: string) { return remote.connections.find((item) => item.id === id)! }
-function fail(reason: unknown) { emit('error', String(reason)) }
-function selectTab(id: string) {
-  const same = id === remote.activeTabId
-  remote.selectTab(id)
-  if (same) void views.get(id)?.connectMissing().catch(fail)
-}
-function focusTerminal() { if (remote.activeTabId) views.get(remote.activeTabId)?.focusTerminal() }
-function renameActiveTab() { return !!remote.activeTabId && (views.get(remote.activeTabId)?.renameActiveTab() ?? false) }
-function middleClose(id: string) { if (!busy.value) closing.value = id }
-function cycleConnection(delta: number) {
-  const tabs = remote.projectTabs
-  if (tabs.length < 2) return
-  const index = tabs.findIndex((tab) => tab.id === remote.activeTabId)
-  const tab = tabs[index < 0 ? (delta < 0 ? tabs.length - 1 : 0) : (index + delta + tabs.length) % tabs.length]
-  if (!tab) return
-  selectTab(tab.id)
-  void nextTick(focusTerminal)
-}
-function editingText(target: EventTarget | null) {
-  const element = target as HTMLElement | null
-  if (!element?.tagName || element.closest?.('.xterm')) return false
-  return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable
-}
+const retained = computed(() => remote.projects.filter((project) => remote.visitedProjects.has(project.id)))
+function focusTerminal() { if (remote.activeProjectId) views.get(remote.activeProjectId)?.focusTerminal() }
+function renameActiveTab() { return !!remote.activeProjectId && (views.get(remote.activeProjectId)?.renameActiveTab() ?? false) }
 function modalVisible() {
-  // Dialogs inside RemoteWorkspace (rename, credentials, conflicts) also block connection switching.
   return Array.from(document.querySelectorAll('[aria-modal="true"]')).some((element) => element.getClientRects().length > 0)
 }
-function keydown(event: KeyboardEvent) {
-  if (!props.active || props.shortcutsBlocked || choosing.value || manager.value || closing.value) return
-  const command = matchShortcut(event, props.settings.shortcuts, ['remote'])
-  if (command !== 'remotePrevious' && command !== 'remoteNext') return
-  if (modalVisible() || editingText(event.target) || remote.projectTabs.length < 2) return
-  event.preventDefault()
-  event.stopPropagation()
-  if (event.repeat) return
-  cycleConnection(command === 'remotePrevious' ? -1 : 1)
+function cycleProject(delta: number): string | undefined {
+  if (!props.active || props.shortcutsBlocked || modalVisible()) return
+  const projects = remote.projects
+  if (!projects.length) return
+  const index = projects.findIndex((project) => project.id === remote.activeProjectId)
+  const project = projects[index < 0 ? (delta < 0 ? projects.length - 1 : 0) : (index + delta + projects.length) % projects.length]
+  if (!project) return
+  remote.selectProject(project.id)
+  void nextTick(() => { if (props.active && !props.shortcutsBlocked && remote.activeProjectId === project.id && !modalVisible()) focusTerminal() })
+  return project.id
 }
-defineExpose({ focusTerminal, renameActiveTab })
-async function choose() {
-  try { await remote.reload(); chosen.value = null; choosing.value = true }
-  catch (reason) { fail(reason) }
-}
-async function open() {
-  if (!chosen.value || busy.value) return
-  busy.value = true
-  try { await remote.openConnection(chosen.value); choosing.value = false }
-  catch (reason) { fail(reason) }
-  finally { busy.value = false }
-}
-async function close() {
-  if (!closing.value || busy.value) return
-  busy.value = true
-  try { await remote.closeTab(closing.value); closing.value = null }
-  catch (reason) { fail(reason) }
-  finally { busy.value = false }
-}
-async function refreshConnections() {
-  try { await remote.reload() } catch (reason) { fail(reason) }
-}
-onMounted(() => { document.addEventListener('keydown', keydown, true) })
-onBeforeUnmount(() => { document.removeEventListener('keydown', keydown, true) })
+watch(() => [props.active, remote.activeProjectId], () => {
+  if (props.active && remote.activeProjectId) remote.visitedProjects.add(remote.activeProjectId)
+}, { immediate: true })
+defineExpose({ focusTerminal, renameActiveTab, cycleProject })
 </script>
 <template>
   <div v-show="active" class="remote-deck">
-    <Teleport v-if="active" to="#remote-titlebar-tabs">
-      <div class="workspace-tabs remote-connection-tabs" role="tablist" :aria-label="t('remote.connectionTabs')">
-        <div v-for="tab in remote.projectTabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === remote.activeTabId }" @mousedown.middle.prevent @auxclick.middle.prevent.stop="middleClose(tab.id)">
-          <button role="tab" :aria-selected="tab.id === remote.activeTabId" :title="endpointLabel(connection(tab.connectionId).username, connection(tab.connectionId).host, connection(tab.connectionId).port)" @click="selectTab(tab.id)"><span class="remote-status-dot" :class="remoteLinks[tab.id]?.state" />{{ connection(tab.connectionId).name }}<span v-if="remote.projectTabs.filter((item) => item.connectionId === tab.connectionId).length > 1"> · {{ remote.projectTabs.filter((item) => item.connectionId === tab.connectionId).findIndex((item) => item.id === tab.id) + 1 }}</span></button>
-          <button :aria-label="t('remote.closeConnection')" :disabled="busy" @click="closing = tab.id">×</button>
-        </div>
-        <button class="workspace-tab-add" :disabled="!remote.activeProjectId" :title="t('remote.openConnection')" :aria-label="t('remote.openConnection')" @click="choose">+</button>
-      </div>
-    </Teleport>
-    <div v-if="!remote.activeTabId || !remote.visited.has(remote.activeTabId)" class="workspace-placeholder">
-      <div class="welcome-copy"><h1>{{ t('remote.projects') }}</h1><p>{{ t(remote.activeProjectId ? 'remote.projectPlaceholder' : 'remote.noProjects') }}</p></div>
-      <NButton v-if="remote.activeTabId" type="primary" @click="remote.selectTab(remote.activeTabId)">{{ t('remote.reconnect') }}</NButton>
-      <NButton v-if="remote.activeProjectId" @click="choose">{{ t('remote.openConnection') }}</NButton>
+    <div v-if="!remote.activeProjectId" class="workspace-placeholder">
+      <div class="welcome-copy"><h1>{{ t('remote.projects') }}</h1><p>{{ t('remote.noProjects') }}</p></div>
     </div>
-    <RemoteWorkspace v-for="tab in retained" v-show="active && tab.id === remote.activeTabId" :key="tab.id" :ref="(view) => { if (view) views.set(tab.id, view as InstanceType<typeof RemoteWorkspace>); else views.delete(tab.id) }" :workspace-id="tab.id" :connection="connection(tab.connectionId)" :settings="settings" :appearance="appearance" :active="active && tab.id === remote.activeTabId" :shortcuts-blocked="shortcutsBlocked || choosing || manager || !!closing" @error="emit('error', $event)" />
-    <NModal v-model:show="choosing" preset="card" :title="t('remote.openConnection')" class="form-modal" :mask-closable="!busy">
-      <p>{{ t('remote.chooseConnection') }}</p>
-      <NSelect v-model:value="chosen" :options="connectionOptions" filterable :disabled="busy" />
-      <div class="dialog-actions">
-        <NButton :disabled="busy" @click="manager = true">{{ t('remote.manageConnections') }}</NButton>
-        <NButton :disabled="busy" @click="choosing = false">{{ t('common.cancel') }}</NButton>
-        <NButton type="primary" :loading="busy" :disabled="!chosen || busy" @click="open">{{ t('remote.connect') }}</NButton>
-      </div>
-    </NModal>
-    <NModal v-model:show="manager" preset="card" :title="t('remote.manageConnections')" class="form-modal">
-      <ConnectionManager @changed="refreshConnections" @error="emit('error', $event)" />
-    </NModal>
-    <NModal :show="!!closing" preset="card" :title="t('remote.closeConnection')" class="form-modal" :mask-closable="!busy" @update:show="(show) => { if (!show && !busy) closing = null }">
-      <p>{{ t('remote.closeConnectionBody') }}</p>
-      <div class="dialog-actions">
-        <NButton :disabled="busy" @click="closing = null">{{ t('common.cancel') }}</NButton>
-        <NButton type="error" :loading="busy" @click="close">{{ t('common.confirm') }}</NButton>
-      </div>
-    </NModal>
+    <RemoteWorkspace v-for="project in retained" v-show="active && project.id === remote.activeProjectId" :key="project.id" :ref="(view) => { if (view) views.set(project.id, view as InstanceType<typeof RemoteWorkspace>); else views.delete(project.id) }" :workspace-id="project.id" :settings="settings" :appearance="appearance" :active="active && project.id === remote.activeProjectId" :shortcuts-blocked="shortcutsBlocked" @error="emit('error', $event)" />
   </div>
 </template>

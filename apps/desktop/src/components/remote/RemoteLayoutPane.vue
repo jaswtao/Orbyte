@@ -12,12 +12,13 @@ const props = defineProps<{
   names: Map<string, string>
   focused: string | null
   visible: boolean
-  endpoint: string
+  endpoints: Map<string, string>
 }>()
 const emit = defineEmits<{ focus: [id: string]; close: [id: string]; reconnect: [id: string]; ratio: [path: number[], value: number] }>()
 const root = ref<HTMLElement>()
 const mount = ref<HTMLElement>()
 const entry = computed(() => props.node.type === 'terminal' ? props.registry.byConfig.get(props.node.terminalConfigId) : undefined)
+const endpoint = computed(() => props.node.type === 'terminal' ? props.endpoints.get(props.node.terminalConfigId) ?? '' : '')
 const statusText = computed(() => {
   const status = entry.value?.status
   if (!status) return t('pane.notStarted')
@@ -60,11 +61,11 @@ function label(key: MessageKey) { return t(key) }
 <template>
   <div v-if="node.type === 'split'" ref="root" class="split-pane" :class="node.direction">
     <div class="split-child" :style="{ flex: `${node.ratio} 1 0%` }">
-      <RemoteLayoutPane :node="node.children[0]" :path="[...path, 0]" :registry="registry" :names="names" :focused="focused" :visible="visible" :endpoint="endpoint" @focus="emit('focus', $event)" @close="emit('close', $event)" @reconnect="emit('reconnect', $event)" @ratio="(p, value) => emit('ratio', p, value)" />
+      <RemoteLayoutPane :node="node.children[0]" :path="[...path, 0]" :registry="registry" :names="names" :focused="focused" :visible="visible" :endpoints="endpoints" @focus="emit('focus', $event)" @close="emit('close', $event)" @reconnect="emit('reconnect', $event)" @ratio="(p, value) => emit('ratio', p, value)" />
     </div>
     <div class="split-handle" role="separator" :aria-orientation="node.direction === 'horizontal' ? 'vertical' : 'horizontal'" tabindex="0" @pointerdown="drag" @keydown="(e) => { if (node.type === 'split' && ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(e.key)) { e.preventDefault(); emit('ratio', path, node.ratio + (['ArrowLeft', 'ArrowUp'].includes(e.key) ? -0.05 : 0.05)) } }" />
     <div class="split-child" :style="{ flex: `${1 - node.ratio} 1 0%` }">
-      <RemoteLayoutPane :node="node.children[1]" :path="[...path, 1]" :registry="registry" :names="names" :focused="focused" :visible="visible" :endpoint="endpoint" @focus="emit('focus', $event)" @close="emit('close', $event)" @reconnect="emit('reconnect', $event)" @ratio="(p, value) => emit('ratio', p, value)" />
+      <RemoteLayoutPane :node="node.children[1]" :path="[...path, 1]" :registry="registry" :names="names" :focused="focused" :visible="visible" :endpoints="endpoints" @focus="emit('focus', $event)" @close="emit('close', $event)" @reconnect="emit('reconnect', $event)" @ratio="(p, value) => emit('ratio', p, value)" />
     </div>
   </div>
   <div v-else-if="node.type === 'terminal'" class="terminal-pane" :class="{ focused: focused === node.terminalConfigId }" @mousedown.capture="focus" @focusin="emit('focus', node.terminalConfigId)">

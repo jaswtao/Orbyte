@@ -70,6 +70,7 @@ pub struct RemoteTerminalConfig {
 pub struct RemoteProject {
     pub id: String,
     pub name: String,
+    pub terminal_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -78,6 +79,33 @@ pub struct RemoteConnectionTab {
     pub id: String,
     pub project_id: Option<String>,
     pub connection_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTerminal {
+    pub id: String,
+    pub remote_workspace_id: String,
+    pub connection_id: String,
+    pub name: String,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteContext {
+    pub id: String,
+    pub connection_id: String,
+    pub last_directory: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteProjectWorkspace {
+    pub id: String,
+    pub layout: RemoteLayout,
+    pub terminals: Vec<ProjectTerminal>,
+    pub contexts: Vec<RemoteContext>,
 }
 
 fn remote_db_error(error: sqlx::Error) -> String {
@@ -97,10 +125,78 @@ fn remote_db_error(error: sqlx::Error) -> String {
 }
 
 impl Database {
+    pub async fn remove_remote_project_terminals(&self, project_id: &str, config_ids: &[String]) -> Result<()> {
+        let workspace = self.load_remote_project_workspace(project_id).await?;
+        let available: HashSet<_> = workspace.terminals.iter().map(|terminal| terminal.id.as_str()).collect();
+        if config_ids.is_empty() || config_ids.iter().any(|id| !available.contains(id.as_str())) {
+            return Err("Terminal does not belong to this project.".into());
+        }
+        let removed: HashSet<_> = config_ids.iter().cloned().collect();
+        let remaining = available.into_iter().filter(|id| !removed.contains(*id)).map(str::to_owned).collect();
+        let layout = RemoteLayout::repair(&serde_json::to_string(&workspace.layout).map_err(|error| error.to_string())?, &remaining);
+        let mut tx = self.pool.begin().await.map_err(remote_db_error)?;
+        let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("DELETE FROM t_remote_terminal_config WHERE id IN (");
+        let mut values = query.separated(", ");
+        for id in config_ids { values.push_bind(id); }
+        values.push_unseparated(")");
+        query.build().execute(&mut *tx).await.map_err(remote_db_error)?;
+        sqlx::query("UPDATE t_remote_project SET layout_json = ? WHERE id = ?")
+            .bind(serde_json::to_string(&layout).map_err(|error| error.to_string())?).bind(project_id)
+            .execute(&mut *tx).await.map_err(remote_db_error)?;
+        tx.commit().await.map_err(remote_db_error)
+    }
+
+    pub async fn load_remote_project_workspace(&self, project_id: &str) -> Result<RemoteProjectWorkspace> {
+        let raw: String = sqlx::query_scalar("SELECT layout_json FROM t_remote_project WHERE id = ?")
+            .bind(project_id).fetch_one(&self.pool).await.map_err(remote_db_error)?;
+        let rows = sqlx::query("SELECT c.id, c.remote_workspace_id, w.connection_id, c.name, c.sort_order FROM t_remote_terminal_config c JOIN t_remote_workspace w ON w.id = c.remote_workspace_id WHERE w.project_id = ? ORDER BY w.created_at, w.id, c.sort_order, c.id")
+            .bind(project_id).fetch_all(&self.pool).await.map_err(remote_db_error)?;
+        let terminals: Vec<_> = rows.into_iter().map(|row| ProjectTerminal {
+            id: row.get("id"), remote_workspace_id: row.get("remote_workspace_id"),
+            connection_id: row.get("connection_id"), name: row.get("name"), sort_order: row.get("sort_order"),
+        }).collect();
+        let configs = terminals.iter().map(|terminal| terminal.id.clone()).collect();
+        let layout = RemoteLayout::repair(&raw, &configs);
+        let rows = sqlx::query("SELECT id, connection_id, last_directory FROM t_remote_workspace WHERE project_id = ? ORDER BY created_at, id")
+            .bind(project_id).fetch_all(&self.pool).await.map_err(remote_db_error)?;
+        let contexts = rows.into_iter().map(|row| RemoteContext {
+            id: row.get("id"), connection_id: row.get("connection_id"), last_directory: row.get("last_directory"),
+        }).collect();
+        Ok(RemoteProjectWorkspace { id: project_id.to_owned(), layout, terminals, contexts })
+    }
+
+    pub async fn save_remote_project_layout(&self, project_id: &str, layout: &RemoteLayout) -> Result<()> {
+        let workspace = self.load_remote_project_workspace(project_id).await?;
+        layout.validate(&workspace.terminals.into_iter().map(|terminal| terminal.id).collect())?;
+        let result = sqlx::query("UPDATE t_remote_project SET layout_json = ? WHERE id = ?")
+            .bind(serde_json::to_string(layout).map_err(|error| error.to_string())?)
+            .bind(project_id).execute(&self.pool).await.map_err(remote_db_error)?;
+        require_changed(result.rows_affected())
+    }
+
+    pub async fn create_remote_project_terminal(&self, project_id: &str, connection_id: &str, name: &str) -> Result<ProjectTerminal> {
+        let name = orbyte_core::validate_name(name)?;
+        let mut tx = self.pool.begin().await.map_err(remote_db_error)?;
+        let existing: Option<String> = sqlx::query_scalar("SELECT id FROM t_remote_workspace WHERE project_id = ? AND connection_id = ? ORDER BY created_at, id LIMIT 1")
+            .bind(project_id).bind(connection_id).fetch_optional(&mut *tx).await.map_err(remote_db_error)?;
+        let workspace_id = existing.unwrap_or_else(|| Uuid::new_v4().to_string());
+        sqlx::query("INSERT OR IGNORE INTO t_remote_workspace(id, connection_id, project_id, schema_version, layout_json) VALUES (?, ?, ?, 1, ?)")
+            .bind(&workspace_id).bind(connection_id).bind(project_id).bind(empty_remote_layout().to_string())
+            .execute(&mut *tx).await.map_err(remote_db_error)?;
+        let id = Uuid::new_v4().to_string();
+        let sort_order: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM t_remote_terminal_config WHERE remote_workspace_id = ?")
+            .bind(&workspace_id).fetch_one(&mut *tx).await.map_err(remote_db_error)?;
+        sqlx::query("INSERT INTO t_remote_terminal_config(id, remote_workspace_id, name, sort_order) VALUES (?, ?, ?, ?)")
+            .bind(&id).bind(&workspace_id).bind(name).bind(sort_order)
+            .execute(&mut *tx).await.map_err(remote_db_error)?;
+        tx.commit().await.map_err(remote_db_error)?;
+        Ok(ProjectTerminal { id, remote_workspace_id: workspace_id, connection_id: connection_id.to_owned(), name: name.to_owned(), sort_order })
+    }
+
     pub async fn list_remote_projects(&self) -> Result<Vec<RemoteProject>> {
-        let rows = sqlx::query("SELECT id, name FROM t_remote_project ORDER BY sort_order, id")
+        let rows = sqlx::query("SELECT id, name, (SELECT COUNT(*) FROM t_remote_terminal_config c JOIN t_remote_workspace w ON w.id = c.remote_workspace_id WHERE w.project_id = t_remote_project.id) AS terminal_count FROM t_remote_project ORDER BY sort_order, id")
             .fetch_all(&self.pool).await.map_err(remote_db_error)?;
-        Ok(rows.into_iter().map(|row| RemoteProject { id: row.get("id"), name: row.get("name") }).collect())
+        Ok(rows.into_iter().map(|row| RemoteProject { id: row.get("id"), name: row.get("name"), terminal_count: row.get("terminal_count") }).collect())
     }
 
     pub async fn save_remote_project(&self, id: Option<&str>, name: &str) -> Result<String> {
@@ -350,8 +446,9 @@ impl Database {
     }
 
     pub async fn set_remote_directory(&self, workspace_id: &str, directory: Option<&str>) -> Result<()> {
-        let result = sqlx::query("UPDATE t_remote_workspace SET last_directory = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+        let result = sqlx::query("UPDATE t_remote_workspace SET last_directory = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? OR (project_id, connection_id) = (SELECT project_id, connection_id FROM t_remote_workspace WHERE id = ?)")
             .bind(directory)
+            .bind(workspace_id)
             .bind(workspace_id)
             .execute(&self.pool)
             .await
@@ -458,6 +555,74 @@ mod tests {
 
     async fn memory() -> Database {
         Database::open(Path::new(":memory:")).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn project_layout_supports_mixed_connections_and_bulk_close() {
+        let db = memory().await;
+        let first = db.create_ssh_connection(parse_connection("one", "one.example", None, "a", "password", None).unwrap()).await.unwrap();
+        let second = db.create_ssh_connection(parse_connection("two", "two.example", None, "b", "password", None).unwrap()).await.unwrap();
+        let project = db.save_remote_project(None, "Mixed").await.unwrap();
+        let other_project = db.save_remote_project(None, "Other").await.unwrap();
+        let a = db.create_remote_project_terminal(&project, &first, "One").await.unwrap();
+        let b = db.create_remote_project_terminal(&project, &second, "Two").await.unwrap();
+        let c = db.create_remote_project_terminal(&other_project, &first, "Other").await.unwrap();
+        let layout: RemoteLayout = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1, "activeTabId": "mixed", "tabs": [{"id": "mixed", "title": "Both", "root": {
+                "type": "split", "direction": "horizontal", "ratio": 0.4, "children": [
+                    {"type": "terminal", "terminalConfigId": a.id}, {"type": "terminal", "terminalConfigId": b.id}
+                ]
+            }}]
+        })).unwrap();
+        db.save_remote_project_layout(&project, &layout).await.unwrap();
+        let loaded = db.load_remote_project_workspace(&project).await.unwrap();
+        assert_eq!(loaded.layout, layout);
+        assert_eq!(loaded.contexts.len(), 2);
+        assert_eq!(db.remote_terminal_connection(&a.id).await.unwrap(), first);
+        assert_eq!(db.remote_terminal_connection(&b.id).await.unwrap(), second);
+        assert!(db.save_remote_project_layout(&other_project, &layout).await.is_err());
+        assert!(db.remove_remote_project_terminals(&project, &[a.id.clone(), c.id.clone()]).await.is_err());
+        assert_eq!(db.load_remote_project_workspace(&project).await.unwrap().terminals.len(), 2);
+        db.remove_remote_project_terminals(&project, &[a.id]).await.unwrap();
+        let loaded = db.load_remote_project_workspace(&project).await.unwrap();
+        assert_eq!(loaded.layout.tabs[0].title, "Both");
+        assert_eq!(loaded.layout.terminal_ids(), HashSet::from([b.id.clone()]));
+        db.remove_remote_project_terminals(&project, &[b.id]).await.unwrap();
+        assert!(db.load_remote_project_workspace(&project).await.unwrap().layout.tabs.is_empty());
+        assert_eq!(db.load_remote_project_workspace(&other_project).await.unwrap().terminals[0].id, c.id);
+        assert_eq!(db.list_ssh_connections().await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn project_layout_migration_merges_tabs_and_preserves_terminal_identity() {
+        let pool = sqlx::sqlite::SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0007_ssh.sql")).execute(&pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0008_remote_projects.sql")).execute(&pool).await.unwrap();
+        let db = Database { pool };
+        let connection = db.create_ssh_connection(parse_connection("lab", "example.com", None, "root", "password", None).unwrap()).await.unwrap();
+        let project = db.save_remote_project(None, "Saved").await.unwrap();
+        let one = db.open_scoped_remote_workspace(&connection, Some(&project)).await.unwrap();
+        let two = db.open_scoped_remote_workspace(&connection, Some(&project)).await.unwrap();
+        let pane = db.create_remote_terminal(&two.id, "Split").await.unwrap();
+        let mut split = serde_json::to_value(&two.layout).unwrap();
+        split["tabs"][0]["root"] = serde_json::json!({"type":"split","direction":"vertical","ratio":0.35,"children":[
+            {"type":"terminal","terminalConfigId":two.terminals[0].id}, {"type":"terminal","terminalConfigId":pane}
+        ]});
+        db.save_remote_layout(&two.id, &serde_json::from_value(split).unwrap()).await.unwrap();
+        sqlx::query("UPDATE t_remote_workspace SET last_directory = '/latest', updated_at = '2099-01-01' WHERE id = ?")
+            .bind(&two.id).execute(&db.pool).await.unwrap();
+        sqlx::raw_sql(include_str!("../migrations/0010_remote_project_layout.sql")).execute(&db.pool).await.unwrap();
+        let loaded = db.load_remote_project_workspace(&project).await.unwrap();
+        assert_eq!(loaded.layout.tabs.len(), 2);
+        assert_ne!(loaded.layout.tabs[0].id, loaded.layout.tabs[1].id);
+        assert_eq!(loaded.layout.terminal_ids(), HashSet::from([one.terminals[0].id.clone(), two.terminals[0].id.clone(), pane]));
+        assert!(loaded.contexts.iter().all(|context| context.last_directory.as_deref() == Some("/latest")));
+        let roots = serde_json::to_value(&loaded.layout).unwrap();
+        assert!(roots["tabs"].as_array().unwrap().iter().any(|tab| tab["root"]["ratio"] == 0.35));
+        loaded.layout.validate(&loaded.terminals.iter().map(|terminal| terminal.id.clone()).collect()).unwrap();
+        assert!(sqlx::query("PRAGMA foreign_key_check").fetch_all(&db.pool).await.unwrap().is_empty());
+        db.delete_ssh_connection(&connection).await.unwrap();
+        assert!(db.load_remote_project_workspace(&project).await.unwrap().layout.tabs.is_empty());
     }
 
     #[tokio::test]

@@ -71,7 +71,7 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/ by default
 - Transfers skip symlinks and special files, do not preserve ownership, ACLs or Unix modes, and offer no remote deletion, permission editing, pause, resume or automatic retry. A disconnected transfer may leave a `.orbyte-transfer-<UUID>.part` file whose path is shown but can only be removed in a remote terminal.
 - PowerShell/CMD shell integration, background activity indicators and configurable notifications.
 - UTF-8 and GBK editing, disk conflict detection, recycle-bin deletion and Git status/worktree helpers.
-- Chinese/English interface, light/dark themes and configurable shortcuts. Ctrl+F4 closes a tab; Ctrl+Shift+W closes a pane.
+- Chinese/English interface, light/dark themes and configurable shortcuts. Ctrl+F4 closes a tab; Ctrl+Shift+W closes a pane. Ctrl+Shift+Up/Down switches local projects in the local view and remote projects in the remote view.
 - Ctrl+P opens files by name while respecting `.gitignore`, `.ignore` and Git exclude rules. Ctrl+Shift+P also includes ignored files. Both modes exclude `.git` and application temporary files, with separate indexes of at most 100,000 files each.
 - Restart restores projects, layouts and file paths and offers local draft recovery. Processes, terminal output and editor undo history are not restored.
 - Filename content writes, Git internals and atomic saves reuse the search index. Structure changes and in-project ignore rules invalidate it after the watcher batch. Ignore rules affect the normal open mode; the mode that includes ignored files still finds them.

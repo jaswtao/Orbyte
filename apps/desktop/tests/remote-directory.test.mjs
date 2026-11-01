@@ -70,7 +70,7 @@ function fixture(t) {
   const context = vm.createContext({
     ref, watch, props, focused, registry,
     terminalDirectory: computed(() => registry.byConfig.get(focused.value)?.shell.cwd ?? null),
-    record: ref({ id: 'workspace', lastDirectory: '/home' }),
+    fileContext: ref({ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }),
     pathInput: ref('/home'), directory: ref('/home'), browsing: ref(false), sftpUp: ref(true),
     selected: ref([]), entries: ref([]), sftpError: ref(''), browseId: '', browseGeneration: 0,
     Channel: class {}, isSftpReady: () => context.sftpUp.value,
@@ -87,6 +87,7 @@ function fixture(t) {
       setDirectory: async (...args) => { saved.push(args); if (context.holdSave) await context.holdSave },
     },
   })
+  context.record = ref({ contexts: [context.fileContext.value] })
   const script = source.slice(source.indexOf('let directorySaveChain'), source.indexOf('function openEntry('))
   const scope = effectScope()
   scope.run(() => vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context))
@@ -130,10 +131,10 @@ test('SFTP readiness uses the latest reported directory and reconnect clears the
   await nextTick()
   assert.equal(f.requests.length, 0)
   // This is the same ready-event handler used by the SSH connection channel.
-  const script = source.slice(source.indexOf('function onUi('), source.indexOf('async function launch('))
-  Object.assign(f.context, { setRemoteLink() {}, sftpAttemptId: 'sftp', markSftpReady() {}, t: (key) => key })
+  const script = source.slice(source.indexOf('function onUi('), source.indexOf('async function launchContext('))
+  Object.assign(f.context, { setRemoteLink() {}, sftpAttempts: new Map([['workspace', 'sftp']]), markSftpReady() {}, t: (key) => key })
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, f.context)
-  f.run("onUi({ type: 'attempt', attemptId: 'sftp', state: 'ready' })")
+  f.run("onUi({ type: 'attempt', attemptId: 'sftp', state: 'ready' }, fileContext.value)")
   await flush()
   assert.equal(f.requests[0].path, '/latest')
   f.registry.byConfig.get('one').shell = { cwd: null }
@@ -159,7 +160,7 @@ test('rapid changes cancel pending listings and ignore stale batches and command
   assert.equal(f.context.entries.value[0].name, 'file-1')
   assert.deepEqual(f.cancelled, ['browse-0'])
   assert.deepEqual(f.saved, [['workspace', '/canonical/new']])
-  assert.equal(f.context.record.value.lastDirectory, '/canonical/new')
+  assert.equal(f.context.fileContext.value.lastDirectory, '/canonical/new')
 })
 
 test('failed listings clear partial entries and retain the terminal path and error', async (t) => {
@@ -264,11 +265,13 @@ test('transfers capture the listed directory before a picker or terminal changes
   f.context.pathInput.value = '/unsubmitted-draft'
   const pending = f.run("transfer('upload-files')")
   f.context.directory.value = '/changed'
+  f.context.fileContext.value = { id: 'other-server', connectionId: 'other', lastDirectory: '/changed' }
   select({ token: 'grant' })
   await pending
+  assert.equal(enqueued[0][0], 'workspace')
   assert.equal(enqueued[0][3], '/home')
   await f.run('makeDirectory()')
-  assert.deepEqual(created, [['workspace', '/changed/child']])
+  assert.deepEqual(created, [['other-server', '/changed/child']])
 })
 
 test('remote cd commands quote absolute POSIX paths', () => {
@@ -467,4 +470,54 @@ test('double-click, parent, and submitted paths cd the focused terminal', async 
   await f.run('submitPath()')
   f.batch(f.requests.length - 1)
   assert.equal(commands.at(-1), " cd -- '/home/o'\\''neill'\r")
+})
+
+
+test('switching servers clears old selections, ignores late listings and restores the matching directory', async (t) => {
+  const f = fixture(t)
+  const one = f.context.fileContext.value
+  const two = { id: 'other-server', connectionId: 'other', lastDirectory: '/saved-other' }
+  f.context.record.value.contexts.push(two)
+  Object.assign(f.context, {
+    initializing: ref(false), busy: ref(false), launching: ref(false),
+    isSftpReady: () => true, launch: async () => { throw new Error('already ready') },
+  })
+  vm.runInContext(ts.transpileModule(source.slice(source.indexOf('async function activateFiles('), source.indexOf('async function refreshConnections(')), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, f.context)
+  await f.run("browse('/old-server')")
+  f.context.selected.value = ['old-file']
+  f.registry.byConfig.get('two').shell = { cwd: null }
+  f.context.fileContext.value = two
+  f.focused.value = 'two'
+  await f.run('activateFiles()')
+  f.batch(0)
+  assert.deepEqual(Array.from(f.context.entries.value), [])
+  assert.deepEqual(Array.from(f.context.selected.value), [])
+  assert.equal(f.requests[1].workspace, 'other-server')
+  assert.equal(f.requests[1].path, '/saved-other')
+  f.batch(1)
+  assert.equal(f.context.entries.value[0].name, 'file-1')
+  f.context.fileContext.value = one
+  f.registry.byConfig.get('one').shell = { cwd: null }
+  f.focused.value = 'one'
+  await f.run('activateFiles()')
+  assert.equal(f.requests.at(-1).workspace, 'workspace')
+  assert.equal(f.requests.at(-1).path, '/home')
+})
+
+
+test('retrying a background transfer uses its original server and directory', async (t) => {
+  const f = fixture(t)
+  const enqueued = [], picked = []
+  Object.assign(f.context, { failedRoots: (files) => files.map((file) => file.relative), emit() {}, t: (key) => key, crypto: { randomUUID: () => 'retry' } })
+  Object.assign(f.context.remoteApi, {
+    selectPaths: async (...args) => { picked.push(args); return { token: 'retry-grant' } },
+    enqueueTransfer: async (...args) => enqueued.push(args),
+  })
+  vm.runInContext(ts.transpileModule(source.slice(source.indexOf('async function transfer('), source.indexOf('async function resolveConflict(')), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, f.context)
+  f.context.directory.value = '/currently-browsing'
+  await f.context.retry({ workspaceId: 'background-server', remoteDirectory: '/original', direction: 'download', files: [{ relative: 'failed.txt' }] })
+  assert.deepEqual(picked, [['background-server', 'download']])
+  assert.equal(enqueued[0][0], 'background-server')
+  assert.equal(enqueued[0][3], '/original')
+  assert.deepEqual(enqueued[0][4], ['failed.txt'])
 })

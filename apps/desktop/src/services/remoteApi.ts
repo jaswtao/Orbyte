@@ -24,7 +24,7 @@ export interface SshConnection {
 export type PasswordChange = { operation: 'keep' | 'clear' } | { operation: 'set'; password: string }
 export type SshConnectionInput = Omit<SshConnection, 'id' | 'sortOrder' | 'hasSavedPassword'> & { passwordChange?: PasswordChange }
 
-export interface RemoteProject { id: string; name: string }
+export interface RemoteProject { id: string; name: string; terminalCount?: number }
 export interface RemoteConnectionTab { id: string; projectId: string | null; connectionId: string }
 
 export interface KnownHost {
@@ -62,6 +62,15 @@ export interface RemoteWorkspace {
   layout: { schemaVersion: number; activeTabId: string | null; tabs: RemoteTab[] }
   lastDirectory: string | null
   terminals: RemoteTerminalConfig[]
+}
+
+export interface ProjectTerminal extends RemoteTerminalConfig { connectionId: string }
+export interface RemoteContext { id: string; connectionId: string; lastDirectory: string | null }
+export interface RemoteProjectWorkspace {
+  id: string
+  layout: RemoteWorkspace['layout']
+  terminals: ProjectTerminal[]
+  contexts: RemoteContext[]
 }
 
 export interface SshUiEvent {
@@ -106,6 +115,7 @@ export interface TransferView {
   id: string
   clientRequestId: string
   workspaceId: string
+  remoteDirectory: string
   direction: string
   state: string
   transferred: number
@@ -117,6 +127,10 @@ export interface TransferView {
 }
 
 export const remoteApi = {
+  removeProjectTerminals: (projectId: string, configIds: string[]) => invoke<void>('remove_remote_project_terminals', { projectId, configIds }),
+  getProjectWorkspace: (projectId: string) => invoke<RemoteProjectWorkspace>('get_remote_project_workspace', { projectId }),
+  saveProjectLayout: (projectId: string, layout: RemoteWorkspace['layout']) => invoke<void>('save_remote_project_layout', { projectId, layout }),
+  createProjectTerminal: (projectId: string, connectionId: string, name: string) => invoke<ProjectTerminal>('create_remote_project_terminal', { projectId, connectionId, name }),
   listProjects: () => invoke<RemoteProject[]>('list_remote_projects'),
   saveProject: (id: string | null, name: string) => invoke<string>('save_remote_project', { id, name }),
   deleteProject: (id: string) => invoke<void>('delete_remote_project', { id }),

@@ -17,7 +17,7 @@ test('remote project context menu renames and confirms deletion of the clicked p
     selectProject: (id) => selected.push(id),
   }
   const context = vm.createContext({
-    computed, ref, onMounted() {}, useRemote: () => remote,
+    computed, ref, onMounted() {}, defineExpose() {}, useRemote: () => remote,
     defineEmits: () => (_event, message) => errors.push(message), t: (key) => key,
     remoteApi: {
       saveProject: async (...args) => { saved.push(args); return args[0] },
@@ -71,7 +71,7 @@ test('remote terminal tabs rename persistently, validate names and preserve edit
     record, layout: computed(() => record.value.layout), rename, savingRename, dialogOpen, props, busy: ref(false),
     window: { clearTimeout() {} }, ratioTimer: 0,
     asLayout: (value) => value, fail: (error) => errors.push(String(error)),
-    remoteApi: { saveWorkspace: async (id, layout) => {
+    remoteApi: { saveProjectLayout: async (id, layout) => {
       calls.push(JSON.parse(JSON.stringify({ id, layout })))
       if (rejectSave) throw new Error('save failed')
     } },
@@ -128,83 +128,6 @@ test('remote terminal tabs rename persistently, validate names and preserve edit
   assert.match(source, /@mousedown\.middle\.prevent @auxclick\.middle\.prevent\.stop="closeTab\(tab\)"/)
 })
 
-test('remote tab rename and terminal creation cannot overwrite each other while requests are pending', async (t) => {
-  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
-  const { splitLeaf } = await loadService('workspace/layout')
-  const script = source.slice(source.indexOf('function renameTab('), source.indexOf('function cycleTab('))
-    + source.slice(source.indexOf('let saveChain'), source.indexOf('function onUi('))
-    + source.slice(source.indexOf('async function addTerminal('), source.indexOf('function onRatio('))
-  for (const direction of [undefined, 'horizontal', 'vertical']) {
-    await t.test(direction ?? 'new tab', async () => {
-      const record = ref({
-        id: 'workspace', terminals: [{ id: 'terminal-one' }],
-        layout: { activeTabId: 'one', tabs: [{ id: 'one', title: 'Terminal', root: { type: 'terminal', terminalConfigId: 'terminal-one' } }] },
-      })
-      const rename = ref(null), savingRename = ref(false), busy = ref(false)
-      const calls = [], errors = [], clearedTimers = []
-      let finishCreate, finishSave, holdSave = false, failCreate = false, creates = 0, connectedWhileBusy = null
-      const context = vm.createContext({
-        record, rename, savingRename, busy, layout: computed(() => record.value.layout),
-        focused: ref('terminal-one'), dialogOpen: computed(() => !!rename.value),
-        props: { active: true, shortcutsBlocked: false }, asLayout: (value) => value,
-        window: { clearTimeout: (timer) => clearedTimers.push(timer) }, ratioTimer: 42,
-        crypto: { randomUUID: () => 'two' }, t: () => 'Terminal', splitLeaf,
-        launch: async () => { connectedWhileBusy = busy.value }, isSftpReady: () => true, fail: (reason) => errors.push(String(reason)),
-        remoteApi: {
-          createTerminal: () => {
-            creates += 1
-            if (failCreate) return Promise.reject(new Error('create failed'))
-            return new Promise((resolve) => { finishCreate = resolve })
-          },
-          saveWorkspace: async (id, layout) => {
-            calls.push(JSON.parse(JSON.stringify({ id, layout })))
-            if (holdSave) await new Promise((resolve) => { finishSave = resolve })
-          },
-        },
-      })
-      vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
-      const adding = context.addTerminal(direction)
-      assert.equal(busy.value, true)
-      context.renameTab('one')
-      assert.equal(rename.value, null)
-      finishCreate('terminal-two')
-      await adding
-      assert.equal(busy.value, false)
-      assert.equal(connectedWhileBusy, false)
-      assert.equal(record.value.terminals.length, 2)
-      assert.equal(record.value.layout.tabs.length, direction ? 1 : 2)
-      if (direction) assert.equal(record.value.layout.tabs[0].root.type, 'split')
-      context.renameTab('one')
-      rename.value.title = 'Renamed'
-      holdSave = true
-      const saving = context.saveRename()
-      assert.equal(busy.value, true)
-      await context.addTerminal(direction)
-      assert.equal(creates, 1)
-      assert.deepEqual(clearedTimers, [42, 42])
-      const expected = JSON.parse(JSON.stringify(record.value))
-      for (const tab of expected.layout.tabs) if (tab.id === 'one') tab.title = 'Renamed'
-      assert.equal(calls.length, 2)
-      assert.deepEqual(calls[1], { id: 'workspace', layout: expected.layout })
-      record.value = { ...record.value, lastDirectory: '/kept' }
-      finishSave()
-      await saving
-      assert.equal(record.value.lastDirectory, '/kept')
-      assert.equal(record.value.layout.tabs.find((tab) => tab.id === 'one').title, 'Renamed')
-      assert.equal(record.value.terminals.length, 2)
-      assert.equal(rename.value, null)
-      assert.equal(savingRename.value, false)
-      assert.equal(busy.value, false)
-      failCreate = true
-      await context.addTerminal(direction)
-      assert.match(errors[0], /create failed/)
-      assert.equal(busy.value, false)
-      context.renameTab('one')
-      assert.equal(rename.value.title, 'Renamed')
-    })
-  }
-})
-
 test('remote terminal shortcuts cycle tabs, restore focus and respect blocking and overrides', async () => {
   const { matchShortcut } = await loadService('workspace/shortcuts')
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
@@ -214,10 +137,10 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   const props = { active: true, shortcutsBlocked: false, settings: {} }
   const dialogOpen = ref(false)
   const context = vm.createContext({
-    layout, props, dialogOpen, matchShortcut, nextTick,
+    layout, props, dialogOpen, matchShortcut, nextTick, busy: ref(false), document: { querySelectorAll: () => [] },
     selectTab(id) { selected.push(id); layout.value.activeTabId = id },
     focusTerminal() { focused.push(layout.value.activeTabId) },
-    addTerminal() { added.push(true) },
+    addTerminal(direction) { added.push(direction ?? true) },
   })
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
   function press(code, extra = {}) {
@@ -267,86 +190,96 @@ test('remote terminal shortcuts cycle tabs, restore focus and respect blocking a
   layout.value.tabs = []
   press('KeyN')
   assert.equal(selected.length, 3)
+  layout.value.tabs = [{ id: 'one' }, { id: 'two' }]
+  layout.value.activeTabId = 'one'
+  assert.equal(press('ArrowRight', newTerminal), true)
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'two')
+  assert.equal(press('ArrowLeft', newTerminal), true)
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'one')
+  assert.equal(press('Digit2'), true)
+  await nextTick()
+  assert.equal(layout.value.activeTabId, 'two')
+  assert.equal(press('KeyH', newTerminal), true)
+  assert.equal(press('KeyJ', newTerminal), true)
+  assert.deepEqual(added, [true, 'horizontal', 'vertical'])
+  assert.equal(press('ArrowRight', { ...newTerminal, target: { tagName: 'INPUT', closest: () => null } }), false)
 })
 
-test('remote connection shortcuts cycle connection tabs and respect blocking and overrides', async () => {
-  const { matchShortcut } = await loadService('workspace/shortcuts')
+test('remote projects cycle in sidebar order, restore tab selection and guard dialogs', async () => {
   const source = await readFile(new URL('../src/components/remote/RemoteDeck.vue', import.meta.url), 'utf8')
-  const script = source.slice(source.indexOf('function cycleConnection('), source.indexOf('defineExpose('))
-  const remote = { projectTabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }], activeTabId: 'one' }
+  const script = source.slice(source.indexOf('function cycleProject('), source.indexOf('watch(() => [props.active, remote.activeProjectId]'))
+    + source.slice(source.indexOf('function modalVisible('), source.indexOf('function cycleProject('))
   const selected = [], focused = []
-  const props = { active: true, shortcutsBlocked: false, settings: {} }
-  const choosing = ref(false), manager = ref(false), closing = ref(null)
+  const tabs = new Map([['one', 'tab-one'], ['two', 'tab-two']])
+  const remote = {
+    projects: [{ id: 'one' }, { id: 'two' }, { id: 'empty' }], activeProjectId: 'one', activeTabId: 'tab-one',
+    selectProject(id) { selected.push(id); this.activeProjectId = id; this.activeTabId = tabs.get(id) ?? null },
+  }
+  const props = { active: true, shortcutsBlocked: false }
+  const choosing = ref(false), manager = ref(false), closing = ref(null), busy = ref(false)
   let modalShown = false
-  const document = { querySelectorAll: () => modalShown ? [{ getClientRects: () => [{}] }] : [] }
   const context = vm.createContext({
-    props, remote, choosing, manager, closing, matchShortcut, nextTick, document,
-    selectTab(id) { selected.push(id); remote.activeTabId = id },
-    focusTerminal() { focused.push(remote.activeTabId) },
+    props, remote, choosing, manager, closing, busy, nextTick,
+    document: { querySelectorAll: () => modalShown ? [{ getClientRects: () => [{}] }] : [] },
+    focusTerminal() { if (remote.activeTabId) focused.push(remote.activeTabId) },
   })
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
-  function press(code, extra = {}) {
-    let prevented = false, stopped = false
-    context.keydown({
-      code, altKey: false, ctrlKey: true, shiftKey: true, metaKey: false, repeat: false,
-      preventDefault() { prevented = true }, stopPropagation() { stopped = true }, ...extra,
-    })
-    assert.equal(prevented, stopped)
-    return prevented
-  }
-  assert.equal(press('ArrowRight'), true)
+  assert.equal(context.cycleProject(1), 'two')
   await nextTick()
-  assert.equal(remote.activeTabId, 'two')
-  assert.equal(focused.at(-1), 'two')
-  assert.equal(press('ArrowLeft'), true)
+  assert.deepEqual(focused, ['tab-two'])
+  assert.equal(context.cycleProject(-1), 'one')
   await nextTick()
-  assert.equal(remote.activeTabId, 'one')
-  assert.equal(focused.at(-1), 'one')
-  press('ArrowRight', { repeat: true })
-  assert.equal(selected.length, 2)
-  assert.equal(press('ArrowRight', { altKey: true, ctrlKey: false, shiftKey: false }), false)
+  assert.equal(focused.at(-1), 'tab-one')
+  assert.equal(context.cycleProject(-1), 'empty')
+  await nextTick()
+  assert.equal(focused.length, 2)
+  assert.equal(context.cycleProject(1), 'one')
+  await nextTick()
+  remote.activeProjectId = 'missing'
+  assert.equal(context.cycleProject(-1), 'empty')
+  remote.activeProjectId = null
+  assert.equal(context.cycleProject(1), 'one')
+  await nextTick()
+  const count = selected.length
   props.active = false
-  assert.equal(press('ArrowRight'), false)
+  assert.equal(context.cycleProject(1), undefined)
   props.active = true
   props.shortcutsBlocked = true
-  assert.equal(press('ArrowRight'), false)
+  assert.equal(context.cycleProject(1), undefined)
   props.shortcutsBlocked = false
-  choosing.value = true
-  assert.equal(press('ArrowRight'), false)
-  choosing.value = false
-  manager.value = true
-  assert.equal(press('ArrowRight'), false)
-  manager.value = false
-  closing.value = 'one'
-  assert.equal(press('ArrowRight'), false)
-  closing.value = null
   modalShown = true
-  assert.equal(press('ArrowRight'), false)
+  assert.equal(context.cycleProject(1), undefined)
   modalShown = false
-  assert.equal(press('ArrowRight', { target: { tagName: 'INPUT', isContentEditable: false, closest: () => null } }), false)
-  const terminalTarget = { tagName: 'TEXTAREA', isContentEditable: false, closest: (selector) => selector === '.xterm' ? {} : null }
-  assert.equal(press('ArrowRight', { target: terminalTarget }), true)
+  assert.equal(selected.length, count)
+  remote.projects = []
+  assert.equal(context.cycleProject(1), undefined)
+  remote.projects = [{ id: 'one' }]
+  assert.equal(context.cycleProject(1), 'one')
+  props.active = false
+  const focusCount = focused.length
   await nextTick()
-  assert.equal(remote.activeTabId, 'two')
-  assert.equal(press('ArrowLeft', { target: terminalTarget }), true)
-  await nextTick()
-  assert.equal(remote.activeTabId, 'one')
-  props.settings.shortcuts = { remoteNext: [{ code: 'KeyN', altKey: true, ctrlKey: false, shiftKey: false, metaKey: false }] }
-  assert.equal(press('ArrowRight'), false)
-  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), true)
-  await nextTick()
-  assert.equal(remote.activeTabId, 'two')
-  remote.activeTabId = null
-  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), true)
-  await nextTick()
-  assert.equal(remote.activeTabId, 'one')
-  remote.projectTabs = [{ id: 'one' }]
-  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), false)
-  assert.equal(selected.length, 6)
-  remote.projectTabs = []
-  assert.equal(press('KeyN', { altKey: true, ctrlKey: false, shiftKey: false }), false)
-  assert.equal(selected.length, 6)
+  assert.equal(focused.length, focusCount)
 })
+
+test('remote sidebar reveals the requested project without moving keyboard focus', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteSidebar.vue', import.meta.url), 'utf8')
+  const script = source.slice(source.indexOf('function revealProject('), source.indexOf('defineExpose('))
+  const scrolled = []
+  const projectList = ref({ querySelectorAll: () => ['one', 'two'].map((id) => ({
+    dataset: { projectId: id }, scrollIntoView(options) { scrolled.push([id, options.block, options.inline]) },
+  })) })
+  const context = vm.createContext({ projectList })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  context.revealProject('two')
+  assert.deepEqual(scrolled, [['two', 'nearest', 'nearest']])
+  context.revealProject('missing')
+  projectList.value = undefined
+  context.revealProject('two')
+  assert.equal(scrolled.length, 1)
+})
+
 
 const {
   endpointLabel, remotePaneNeedsCloseConfirm, batchCancelId, transferPercent,
@@ -440,7 +373,7 @@ test('selecting a remote terminal tab moves focus to a pane in that tab', async 
     { id: 'second', root: { type: 'terminal', terminalConfigId: 'pane-second' } },
   ] } })
   const context = {
-    record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root], busy: ref(false),
+    nextTick, connectMissing: async () => {}, record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root], busy: ref(false),
     persist: async (layout) => { record.value.layout = layout }, fail: (reason) => { throw reason },
   }
   vm.createContext(context)
@@ -469,7 +402,7 @@ test('an older remote layout save cannot overwrite a newer tab rename', async ()
     layout: computed(() => record.value.layout), dialogOpen: computed(() => !!rename.value),
     props: { active: true, shortcutsBlocked: false }, asLayout: (value) => value,
     window: { clearTimeout() {} }, ratioTimer: 0, fail: (error) => { throw error },
-    remoteApi: { saveWorkspace: async (_id, layout) => {
+    remoteApi: { saveProjectLayout: async (_id, layout) => {
       calls.push(layout.tabs[0].title)
       await new Promise((resolve) => gates.push(resolve))
     } },
@@ -496,18 +429,11 @@ test('an older remote layout save cannot overwrite a newer tab rename', async ()
   assert.equal(rename.value, null)
 })
 
-test('middle-click closes one remote connection or terminal tab and ignores a busy control', async () => {
+test('middle-click closes one remote terminal tab and ignores a busy control', async () => {
   const deck = await readSource('../src/components/remote/RemoteDeck.vue')
   const workspace = await readSource('../src/components/remote/RemoteWorkspace.vue')
-  assert.match(deck, /@mousedown\.middle\.prevent @auxclick\.middle\.prevent\.stop="middleClose\(tab\.id\)"/)
-  const closing = ref(null), busy = ref(false)
-  const deckContext = vm.createContext({ closing, busy })
-  vm.runInContext(compileSlice(deck, 'function middleClose(', 'defineExpose'), deckContext)
-  deckContext.middleClose('tab-a')
-  assert.equal(closing.value, 'tab-a')
-  busy.value = true
-  deckContext.middleClose('tab-b')
-  assert.equal(closing.value, 'tab-a')
+  assert.doesNotMatch(deck, /remote-connection-tabs/)
+  assert.match(workspace, /@mousedown\.middle\.prevent @auxclick\.middle\.prevent\.stop="closeTab\(tab\)"/)
   const paneClosing = ref(null), paneBusy = ref(false)
   const paneContext = vm.createContext({
     closing: paneClosing, busy: paneBusy, leaves: (root) => [root],
@@ -555,45 +481,24 @@ function compileSlice(source, start, end) {
   return ts.transpileModule(source.slice(source.indexOf(start), source.indexOf(end)), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
 }
 
-test('remote projects retain independent tabs without automatically connecting restored tabs', async () => {
-  const source = await readFile(new URL('../src/stores/remote.ts', import.meta.url), 'utf8')
-  const script = source.replace(/^import .*$/gm, '').replace('export const useRemote', 'const useRemote')
-  const js = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
-  let tabs = [
-    { id: 'one', projectId: 'p1', connectionId: 'server' },
-    { id: 'two', projectId: 'p2', connectionId: 'server' },
-  ]
-  const context = {
-    computed, reactive, ref, defineStore: (_id, setup) => setup, clearRemoteLink() {}, markSftpReady() {},
-    remoteApi: {
-      listProjects: async () => [{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }],
-      listConnections: async () => [{ id: 'server' }],
-      listConnectionTabs: async () => [...tabs],
-      openConnectionTab: async (projectId, connectionId) => {
-        const tab = { id: 'new', projectId, connectionId }
-        tabs.push(tab)
-        return tab
-      },
-      closeConnectionTab: async (id) => { tabs = tabs.filter((tab) => tab.id !== id) },
-    },
-  }
-  vm.createContext(context)
-  vm.runInContext(js + '\nconst store = useRemote()', context)
-  const store = vm.runInContext('store', context)
+test('remote projects retain selection and mount lazily without connection tabs', async () => {
+  let projects = [{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }]
+  const store = await remoteStoreFixture({
+    listProjects: async () => projects,
+    listConnections: async () => [], listConnectionTabs: async () => [],
+  })
   await store.reload()
-  assert.equal(store.visited.size, 0)
+  assert.equal(store.activeProjectId.value, 'p1')
+  assert.equal(store.visitedProjects.size, 0)
   store.selectProject('p2')
-  assert.equal(store.activeTabId.value, 'two')
-  assert.deepEqual([...store.visited], ['two'])
-  store.selectProject('p1')
-  await store.openConnection('server')
-  assert.deepEqual(store.projectTabs.value.map((tab) => tab.id), ['one', 'new'])
-  assert.equal(store.activeTabId.value, 'new')
-  store.selectProject('p2')
-  assert.equal(store.activeTabId.value, 'two')
-  await store.closeTab('new')
-  assert.equal(store.visited.has('new'), false)
-  assert.equal(store.activeTabId.value, 'two')
+  store.visitedProjects.add('p2')
+  assert.equal(store.activeProjectId.value, 'p2')
+  await store.reload()
+  assert.equal(store.activeProjectId.value, 'p2')
+  projects = [projects[0]]
+  await store.reload()
+  assert.equal(store.activeProjectId.value, 'p1')
+  assert.equal(store.visitedProjects.has('p2'), false)
 })
 
 async function remoteStoreFixture(remoteApi, overrides = {}) {
@@ -609,7 +514,7 @@ async function remoteStoreFixture(remoteApi, overrides = {}) {
   return vm.runInContext('store', context)
 }
 
-test('connection identity changes discard mounted views and readiness while preserving tabs', async (t) => {
+test('connection identity changes invalidate only their transport readiness', async (t) => {
   for (const change of [{ host: 'new-host' }, { port: 2222 }, { username: 'other' }, { authType: 'privateKey' }, { privateKeyPath: '/new-key' }]) {
     await t.test(Object.keys(change)[0], async () => {
       let connection = { id: 'server', host: 'old-host', port: 22, username: 'root', authType: 'password', privateKeyPath: null }
@@ -619,16 +524,13 @@ test('connection identity changes discard mounted views and readiness while pres
         listProjects: async () => [{ id: 'p' }], listConnections: async () => [connection], listConnectionTabs: async () => tabs,
       }, { clearRemoteLink: (id) => cleared.push(id), markSftpReady: (...args) => readiness.push(args) })
       await store.reload()
-      for (const tab of tabs) store.selectTab(tab.id)
       connection = { ...connection, name: 'renamed' }
       await store.reload()
-      assert.equal(store.visited.size, 3)
       connection = { ...connection, ...change }
       await store.reload()
-      assert.deepEqual([...store.visited], ['other'])
       assert.deepEqual(cleared, ['one', 'two'])
       assert.deepEqual(readiness, [['one', false], ['two', false]])
-      assert.equal(store.tabs.value.length, 3)
+      assert.equal(store.projects.value.length, 1)
     })
   }
 })
@@ -754,7 +656,7 @@ test('login remembers a password only when selected and permits retry after a st
   const calls = [], errors = [], credential = ref({ batchId: 'one', authType: 'password' })
   const context = {
     credential, secret: ref('temporary'), savePassword: ref(false), submittingSecret: ref(false),
-    fail: (error) => errors.push(String(error)), batchCancelId,
+    fail: (error) => errors.push(String(error)), batchCancelId, nextPrompts() {},
     remoteApi: {
       submitCredential: async (...args) => { calls.push(args); if (context.failStore) throw new Error('store failed') },
       cancelAttempt: async () => {},
@@ -788,8 +690,7 @@ test('login remembers a password only when selected and permits retry after a st
 
 test('SFTP status events work before and after the connection command returns', async (t) => {
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
-  const script = source.slice(source.indexOf('const launching ='), source.indexOf('let browseId ='))
-    + source.slice(source.indexOf('function onUi('), source.indexOf('async function connectMissing('))
+  const script = source.slice(source.indexOf('function nextPrompts('), source.indexOf('async function connectMissing('))
   const js = ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText
   for (const early of [true, false]) {
     for (const state of ['ready', 'failed']) {
@@ -798,8 +699,10 @@ test('SFTP status events work before and after the connection command returns', 
         let events
         const event = { type: 'attempt', attemptId: 'sftp-new', state, message: state === 'failed' ? 'Authentication failed' : undefined }
         const context = {
-          ref, props: { connection: { id: 'connection', authType: 'password' } },
-          record: ref({ id: 'workspace', lastDirectory: '/home' }), pathInput: ref('.'), directory: ref('.'), terminalDirectory: ref(null),
+          ref, launching: ref(false), sftpAttempts: new Map(), credentialQueue: [], challengeQueue: [],
+          remote: { connections: [{ id: 'connection', authType: 'password' }] },
+          fileContext: ref({ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }),
+          record: ref({ contexts: [{ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }] }), pathInput: ref('.'), directory: ref('.'), terminalDirectory: ref(null),
           sftpUp: ref(false), sftpError: ref(''), savePassword: ref(false), credential: ref(null), challenge: ref(null),
           Channel: class {}, setRemoteLink() {}, syncVisibility() {}, t: (key) => key, batchCancelId,
           markSftpReady: (...args) => ready.push(args), browse: (path) => browsed.push(path), fail: (error) => errors.push(error),
@@ -821,4 +724,128 @@ test('SFTP status events work before and after the connection command returns', 
       })
     }
   }
+})
+
+
+test('new tabs and splits choose a connection before creating and serialize against rename', async (t) => {
+  const source = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  const { splitLeaf } = await loadService('workspace/layout')
+  const script = compileSlice(source, 'let saveChain', 'function nextPrompts(')
+    + compileSlice(source, 'function renameTab(', 'function cycleTab(')
+    + compileSlice(source, 'async function addTerminal(', 'async function activateFiles(')
+  for (const direction of [undefined, 'horizontal', 'vertical']) {
+    await t.test(direction ?? 'tab', async () => {
+      const original = {
+        id: 'project', contexts: [{ id: 'a-context', connectionId: 'a' }],
+        terminals: [{ id: 'a-terminal', remoteWorkspaceId: 'a-context', connectionId: 'a', name: 'A' }],
+        layout: { schemaVersion: 1, activeTabId: 'first', tabs: [{ id: 'first', title: 'Existing', root: { type: 'terminal', terminalConfigId: 'a-terminal' } }] },
+      }
+      const record = ref(structuredClone(original)), focused = ref('a-terminal')
+      const choosing = ref(false), rename = ref(null), busy = ref(false)
+      const calls = [], saves = [], launches = [], removed = [], errors = []
+      let finishSave, holdSave = false, failSave = false
+      const context = vm.createContext({
+        record, focused, choosing, rename, busy, creating: ref(false), chosen: ref(null), creationTarget: null,
+        savingRename: ref(false), launching: ref(false), props: { active: true, shortcutsBlocked: false },
+        dialogOpen: computed(() => choosing.value || !!rename.value), layout: computed(() => record.value.layout),
+        fileContext: computed(() => record.value.contexts.find((item) => item.connectionId === record.value.terminals.find((item) => item.id === focused.value)?.connectionId)),
+        remote: { connections: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], reload: async () => {} },
+        asLayout: (value) => value, splitLeaf, crypto: { randomUUID: () => 'new-tab' },
+        window: { clearTimeout() {} }, ratioTimer: 0, isSftpReady: () => true,
+        launch: async (...args) => launches.push(args), fail: (reason) => errors.push(String(reason)),
+        remoteApi: {
+          createProjectTerminal: async (...args) => { calls.push(args); return { id: 'b-terminal', remoteWorkspaceId: 'b-context', connectionId: 'b', name: 'B' } },
+          getProjectWorkspace: async () => ({ ...original, contexts: [...original.contexts, { id: 'b-context', connectionId: 'b' }], terminals: [...original.terminals, { id: 'b-terminal', remoteWorkspaceId: 'b-context', connectionId: 'b', name: 'B' }] }),
+          removeTerminal: async (...args) => removed.push(args),
+          saveProjectLayout: async (id, layout) => { saves.push(JSON.parse(JSON.stringify({ id, layout }))); if (failSave) throw new Error('save failed'); if (holdSave) await new Promise((resolve) => { finishSave = resolve }) },
+        },
+      })
+      vm.runInContext(script, context)
+      await context.addTerminal(direction)
+      assert.equal(choosing.value, true)
+      assert.equal(context.chosen.value, null)
+      assert.equal(calls.length, 0)
+      choosing.value = false
+      assert.deepEqual(JSON.parse(JSON.stringify(record.value)), original)
+      await context.addTerminal(direction)
+      context.chosen.value = 'b'
+      await context.createChosenTerminal()
+      assert.deepEqual(calls, [['project', 'b', 'B']])
+      assert.equal(record.value.terminals.find((item) => item.id === 'b-terminal').connectionId, 'b')
+      assert.equal(record.value.layout.tabs.length, direction ? 1 : 2)
+      if (direction) {
+        assert.equal(record.value.layout.tabs[0].root.direction, direction)
+        assert.equal(record.value.layout.tabs[0].root.children[0].terminalConfigId, 'a-terminal')
+      }
+      assert.equal(focused.value, 'b-terminal')
+      assert.equal(choosing.value, false)
+      assert.deepEqual(JSON.parse(JSON.stringify(launches)), [[['b-terminal'], false]])
+      context.renameTab('first')
+      rename.value.title = 'Renamed'
+      holdSave = true
+      const saving = context.saveRename()
+      await new Promise((resolve) => setImmediate(resolve))
+      await context.addTerminal(direction)
+      assert.equal(choosing.value, false)
+      finishSave()
+      await saving
+      assert.equal(record.value.layout.tabs[0].title, 'Renamed')
+      holdSave = false
+      await context.addTerminal()
+      context.chosen.value = 'b'
+      failSave = true
+      await context.createChosenTerminal()
+      assert.equal(choosing.value, true)
+      assert.equal(record.value.layout.tabs[0].title, 'Renamed')
+      assert.deepEqual(removed, [['b-context', 'b-terminal']])
+      assert.match(errors[0], /save failed/)
+    })
+  }
+})
+
+test('authentication prompts from different connections queue without replacing one another', async () => {
+  const source = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  const context = vm.createContext({
+    credential: ref(null), challenge: ref(null), launching: ref(false), credentialQueue: [], challengeQueue: [],
+    record: ref({ contexts: [{ id: 'a' }, { id: 'b' }] }),
+    remote: { connections: [{ id: 'a', authType: 'password' }, { id: 'b', authType: 'privateKey' }] },
+  })
+  vm.runInContext(compileSlice(source, 'function nextPrompts(', 'async function launchContext('), context)
+  context.onUi({ type: 'credentialRequired', batchId: 'batch-a' }, { id: 'a', connectionId: 'a' })
+  context.onUi({ type: 'credentialRequired', batchId: 'batch-b' }, { id: 'b', connectionId: 'b' })
+  assert.equal(context.credential.value.connectionId, 'a')
+  context.credential.value = null
+  context.nextPrompts()
+  assert.equal(context.credential.value.connectionId, 'b')
+  assert.equal(context.credential.value.authType, 'privateKey')
+  context.onUi({ type: 'challenge', challengeId: 'host-a' }, { id: 'a', connectionId: 'a' })
+  context.onUi({ type: 'challenge', challengeId: 'host-b' }, { id: 'b', connectionId: 'b' })
+  assert.equal(context.challenge.value, null)
+  context.credential.value = null
+  context.nextPrompts()
+  assert.equal(context.challenge.value.challengeId, 'host-a')
+  context.challenge.value = null
+  context.nextPrompts()
+  assert.equal(context.challenge.value.challengeId, 'host-b')
+})
+
+
+test('mixed layouts batch authentication per profile while keeping each terminal on its selected connection', async () => {
+  const source = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  const contexts = [{ id: 'one', connectionId: 'a' }, { id: 'two', connectionId: 'b' }, { id: 'legacy-a', connectionId: 'a' }]
+  const calls = []
+  const context = vm.createContext({
+    record: ref({ contexts, terminals: [
+      { id: 'a1', connectionId: 'a', remoteWorkspaceId: 'one' },
+      { id: 'a2', connectionId: 'a', remoteWorkspaceId: 'legacy-a' },
+      { id: 'b1', connectionId: 'b', remoteWorkspaceId: 'two' },
+    ] }),
+    fileContext: ref(contexts[0]), launching: ref(false),
+    launchContext: async (ids, target, sftp) => calls.push([Array.from(ids), target.connectionId, sftp]),
+    nextPrompts() {}, syncVisibility() {}, activateFiles() {},
+  })
+  vm.runInContext(compileSlice(source, 'async function launch(', 'async function connectMissing('), context)
+  await context.launch(['a1', 'a2', 'b1'], true)
+  assert.deepEqual(calls, [[['a1', 'a2'], 'a', true], [['b1'], 'b', false]])
+  assert.equal(context.launching.value, false)
 })

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-get-remote-project-workspace"
+description = "Enables the get_remote_project_workspace command without any pre-configured scope."
+commands.allow = ["get_remote_project_workspace"]
+
+[[permission]]
+identifier = "deny-get-remote-project-workspace"
+description = "Denies the get_remote_project_workspace command without any pre-configured scope."
+commands.deny = ["get_remote_project_workspace"]

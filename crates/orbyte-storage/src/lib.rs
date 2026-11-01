@@ -26,6 +26,7 @@ mod migration;
 mod remote;
 pub use remote::{
     parse_connection, KnownHost, KnownHostRecord, RemoteConnectionTab, RemoteProject, RemoteTerminalConfig, RemoteWorkspaceRecord, SshConnection,
+    ProjectTerminal, RemoteContext, RemoteProjectWorkspace,
 };
 
 #[derive(Clone)]

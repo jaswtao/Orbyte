@@ -234,6 +234,35 @@ async fn close_remote_workspaces(ssh: &orbyte_ssh::SshHub, db: &orbyte_storage::
 }
 
 #[tauri::command]
+pub async fn remove_remote_project_terminals(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, project_id: String, config_ids: Vec<String>) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
+    let db = storage.database()?;
+    db.remove_remote_project_terminals(&project_id, &config_ids).await?;
+    for session in state.ssh.list_terminals() {
+        if session.terminal_config_id.as_ref().is_some_and(|id| config_ids.contains(id)) {
+            let _ = state.ssh.stop_terminal(&session.terminal_id);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_remote_project_workspace(storage: tauri::State<'_, StorageState>, project_id: String) -> CmdResult<orbyte_storage::RemoteProjectWorkspace> {
+    storage.database()?.load_remote_project_workspace(&project_id).await
+}
+
+#[tauri::command]
+pub async fn save_remote_project_layout(storage: tauri::State<'_, StorageState>, project_id: String, layout: orbyte_core::RemoteLayout) -> CmdResult<()> {
+    storage.database()?.save_remote_project_layout(&project_id, &layout).await
+}
+
+#[tauri::command]
+pub async fn create_remote_project_terminal(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, project_id: String, connection_id: String, name: String) -> CmdResult<orbyte_storage::ProjectTerminal> {
+    let _guard = state.ssh_connections.lock().await;
+    storage.database()?.create_remote_project_terminal(&project_id, &connection_id, &name).await
+}
+
+#[tauri::command]
 pub async fn list_remote_projects(storage: tauri::State<'_, StorageState>) -> CmdResult<Vec<orbyte_storage::RemoteProject>> {
     storage.database()?.list_remote_projects().await
 }

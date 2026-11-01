@@ -17,6 +17,7 @@ const projectDialog = ref(false)
 const name = ref('')
 const deleting = ref<RemoteProject | null>(null)
 const busy = ref(false)
+const projectList = ref<HTMLElement>()
 const contextMenu = ref<{ id: string; x: number; y: number } | null>(null)
 const menuOptions = computed(() => [
   { key: 'rename', label: t('remote.renameProject'), disabled: busy.value },
@@ -60,6 +61,11 @@ async function remove() {
   } catch (reason) { fail(reason) }
   finally { busy.value = false }
 }
+function revealProject(id: string) {
+  const row = Array.from(projectList.value?.querySelectorAll<HTMLElement>('.remote-project') ?? []).find((element) => element.dataset.projectId === id)
+  row?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+}
+defineExpose({ revealProject })
 onMounted(reload)
 </script>
 <template>
@@ -69,11 +75,11 @@ onMounted(reload)
       <NButton size="small" @click="edit()">{{ t('remote.addProject') }}</NButton>
     </div>
     <p v-if="!remote.projects.length" class="remote-empty">{{ t('remote.noProjects') }}</p>
-    <div class="project-list" role="list">
-      <div v-for="project in remote.projects" :key="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem" @contextmenu.prevent.stop="openMenu($event, project)">
+    <div ref="projectList" class="project-list" role="list">
+      <div v-for="project in remote.projects" :key="project.id" :data-project-id="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem" @contextmenu.prevent.stop="openMenu($event, project)">
         <button class="remote-project-select" :aria-pressed="project.id === remote.activeProjectId" @click="remote.selectProject(project.id)">
           <strong>{{ project.name }}</strong>
-          <span>{{ t('remote.connectionCount', { count: remote.tabs.filter((tab) => tab.projectId === project.id).length }) }}</span>
+          <span>{{ t('remote.terminalCount', { count: remote.terminalCounts.get(project.id) ?? project.terminalCount ?? 0 }) }}</span>
         </button>
         <div class="remote-project-actions">
           <NButton size="tiny" @click="edit(project)">{{ t('remote.renameProject') }}</NButton>

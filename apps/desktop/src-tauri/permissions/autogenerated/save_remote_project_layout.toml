@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-save-remote-project-layout"
+description = "Enables the save_remote_project_layout command without any pre-configured scope."
+commands.allow = ["save_remote_project_layout"]
+
+[[permission]]
+identifier = "deny-save-remote-project-layout"
+description = "Denies the save_remote_project_layout command without any pre-configured scope."
+commands.deny = ["save_remote_project_layout"]

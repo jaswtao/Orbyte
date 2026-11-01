@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-create-remote-project-terminal"
+description = "Enables the create_remote_project_terminal command without any pre-configured scope."
+commands.allow = ["create_remote_project_terminal"]
+
+[[permission]]
+identifier = "deny-create-remote-project-terminal"
+description = "Denies the create_remote_project_terminal command without any pre-configured scope."
+commands.deny = ["create_remote_project_terminal"]

@@ -72,6 +72,7 @@ let disposed = false
 const deck = ref<InstanceType<typeof WorkspaceDeck>>()
 const sidebarView = ref<'projects' | 'files' | 'remote'>('projects')
 const remoteDeck = ref<InstanceType<typeof RemoteDeck>>()
+const remoteSidebar = ref<InstanceType<typeof RemoteSidebar>>()
 const sidebarVisible = ref(readSidebarVisible())
 function readSidebarVisible(): boolean {
   try { return localStorage.getItem('orbyte.sidebar-visible') !== 'false' }
@@ -169,7 +170,18 @@ async function workspaceShortcut(event: KeyboardEvent) {
   if (renamingProject.value || projectDialog.value || groupDialog.value || deleting.value || settingsDialog.value || closeDialog.value || worktreeDialog.value || recoveryDialog.value) return
   const command = matchShortcut(event, store.settings?.shortcuts, ['project'])
   if (!command || command === 'rename') return
-  if (sidebarView.value === 'remote' && command.startsWith('project')) return
+  if (sidebarView.value === 'remote' && command.startsWith('project')) {
+    if (command === 'projectSearch') return
+    if (disposed || event.repeat) return
+    const id = remoteDeck.value?.cycleProject(command === 'projectUp' ? -1 : 1)
+    if (!id) return
+    event.preventDefault()
+    event.stopPropagation()
+    setSidebarVisible(true)
+    await nextTick()
+    if (!disposed && sidebarView.value === 'remote') remoteSidebar.value?.revealProject(id)
+    return
+  }
   event.preventDefault()
   event.stopPropagation()
   if (command === 'projectSearch') {
@@ -290,7 +302,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
           <FileTree v-if="sidebarView === 'files' && store.active" :key="`${store.active.id}:${store.active.path}`"
             :project-id="store.active.id" :disabled="deck?.mutationBusy ?? true" :change="fileChanges.get(store.active.id) ?? null"
             @open="deck?.openFile($event)" @rename="(from, to) => deck?.renamed(from, to)" @error="reportError" />
-          <RemoteSidebar v-else-if="sidebarView === 'remote'" @error="reportError" />
+          <RemoteSidebar v-else-if="sidebarView === 'remote'" ref="remoteSidebar" @error="reportError" />
           <KeepAlive v-else>
           <ProjectSidebar v-if="sidebarView !== 'files' || !store.active" ref="sidebar" :activities="activities" @worktree="openWorktree"
             @edit-project="editProject" @edit-group="editGroup" @delete-item="deleting = $event" />

@@ -2,25 +2,26 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Channel } from '@tauri-apps/api/core'
-import { NAlert, NButton, NCheckbox, NInput, NModal } from 'naive-ui'
+import { NAlert, NButton, NCheckbox, NInput, NModal, NSelect } from 'naive-ui'
 import RemoteLayoutPane from './RemoteLayoutPane.vue'
-import { remoteApi, type DirBatch, type DirEntry, type RemoteWorkspace as WorkspaceRecord, type SshConnection, type SshUiEvent, type TransferView } from '../../services/remoteApi'
+import ConnectionManager from './ConnectionManager.vue'
+import { remoteApi, type DirBatch, type DirEntry, type RemoteProjectWorkspace as WorkspaceRecord, type RemoteContext, type ProjectTerminal, type SshUiEvent, type TransferView } from '../../services/remoteApi'
 import { terminalApi, type TerminalSessionInfo } from '../../services/terminalApi'
 import { TerminalRegistry } from '../../services/terminal/registry'
 import { INITIAL_SIZE } from '../../services/terminal/terminalClient'
 import type { AppearanceMode } from '../../services/appearance'
 import type { Settings } from '../../services/projectApi'
-import { leaves, removeFromLayout, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
+import { leaves, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
 import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
 import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remoteCdCommand, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent } from '../../services/remote/workspace'
-import { isSftpReady, markSftpReady, setRemoteLink } from '../../services/remote/status'
+import { isSftpReady, markSftpReady } from '../../services/remote/status'
 import { t, type MessageKey } from '../../i18n'
 import { useRemote } from '../../stores/remote'
 import '@xterm/xterm/css/xterm.css'
 import '../workspace/workspace.css'
 import './remote.css'
 
-const props = defineProps<{ workspaceId: string; connection: SshConnection; settings: Settings; appearance: AppearanceMode; active: boolean; shortcutsBlocked: boolean }>()
+const props = defineProps<{ workspaceId: string; settings: Settings; appearance: AppearanceMode; active: boolean; shortcutsBlocked: boolean }>()
 const emit = defineEmits<{ error: [message: string] }>()
 const record = ref<WorkspaceRecord | null>(null)
 const focused = ref<string | null>(null)
@@ -32,7 +33,9 @@ const sftpUp = ref(false)
 const selected = ref<string[]>([])
 const remote = useRemote()
 const sftpError = ref('')
-const credential = ref<{ batchId: string; authType: string } | null>(null)
+const credential = ref<{ batchId: string; authType: string; connectionId: string } | null>(null)
+const credentialQueue: NonNullable<typeof credential.value>[] = []
+const challengeQueue: SshUiEvent[] = []
 const secret = ref('')
 const savePassword = ref(false)
 const submittingSecret = ref(false)
@@ -46,22 +49,41 @@ const folderName = ref('')
 const applyAll = ref(false)
 const busy = ref(false)
 const launching = ref(false)
-let heldCredential: { batchId: string; authType: string } | null = null
-let sftpAttemptId = ''
+const sftpAttempts = new Map<string, string>()
+const choosing = ref(false)
+const manager = ref(false)
+const chosen = ref<string | null>(null)
+const creating = ref(false)
+const initializing = ref(false)
+const refreshing = ref(false)
+const refreshPending = ref(false)
+let creationTarget: { direction?: 'horizontal' | 'vertical'; tabId: string | null; focused: string | null } | null = null
+const connectionOptions = computed(() => remote.connections.map((connection) => ({ value: connection.id, label: `${connection.name} · ${endpointLabel(connection.username, connection.host, connection.port)}` })))
 let browseId = ''
 let browseGeneration = 0
 let reloadToken = 0
 let ratioTimer = 0
-const dialogOpen = computed(() => !!credential.value || !!challenge.value || !!closing.value || !!rename.value || folderOpen.value || !!conflictTransfer.value)
+const dialogOpen = computed(() => choosing.value || manager.value || !!credential.value || !!challenge.value || !!closing.value || !!rename.value || folderOpen.value || !!conflictTransfer.value)
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || dialogOpen.value)
 const terminalDirectory = computed(() => focused.value ? registry.byConfig.get(focused.value)?.shell.cwd ?? null : null)
-const endpoint = computed(() => endpointLabel(props.connection.username, props.connection.host, props.connection.port))
+const focusedConfig = computed(() => record.value?.terminals.find((terminal) => terminal.id === focused.value))
+const connection = computed(() => remote.connections.find((item) => item.id === focusedConfig.value?.connectionId))
+const fileContext = computed(() => record.value?.contexts.find((context) => context.connectionId === connection.value?.id) ?? null)
+const endpoint = computed(() => connection.value ? endpointLabel(connection.value.username, connection.value.host, connection.value.port) : '')
+const endpoints = computed(() => new Map((record.value?.terminals ?? []).map((terminal) => {
+  const item = remote.connections.find((connection) => connection.id === terminal.connectionId)
+  return [terminal.id, item ? `${item.name} · ${endpointLabel(item.username, item.host, item.port)}` : '']
+})))
+const credentialEndpoint = computed(() => {
+  const item = remote.connections.find((connection) => connection.id === credential.value?.connectionId)
+  return item ? endpointLabel(item.username, item.host, item.port) : ''
+})
 const layout = computed(() => record.value ? asLayout(record.value.layout) : null)
 const activeTab = computed(() => layout.value?.tabs.find((tab) => tab.id === layout.value?.activeTabId) ?? null)
 const names = computed(() => terminalPaneNames(record.value?.terminals ?? [], layout.value?.tabs ?? []))
 const hint = (id: string) => shortcutHint(id, props.settings.shortcuts)
 const parent = computed(() => parentPath(directory.value))
-const workspaceTransfers = computed(() => remote.transfers.filter((transfer) => transfer.workspaceId === record.value?.id))
+const workspaceTransfers = computed(() => remote.transfers.filter((transfer) => record.value?.contexts.some((context) => context.id === transfer.workspaceId)))
 const conflictTransfer = computed(() => workspaceTransfers.value.find((transfer) => transfer.state === 'awaitingConflict') ?? null)
 const conflictName = computed(() => conflictTransfer.value?.files.find((file) => file.status === 'awaitingConflict')?.relative || conflictTransfer.value?.message || '')
 const stateText: Record<string, MessageKey> = {
@@ -99,23 +121,10 @@ function ensureEntry(configId: string) {
     true,
   )
 }
-async function ensureTerminal(loaded: WorkspaceRecord): Promise<WorkspaceRecord> {
-  if (loaded.layout.tabs.length) return loaded
-  const name = t('remote.terminal')
-  const configId = await remoteApi.createTerminal(loaded.id, name)
-  const tabId = crypto.randomUUID()
-  const next = {
-    schemaVersion: 1,
-    activeTabId: tabId,
-    tabs: [{ id: tabId, title: name, root: { type: 'terminal' as const, terminalConfigId: configId } }],
-  }
-  await remoteApi.saveWorkspace(loaded.id, next)
-  return { ...loaded, layout: next, terminals: [...loaded.terminals, { id: configId, remoteWorkspaceId: loaded.id, name, sortOrder: loaded.terminals.length }] }
-}
 let saveChain: Promise<unknown> = Promise.resolve()
 function enqueueLayoutSave(workspaceId: string, layoutValue: WorkspaceRecord['layout']) {
   // A tab switch already in flight must not land after a rename and put the old title back.
-  const operation = saveChain.catch(() => {}).then(() => remoteApi.saveWorkspace(workspaceId, layoutValue))
+  const operation = saveChain.catch(() => {}).then(() => remoteApi.saveProjectLayout(workspaceId, layoutValue))
   saveChain = operation
   return operation
 }
@@ -125,47 +134,44 @@ async function persist(next: Layout) {
   record.value = { ...record.value, layout: layoutValue }
   await enqueueLayoutSave(record.value.id, layoutValue)
 }
-function onUi(event: SshUiEvent) {
+function nextPrompts() {
+  if (credential.value || challenge.value) return
+  challenge.value = challengeQueue.shift() ?? null
+  if (!challenge.value && !launching.value) credential.value = credentialQueue.shift() ?? null
+}
+function onUi(event: SshUiEvent, context: RemoteContext) {
+  if (!record.value?.contexts.some((item) => item.id === context.id)) return
   if (event.type === 'challenge' && event.challengeId) {
-    challenge.value = event
+    challengeQueue.push(event)
+    nextPrompts()
     return
   }
   if (event.type === 'credentialRequired' && event.batchId) {
-    savePassword.value = false
-    const pending = { batchId: event.batchId, authType: event.authType || props.connection.authType }
-    if (launching.value) heldCredential = pending
-    else credential.value = pending
+    const item = remote.connections.find((connection) => connection.id === context.connectionId)
+    credentialQueue.push({ batchId: event.batchId, authType: event.authType || item?.authType || 'password', connectionId: context.connectionId })
+    nextPrompts()
     return
   }
   if (event.type !== 'attempt') return
-  setRemoteLink(props.workspaceId, event.state || 'idle', event.message || '')
-  if (event.attemptId && event.attemptId === sftpAttemptId) {
-    if (event.state === 'ready' && record.value) {
-      markSftpReady(record.value.id, true)
-      sftpUp.value = true
-      sftpError.value = ''
-      void browse(terminalDirectory.value || record.value.lastDirectory || directory.value || '.')
-    } else if (event.state === 'failed') {
-      if (record.value) markSftpReady(record.value.id, false)
-      sftpUp.value = false
-      sftpError.value = event.message || t('remote.sftpFailed')
+  if (event.attemptId && event.attemptId === sftpAttempts.get(context.id)) {
+    markSftpReady(context.id, event.state === 'ready')
+    if (fileContext.value?.id === context.id) {
+      sftpUp.value = event.state === 'ready'
+      sftpError.value = event.state === 'failed' ? event.message || t('remote.sftpFailed') : ''
+      if (sftpUp.value) void browse(terminalDirectory.value || context.lastDirectory || '.')
     }
   }
 }
-async function launch(configIds: string[], includeSftp: boolean) {
-  if (launching.value || !record.value || (!configIds.length && !includeSftp)) return
-  launching.value = true
-  heldCredential = null
+async function launchContext(configIds: string[], context: RemoteContext, includeSftp: boolean) {
   let pendingSftpEvents: SshUiEvent[] | null = includeSftp ? [] : null
   const events = new Channel<SshUiEvent>()
   events.onmessage = (event) => {
-    // SFTP can authenticate before the command returns its attempt ID.
     if (pendingSftpEvents && event.type === 'attempt' && !event.terminalId) pendingSftpEvents.push(event)
-    else onUi(event)
+    else onUi(event, context)
   }
   let batchId = ''
   try {
-    const batch = await remoteApi.beginConnect(props.connection.id, events)
+    const batch = await remoteApi.beginConnect(context.connectionId, events)
     batchId = batch.batchId
     for (const configId of configIds) {
       const entry = ensureEntry(configId)
@@ -175,35 +181,51 @@ async function launch(configIds: string[], includeSftp: boolean) {
         try { await terminalApi.stopTerminal(previous) } catch { /* The old session may already be gone. */ }
       }
       const channel = entry.client.createChannel()
-      const created = await remoteApi.connectTerminal(batchId, props.connection.id, configId, entry.client.measure() ?? INITIAL_SIZE, channel)
+      const created = await remoteApi.connectTerminal(batchId, context.connectionId, configId, entry.client.measure() ?? INITIAL_SIZE, channel)
       registry.bind(configId, entry, created.terminalId)
     }
-    if (includeSftp && record.value) {
-      const connected = await remoteApi.connectSftp(batchId, props.connection.id, record.value.id)
-      sftpAttemptId = connected.attemptId
+    if (includeSftp) {
+      const connected = await remoteApi.connectSftp(batchId, context.connectionId, context.id)
+      sftpAttempts.set(context.id, connected.attemptId)
       const pending = pendingSftpEvents
       pendingSftpEvents = null
-      for (const event of pending ?? []) onUi(event)
+      for (const event of pending ?? []) onUi(event, context)
     }
     await remoteApi.sealConnect(batchId)
   } catch (reason) {
     if (batchId) await remoteApi.cancelAttempt(batchCancelId(batchId)).catch(() => {})
     fail(reason)
-  } finally {
-    pendingSftpEvents = null
-    launching.value = false
-    if (heldCredential) {
-      credential.value = heldCredential
-      heldCredential = null
+  } finally { pendingSftpEvents = null }
+}
+async function launch(configIds: string[], includeSftp: boolean) {
+  if (launching.value || !record.value) return
+  const context = fileContext.value
+  if (!configIds.length && (!includeSftp || !context)) return
+  launching.value = true
+  try {
+    const groups = new Map<string, string[]>()
+    for (const id of configIds) {
+      const config = record.value.terminals.find((terminal) => terminal.id === id)
+      if (config) groups.set(config.connectionId, [...(groups.get(config.connectionId) ?? []), id])
     }
+    if (includeSftp && context && !groups.has(context.connectionId)) groups.set(context.connectionId, [])
+    for (const [connectionId, ids] of groups) {
+      const target = record.value.contexts.find((item) => item.connectionId === connectionId)
+      if (target) await launchContext(ids, target, includeSftp && connectionId === context?.connectionId)
+    }
+  } finally {
+    launching.value = false
+    nextPrompts()
     syncVisibility()
+    if (fileContext.value?.id !== context?.id) void activateFiles()
   }
 }
-async function connectMissing() {
+async function connectMissing(connectNew = true) {
   if (!record.value || launching.value) return
   const current = asLayout(record.value.layout)
   const sessions = await remoteApi.listSessions()
-  const { attach, connect } = partitionSessions(terminalIds(current), sessions)
+  const ids = connectNew && activeTab.value ? terminalIds({ ...current, tabs: [activeTab.value] }) : terminalIds(current)
+  const { attach, connect } = partitionSessions(ids, sessions)
   for (const item of attach) {
     const entry = ensureEntry(item.configId)
     if (entry.client.id === item.terminalId) continue
@@ -213,15 +235,17 @@ async function connectMissing() {
     const session = sessions.find((candidate) => candidate.terminalId === item.terminalId)
     if (session) entry.client.updateStatus(session.status)
   }
-  const needSftp = !isSftpReady(record.value.id)
-  sftpUp.value = !needSftp
+  const needSftp = !!fileContext.value && !isSftpReady(fileContext.value.id)
+  sftpUp.value = !!fileContext.value && !needSftp
+  if (!connectNew) return
   if (!connect.length && !needSftp) {
-    await browse(terminalDirectory.value || record.value.lastDirectory || '.')
+    if (fileContext.value) await browse(terminalDirectory.value || fileContext.value.lastDirectory || '.')
     return
   }
   await launch(connect, needSftp)
 }
 async function reload() {
+  initializing.value = true
   reloadToken += 1
   const token = reloadToken
   browseGeneration += 1
@@ -233,16 +257,17 @@ async function reload() {
   selected.value = []
   sftpError.value = ''
   try {
-    const loaded = await ensureTerminal(await remoteApi.getWorkspace(props.workspaceId))
+    const loaded = await remoteApi.getProjectWorkspace(props.workspaceId)
     if (token !== reloadToken) return
     record.value = loaded
-    pathInput.value = loaded.lastDirectory || '.'
+    pathInput.value = '.'
     directory.value = pathInput.value
     const current = asLayout(loaded.layout)
     const tab = current.tabs.find((tab) => tab.id === current.activeTabId)
     focused.value = tab ? leaves(tab.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
-    await connectMissing()
+    await connectMissing(false)
   } catch (reason) { if (token === reloadToken) fail(reason) }
+  finally { if (token === reloadToken) initializing.value = false }
 }
 let directorySaveChain: Promise<unknown> = Promise.resolve()
 let pendingTerminalPath: string | null = null
@@ -250,7 +275,7 @@ let pendingTerminalConfig: string | null = null
 let pendingTerminalSession: string | null = null
 let injectedTerminalPath: string | null = null
 async function browse(path: string, resolvePath = false, syncTerminal = false) {
-  if (!record.value || !isSftpReady(record.value.id)) return
+  if (!fileContext.value || !isSftpReady(fileContext.value.id)) return
   const generation = ++browseGeneration
   const terminalConfig = syncTerminal ? focused.value : null
   const terminalSession = terminalConfig ? registry.byConfig.get(terminalConfig)?.client?.id ?? null : null
@@ -261,10 +286,10 @@ async function browse(path: string, resolvePath = false, syncTerminal = false) {
   browsing.value = true
   selected.value = []
   entries.value = []
-  const workspaceId = record.value.id
+  const workspaceId = fileContext.value.id
   const channel = new Channel<DirBatch>()
   channel.onmessage = (batch) => {
-    if (generation !== browseGeneration || record.value?.id !== workspaceId) return
+    if (generation !== browseGeneration || fileContext.value?.id !== workspaceId) return
     if (batch.entries.length) entries.value = [...entries.value, ...batch.entries]
     if (batch.path) {
       directory.value = batch.path
@@ -275,9 +300,11 @@ async function browse(path: string, resolvePath = false, syncTerminal = false) {
     sftpError.value = batch.message || ''
     if (batch.message) entries.value = []
     if (!batch.message && batch.path) {
-      record.value = { ...record.value, lastDirectory: batch.path }
+      for (const context of record.value?.contexts ?? []) {
+        if (context.connectionId === fileContext.value?.connectionId) context.lastDirectory = batch.path
+      }
       directorySaveChain = directorySaveChain.catch(() => {}).then(() => {
-        if (generation === browseGeneration) return remoteApi.setDirectory(workspaceId, batch.path)
+        return remoteApi.setDirectory(workspaceId, batch.path)
       }).catch(fail)
       if (syncTerminal) queueTerminalDirectory(batch.path, terminalConfig, terminalSession)
     }
@@ -285,7 +312,7 @@ async function browse(path: string, resolvePath = false, syncTerminal = false) {
   try {
     if (resolvePath) {
       path = await remoteApi.canonicalize(workspaceId, path)
-      if (generation !== browseGeneration || record.value?.id !== workspaceId) return
+      if (generation !== browseGeneration || fileContext.value?.id !== workspaceId) return
       directory.value = path
       pathInput.value = path
     }
@@ -374,46 +401,47 @@ function toggleSelect(name: string) {
   selected.value = selected.value.includes(name) ? selected.value.filter((item) => item !== name) : [...selected.value, name]
 }
 async function submitPath() {
-  if (!record.value) return
+  if (!fileContext.value) return
   try {
     await browse(pathInput.value, true, true)
   } catch (reason) { sftpError.value = fail(reason) }
 }
 async function makeDirectory() {
-  if (!record.value || !folderName.value.trim()) return
-  const workspaceId = record.value.id
+  if (!fileContext.value || !folderName.value.trim()) return
+  const workspaceId = fileContext.value.id
   const path = directory.value
   busy.value = true
   try {
     await remoteApi.createDirectory(workspaceId, joinRemote(path, folderName.value.trim()))
     folderOpen.value = false
     folderName.value = ''
-    if (record.value?.id === workspaceId && directory.value === path) await browse(path)
+    if (fileContext.value?.id === workspaceId && directory.value === path) await browse(path)
   } catch (reason) { fail(reason) }
   finally { busy.value = false }
 }
-async function transfer(kind: 'upload-files' | 'upload-folders' | 'download', names: string[] = []) {
-  if (!record.value) return
+async function transfer(kind: 'upload-files' | 'upload-folders' | 'download', names: string[] = [], target?: { workspaceId: string; directory: string }) {
+  if (!target && !fileContext.value) return
   if (kind === 'download' && !names.length) {
     emit('error', t('remote.selectDownload'))
     return
   }
-  const downloadNames = names.filter((name) => entries.value.find((entry) => entry.name === name)?.kind !== 'unsupported')
+  const downloadNames = target ? names : names.filter((name) => entries.value.find((entry) => entry.name === name)?.kind !== 'unsupported')
   if (kind === 'download' && !downloadNames.length) {
     emit('error', t('remote.kind.unsupported'))
     return
   }
   try {
-    const workspaceId = record.value.id
-    const path = directory.value
+    const workspaceId = target?.workspaceId ?? fileContext.value!.id
+    const path = target?.directory ?? directory.value
     const grant = await remoteApi.selectPaths(workspaceId, kind)
     if (!grant) return
     await remoteApi.enqueueTransfer(workspaceId, grant.token, crypto.randomUUID(), path, kind === 'download' ? downloadNames : [])
   } catch (reason) { fail(reason) }
 }
 async function retry(transferItem: TransferView) {
-  if (transferItem.direction === 'download') await transfer('download', failedRoots(transferItem.files))
-  else await transfer('upload-files')
+  const target = { workspaceId: transferItem.workspaceId, directory: transferItem.remoteDirectory }
+  if (transferItem.direction === 'download') await transfer('download', failedRoots(transferItem.files), target)
+  else await transfer('upload-files', [], target)
 }
 async function resolveConflict(choice: 'overwrite' | 'skip' | 'cancel') {
   const transferItem = conflictTransfer.value
@@ -432,6 +460,7 @@ async function submitSecret() {
   try {
     await remoteApi.submitCredential(pending.batchId, value, pending.authType === 'password' && savePassword.value)
     credential.value = null
+    nextPrompts()
     savePassword.value = false
   } catch (reason) { fail(reason) }
   finally { submittingSecret.value = false }
@@ -443,6 +472,7 @@ async function cancelSecret() {
   secret.value = ''
   credential.value = null
   if (pending) await remoteApi.cancelAttempt(batchCancelId(pending.batchId)).catch((reason) => fail(reason))
+  nextPrompts()
 }
 async function answer(decision: 'once' | 'save' | 'cancel') {
   const current = challenge.value
@@ -450,13 +480,16 @@ async function answer(decision: 'once' | 'save' | 'cancel') {
   if (!current?.challengeId) return
   try { await remoteApi.answerChallenge(current.challengeId, decision) }
   catch (reason) { fail(reason) }
+  finally { nextPrompts() }
 }
 function selectTab(id: string) {
-  if (!record.value || busy.value || record.value.layout.activeTabId === id) return
+  if (!record.value || busy.value) return
+  if (record.value.layout.activeTabId === id) { void connectMissing().catch(fail); return }
   const next = { ...asLayout(record.value.layout), activeTabId: id }
   const tab = next.tabs.find((tab) => tab.id === id)
   focused.value = tab ? leaves(tab.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
   void persist(next).catch(fail)
+  void nextTick(() => { void connectMissing().catch(fail) })
 }
 function renameTab(id: string) {
   if (!props.active || props.shortcutsBlocked || dialogOpen.value || busy.value) return false
@@ -503,14 +536,26 @@ function cycleTab(delta: number) {
   })
 }
 function keydown(event: KeyboardEvent) {
-  if (!props.active || props.shortcutsBlocked || dialogOpen.value) return
-  const command = matchShortcut(event, props.settings.shortcuts, ['workspace'])
-  if (command !== 'previousTab' && command !== 'nextTab' && command !== 'newTerminal') return
+  if (!props.active || props.shortcutsBlocked || dialogOpen.value || busy.value) return
+  if (Array.from(document.querySelectorAll('[aria-modal="true"]')).some((element) => element.getClientRects().length > 0)) return
+  const target = event.target as HTMLElement | null
+  if (target && !target.closest?.('.xterm') && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+  const command = matchShortcut(event, props.settings.shortcuts, ['workspace', 'remote'])
+  if (command && /^tab[1-9]$/.test(command)) {
+    const tab = layout.value?.tabs[Number(command.slice(3)) - 1]
+    if (!tab) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (!event.repeat) { selectTab(tab.id); void nextTick(focusTerminal) }
+    return
+  }
+  if (command !== 'previousTab' && command !== 'nextTab' && command !== 'remotePrevious' && command !== 'remoteNext' && command !== 'newTerminal' && command !== 'splitHorizontal' && command !== 'splitVertical') return
   event.preventDefault()
   event.stopPropagation()
   if (event.repeat) return
   if (command === 'newTerminal') void addTerminal()
-  else cycleTab(command === 'previousTab' ? -1 : 1)
+  else if (command === 'splitHorizontal' || command === 'splitVertical') void addTerminal(command === 'splitHorizontal' ? 'horizontal' : 'vertical')
+  else cycleTab(command === 'previousTab' || command === 'remotePrevious' ? -1 : 1)
 }
 function askClose(ids: string[], title: string, tabId?: string) {
   if (!ids.length) return
@@ -527,53 +572,96 @@ async function confirmClose() {
   if (!request || !record.value || busy.value) return
   busy.value = true
   try {
-    let next = asLayout(record.value.layout)
-    for (const id of request.ids) {
-      const entry = registry.byConfig.get(id)
-      if (entry?.client.id) {
-        entry.intentionalStop = true
-        try { await terminalApi.stopTerminal(entry.client.id) } catch { /* Closing still removes the saved pane. */ }
-      }
-      registry.remove(id)
-      await remoteApi.removeTerminal(record.value.id, id)
-      next = removeFromLayout(next, id)
-    }
-    if (request.tabId) {
-      const tabs = next.tabs.filter((tab) => tab.id !== request.tabId)
-      next = { ...next, tabs, activeTabId: tabs.some((tab) => tab.id === next.activeTabId) ? next.activeTabId : tabs[0]?.id ?? null }
-    }
-    await persist(next)
+    window.clearTimeout(ratioTimer)
+    await enqueueLayoutSave(record.value.id, record.value.layout)
+    await remoteApi.removeProjectTerminals(record.value.id, request.ids)
+    for (const id of request.ids) registry.remove(id)
+    record.value = await remoteApi.getProjectWorkspace(record.value.id)
     focused.value = activeTab.value ? leaves(activeTab.value.root).flatMap((leaf) => leaf.type === 'terminal' ? [leaf.terminalConfigId] : [])[0] ?? null : null
     closing.value = null
   } catch (reason) { fail(reason) }
   finally { busy.value = false }
 }
 async function addTerminal(direction?: 'horizontal' | 'vertical') {
-  if (!record.value || !layout.value || busy.value || dialogOpen.value) return
+  if (!record.value || busy.value || dialogOpen.value || launching.value) return
+  if (direction && !focused.value) return
   busy.value = true
-  let configId = ''
   try {
-    const name = t('remote.terminal')
-    configId = await remoteApi.createTerminal(record.value.id, name)
-    const currentRecord = record.value
-    if (!currentRecord) return
-    const current = asLayout(currentRecord.layout)
-    const tab = current.tabs.find((item) => item.id === current.activeTabId)
-    if (direction && tab && focused.value) {
-      tab.root = splitLeaf(tab.root, focused.value, { type: 'terminal', terminalConfigId: configId }, direction)
+    await remote.reload()
+    creationTarget = { direction, tabId: layout.value?.activeTabId ?? null, focused: focused.value }
+    chosen.value = null
+    choosing.value = true
+  } catch (reason) { fail(reason) }
+  finally { busy.value = false }
+}
+async function createChosenTerminal() {
+  const target = creationTarget
+  const selectedConnection = remote.connections.find((connection) => connection.id === chosen.value)
+  if (!target || !selectedConnection || !record.value || creating.value || busy.value || launching.value) return
+  creating.value = true
+  busy.value = true
+  let config: ProjectTerminal | null = null
+  const previous = record.value
+  try {
+    config = await remoteApi.createProjectTerminal(previous.id, selectedConnection.id, selectedConnection.name)
+    const loaded = await remoteApi.getProjectWorkspace(previous.id)
+    const current = JSON.parse(JSON.stringify(asLayout(previous.layout))) as Layout
+    const tab = current.tabs.find((item) => item.id === target.tabId)
+    if (target.direction && tab && target.focused) {
+      tab.root = splitLeaf(tab.root, target.focused, { type: 'terminal', terminalConfigId: config.id }, target.direction)
     } else {
       const tabId = crypto.randomUUID()
-      current.tabs.push({ id: tabId, title: name, root: { type: 'terminal', terminalConfigId: configId } })
+      current.tabs.push({ id: tabId, title: selectedConnection.name, root: { type: 'terminal', terminalConfigId: config.id } })
       current.activeTabId = tabId
     }
-    record.value = { ...currentRecord, terminals: [...currentRecord.terminals, { id: configId, remoteWorkspaceId: currentRecord.id, name, sortOrder: currentRecord.terminals.length }] }
-    await persist(current)
-    focused.value = configId
+    await enqueueLayoutSave(previous.id, current as unknown as WorkspaceRecord['layout'])
+    record.value = { ...loaded, layout: current as unknown as WorkspaceRecord['layout'] }
+    focused.value = config.id
+    choosing.value = false
   } catch (reason) {
+    if (config) await remoteApi.removeTerminal(config.remoteWorkspaceId, config.id).catch(fail)
     fail(reason)
-    configId = ''
-  } finally { busy.value = false }
-  if (configId && record.value) await launch([configId], !isSftpReady(record.value.id))
+    config = null
+  } finally { busy.value = false; creating.value = false }
+  if (config) await launch([config.id], !!fileContext.value && !isSftpReady(fileContext.value.id))
+}
+async function activateFiles(connect = true) {
+  browseGeneration += 1
+  if (browseId) void remoteApi.cancelBrowse(browseId).catch(() => {})
+  browseId = ''
+  entries.value = []
+  selected.value = []
+  browsing.value = false
+  sftpError.value = ''
+  clearTerminalDirectory()
+  const context = fileContext.value
+  directory.value = context?.lastDirectory || '.'
+  pathInput.value = directory.value
+  sftpUp.value = !!context && isSftpReady(context.id)
+  if (!context || !props.active || initializing.value || busy.value || launching.value || !focused.value || !registry.byConfig.has(focused.value)) return
+  if (sftpUp.value) await browse(terminalDirectory.value || directory.value)
+  else if (connect) await launch([], true)
+}
+async function refreshConnections() {
+  try { await remote.reload() } catch (reason) { fail(reason) }
+}
+async function refreshProject() {
+  if (!record.value || initializing.value || busy.value || launching.value || refreshing.value) return
+  refreshPending.value = false
+  refreshing.value = true
+  busy.value = true
+  try {
+    window.clearTimeout(ratioTimer)
+    await enqueueLayoutSave(record.value.id, record.value.layout).catch(() => {})
+    await saveChain.catch(() => {})
+    const loaded = await remoteApi.getProjectWorkspace(props.workspaceId)
+    const ids = new Set(loaded.terminals.map((terminal) => terminal.id))
+    for (const id of registry.byConfig.keys()) if (!ids.has(id)) registry.remove(id)
+    record.value = loaded
+    if (!focused.value || !ids.has(focused.value)) focused.value = activeTab.value ? leaves(activeTab.value.root).find((leaf) => leaf.type === 'terminal')?.terminalConfigId ?? null : null
+    await connectMissing(false)
+  } catch (reason) { fail(reason) }
+  finally { refreshing.value = false; busy.value = false; void activateFiles(false) }
 }
 function onRatio(path: number[], value: number) {
   if (!record.value || busy.value || rename.value) return
@@ -622,7 +710,14 @@ async function syncSessions() {
 }
 const sessionTimer = window.setInterval(() => { void syncSessions() }, 2000)
 watch(rename, (value) => { if (value) void nextTick(() => { renameInput.value?.focus(); renameInput.value?.select() }) })
+watch(() => fileContext.value?.id, () => { void activateFiles() })
+watch(() => remote.revision, () => { refreshPending.value = true })
+watch(() => [refreshPending.value, busy.value, launching.value, initializing.value, refreshing.value], () => {
+  if (refreshPending.value) void refreshProject()
+})
+watch(() => record.value?.terminals.length, (count) => { remote.terminalCounts.set(props.workspaceId, count ?? 0) })
 watch(() => props.workspaceId, () => { void reload() }, { immediate: true })
+watch(() => props.active, (active) => { if (active && !initializing.value) void activateFiles() })
 watch(() => [props.active, record.value?.layout.activeTabId, record.value?.layout.tabs.length], syncVisibility, { flush: 'post' })
 watch(() => props.settings, (settings) => registry.updateSettings(settings), { deep: true })
 watch(() => props.appearance, () => registry.updateSettings(props.settings))
@@ -642,26 +737,33 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
 <template>
   <section v-if="record && layout" class="remote-workspace">
     <div class="remote-toolbar">
-      <span class="remote-title">{{ connection.name }}</span>
+      <span class="remote-title">{{ connection?.name }}</span>
       <span class="remote-connection-endpoint">{{ endpoint }}</span>
-      <NButton size="small" :disabled="launching" @click="connectMissing().catch(fail)">{{ t('remote.reconnect') }}</NButton>
+      <NButton size="small" :disabled="launching || !focused" @click="focused && launch([focused], false)">{{ t('remote.reconnect') }}</NButton>
       <NButton size="small" @click="addTerminal()">{{ t('remote.newTab') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('horizontal')">{{ t('remote.splitHorizontal') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('vertical')">{{ t('remote.splitVertical') }}</NButton>
     </div>
-    <div class="remote-tabs" role="tablist" :aria-label="t('workspace.tabs')">
-      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
-        <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
-        <button :aria-label="t('remote.closeTab', { title: tab.title })" :disabled="busy" @click="closeTab(tab)">×</button>
+    <Teleport v-if="active" to="#remote-titlebar-tabs">
+      <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
+        <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
+          <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
+          <button :aria-label="t('remote.closeTab', { title: tab.title })" :disabled="busy" @click="closeTab(tab)">×</button>
+        </div>
+        <button class="workspace-tab-add" :disabled="busy || launching" :title="t('remote.newTab')" :aria-label="t('remote.newTab')" @click="addTerminal()">+</button>
       </div>
+    </Teleport>
+    <div v-if="!activeTab" class="workspace-placeholder">
+      <p>{{ t('remote.projectPlaceholder') }}</p>
+      <NButton @click="addTerminal()">{{ t('remote.newTab') }}</NButton>
     </div>
-    <div class="remote-body">
+    <div v-else class="remote-body">
       <div class="remote-terminals">
-        <RemoteLayoutPane v-if="activeTab" :node="activeTab.root" :path="[]" :registry="registry" :names="names" :focused="focused" :visible="active" :endpoint="endpoint" @focus="focused = $event" @close="askClose([$event], t('remote.closePane'))" @reconnect="(id) => launch([id], false)" @ratio="onRatio" />
+        <RemoteLayoutPane v-if="activeTab" :node="activeTab.root" :path="[]" :registry="registry" :names="names" :focused="focused" :visible="active" :endpoints="endpoints" @focus="focused = $event" @close="askClose([$event], t('remote.closePane'))" @reconnect="(id) => launch([id], false)" @ratio="onRatio" />
       </div>
       <aside class="remote-files">
         <div class="remote-file-toolbar">
-          <strong>{{ t('remote.files') }}</strong>
+          <strong :title="endpoint">{{ t('remote.files') }} · {{ connection?.name }}</strong>
           <NButton size="tiny" :disabled="browsing || !sftpUp" @click="browse(directory)">{{ t('remote.refresh') }}</NButton>
           <NButton size="tiny" :disabled="!browsing" @click="browseId && remoteApi.cancelBrowse(browseId)">{{ t('remote.cancelBrowse') }}</NButton>
         </div>
@@ -692,7 +794,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
         <div class="remote-transfer">
           <strong>{{ t('remote.transfers') }}</strong>
           <div v-for="item in workspaceTransfers" :key="item.id">
-            <div>{{ t(directionText[item.direction] ?? 'remote.direction.upload') }} · {{ progress(item) }}</div>
+            <div>{{ remote.connections.find((connection) => connection.id === record?.contexts.find((context) => context.id === item.workspaceId)?.connectionId)?.name }} · {{ t(directionText[item.direction] ?? 'remote.direction.upload') }} · {{ progress(item) }}</div>
             <div v-if="item.message">{{ item.message }}</div>
             <NButton size="tiny" @click="remoteApi.cancelTransfer(item.id).catch(fail)">{{ t('remote.cancelTransfer') }}</NButton>
             <NButton v-if="item.state === 'failed' || item.state === 'cancelled' || item.files.some((file) => file.status === 'failed')" size="tiny" @click="retry(item)">{{ t('remote.retryTransfer') }}</NButton>
@@ -700,6 +802,18 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
         </div>
       </aside>
     </div>
+    <NModal :show="active && choosing" preset="card" :title="t('remote.newTab')" class="form-modal" :mask-closable="!creating" @update:show="(show) => { if (!creating) choosing = show }">
+      <p>{{ t('remote.chooseConnection') }}</p>
+      <NSelect v-model:value="chosen" :options="connectionOptions" filterable :disabled="creating" />
+      <div class="dialog-actions">
+        <NButton :disabled="creating" @click="manager = true">{{ t('remote.manageConnections') }}</NButton>
+        <NButton :disabled="creating" @click="choosing = false">{{ t('common.cancel') }}</NButton>
+        <NButton type="primary" :loading="creating" :disabled="!chosen || creating || busy || launching" @click="createChosenTerminal">{{ t('remote.connect') }}</NButton>
+      </div>
+    </NModal>
+    <NModal :show="active && manager" preset="card" :title="t('remote.manageConnections')" class="form-modal" @update:show="manager = $event">
+      <ConnectionManager @changed="refreshConnections" @error="emit('error', $event)" />
+    </NModal>
     <NModal :show="active && !!rename" preset="card" :title="t('workspace.rename')" class="form-modal" :mask-closable="!savingRename" @update:show="(show) => { if (!show && !savingRename) rename = null }">
       <NInput v-if="rename" ref="renameInput" v-model:value="rename.title" :maxlength="100" :disabled="savingRename" :placeholder="t('workspace.tabTitle')" @keydown.enter.prevent="saveRename" />
       <div class="dialog-actions">
@@ -708,7 +822,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       </div>
     </NModal>
     <NModal :show="active && !!credential" preset="card" :title="t('remote.credentialTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void cancelSecret() }">
-      <p>{{ t(credential?.authType === 'privateKey' ? 'remote.passphrasePrompt' : 'remote.passwordPrompt', { endpoint }) }}</p>
+      <p>{{ t(credential?.authType === 'privateKey' ? 'remote.passphrasePrompt' : 'remote.passwordPrompt', { endpoint: credentialEndpoint }) }}</p>
       <NInput v-model:value="secret" type="password" show-password-on="click" :placeholder="t('remote.secret')" :disabled="submittingSecret" @keydown.enter="submitSecret" />
       <NCheckbox v-if="credential?.authType === 'password'" v-model:checked="savePassword" :disabled="submittingSecret">{{ t('remote.savePassword') }}</NCheckbox>
       <div class="dialog-actions">
