@@ -90,6 +90,11 @@ export class TerminalClient {
   private displayRetryDelay = DISPLAY_RETRY_INITIAL_MS
   private displayRestoredAt: number | null = null
   private displayEpoch = 0
+  private readonly onVisibilityChange = (): void => {
+    if (this.disposed) return
+    if (document.visibilityState === 'hidden') { this.cancelDisplayRetry(); return }
+    if (this.displayPaused) void this.resumeDisplay()
+  }
   private localDroppedBytes = 0
   private backendDroppedBytes = 0
   private readonly output = new OutputQueue(terminalOutputScheduler,
@@ -149,6 +154,8 @@ export class TerminalClient {
     }))
     this.observer = new ResizeObserver(() => this.scheduleResize())
     this.observer.observe(container)
+    // Hidden windows throttle timers, so retrying there would only resubscribe and discard output.
+    document.addEventListener('visibilitychange', this.onVisibilityChange)
   }
 
   get id(): string | null {
@@ -260,7 +267,10 @@ export class TerminalClient {
     if (this.visible === visible) return
     this.flushContentActivity()
     this.visible = visible
-    if (visible) this.scheduleResize()
+    if (visible) {
+      this.scheduleResize()
+      if (this.displayPaused) void this.resumeDisplay()
+    }
   }
 
   focus(): void {
@@ -312,6 +322,8 @@ export class TerminalClient {
 
   private scheduleDisplayRetry(): void {
     if (this.displayRetryTimer !== undefined || !this.displayPaused || this.disposed || this.operationPaused || this.status.state !== 'running') return
+    // A hidden window throttles timers; retrying there reconnects without rendering anything.
+    if (document.visibilityState === 'hidden') return
     this.displayRetryTimer = window.setTimeout(() => {
       this.displayRetryTimer = undefined
       if (this.resumingDisplay || this.reconnecting) { this.scheduleDisplayRetry(); return }
@@ -351,6 +363,8 @@ export class TerminalClient {
 
   async resumeDisplay(): Promise<void> {
     if (!this.displayPaused || this.resumingDisplay || this.disposed || this.operationPaused || this.reconnecting || this.status.state !== 'running') return
+    // Resuming in a hidden window would only reconnect and discard output.
+    if (document.visibilityState === 'hidden') return
     this.cancelDisplayRetry()
     this.resumingDisplay = true
     const terminalId = this.terminalId
@@ -390,6 +404,7 @@ export class TerminalClient {
     this.activeChannel = null
     this.pendingChannel = null
     this.observer.disconnect()
+    document.removeEventListener('visibilitychange', this.onVisibilityChange)
     window.clearTimeout(this.ackTimer)
     window.clearTimeout(this.resizeTimer)
     window.clearTimeout(this.contentTimer)
@@ -509,6 +524,8 @@ export class TerminalClient {
       }
       this.reconnecting = false
       this.syncInput()
+      // A visibility change during the reconnect skips resumeDisplay; keep the retry chain alive.
+      this.scheduleDisplayRetry()
     }
   }
 

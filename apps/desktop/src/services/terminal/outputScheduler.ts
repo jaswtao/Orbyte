@@ -130,7 +130,9 @@ export class OutputQueue {
   overload(incoming = 0): void { this.onOverload(this.clear() + incoming) }
 
   run(complete: () => void): void {
-    if (this.items[0] && this.scheduler.clock.now() - this.items[0].added > MAX_QUEUE_AGE) {
+    // Only the display needs fresh output. A hidden queue may lag behind throttled
+    // timers and still has to keep its content instead of discarding it as stale.
+    if (this.items[0] && this.visible() && this.scheduler.clock.now() - this.items[0].added > MAX_QUEUE_AGE) {
       this.overload(); complete(); return
     }
     if (this.maintenance && (!this.items.length || this.maintenanceTurn)) {

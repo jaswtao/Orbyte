@@ -77,7 +77,13 @@ function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, perfo
     }
   }
   const exports = {}
-  const document = { visibilityState: 'visible' }
+  const documentListeners = new Map()
+  const document = {
+    visibilityState: 'visible',
+    addEventListener(name, handler) { documentListeners.set(name, [...(documentListeners.get(name) ?? []), handler]) },
+    removeEventListener(name, handler) { documentListeners.set(name, (documentListeners.get(name) ?? []).filter((item) => item !== handler)) },
+    emit(name) { for (const handler of documentListeners.get(name) ?? []) handler() },
+  }
   vm.runInNewContext(clientSource, { exports, window, document, performance: clock.performance, queueMicrotask, ArrayBuffer,
     ResizeObserver: class { observe() {} disconnect() {} },
     require(name) {
@@ -404,6 +410,82 @@ test('display resumes automatically in the background and backs off until stable
   f.clock.advance(1000)
   await flush()
   assert.equal(f.subscriptions(), 7, 'Stable display resets the retry interval')
+})
+
+test('hidden windows suspend automatic display recovery until the window returns', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.document.visibilityState = 'hidden'
+  f.document.emit('visibilitychange')
+  f.client.pauseDisplay(1)
+  f.clock.advance(120000)
+  await flush()
+  assert.equal(f.subscriptions(), 0, 'A hidden window must not reconnect without rendering output')
+  f.document.visibilityState = 'visible'
+  f.document.emit('visibilitychange')
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
+test('showing a paused terminal resumes before the retry timer fires', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.client.setVisible(false)
+  f.client.pauseDisplay(1)
+  f.clock.advance(500)
+  await flush()
+  assert.equal(f.subscriptions(), 0)
+  f.client.setVisible(true)
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
+test('hiding the window cancels a pending display retry', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.client.pauseDisplay(1)
+  f.clock.advance(999)
+  await flush()
+  assert.equal(f.subscriptions(), 0)
+  f.document.visibilityState = 'hidden'
+  f.document.emit('visibilitychange')
+  f.clock.advance(120000)
+  await flush()
+  assert.equal(f.subscriptions(), 0, 'A canceled retry must not reconnect in the background')
+  f.document.visibilityState = 'visible'
+  f.document.emit('visibilitychange')
+  await flush()
+  assert.equal(f.subscriptions(), 1)
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
+test('a reconnect finishing after the window returns re-arms display recovery', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.container.offsetWidth = 800
+  f.container.offsetHeight = 600
+  const subscribe = f.api.subscribeTerminal
+  const resize = f.api.resizeTerminal
+  let releaseResize
+  f.api.subscribeTerminal = async (_id, channel) => {
+    channel.onmessage(outputFrame(2, '{"state":"running"}'))
+    channel.onmessage(outputFrame(1, 'x'.repeat(outputModule.OUTPUT_QUEUE_LIMIT + 1)))
+  }
+  f.api.resizeTerminal = () => new Promise((resolve) => { releaseResize = resolve })
+  const pending = f.client.reconnect()
+  for (let attempt = 0; attempt < 20 && !releaseResize; attempt++) await flush()
+  assert.equal(typeof releaseResize, 'function', 'Reconnect must reach the resize nudge')
+  assert.equal(f.displays.at(-1).paused, true)
+  f.document.visibilityState = 'hidden'
+  f.document.emit('visibilitychange')
+  f.document.visibilityState = 'visible'
+  f.document.emit('visibilitychange')
+  f.api.subscribeTerminal = subscribe
+  f.api.resizeTerminal = resize
+  releaseResize()
+  await pending
+  f.clock.advance(1000)
+  for (let attempt = 0; attempt < 20 && f.displays.at(-1).paused !== false; attempt++) await flush()
+  assert.equal(f.subscriptions(), 1, 'The retry chain must survive a visibility change during reconnect')
+  assert.equal(f.displays.at(-1).paused, false)
 })
 
 test('automatic display recovery waits for pause completion and shares the manual lock', async (t) => {

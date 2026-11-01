@@ -126,6 +126,21 @@ test('stale queues suspend while other sessions remain scheduled', () => {
   assert.equal(acknowledged, true)
 })
 
+test('hidden queues keep stale output because only the visible display needs fresh data', () => {
+  const f = fixture()
+  const written = []
+  let paused = 0
+  const queue = new OutputQueue(f.scheduler, (data, done) => { written.push(data.length); done() }, () => false, () => paused++)
+  queue.enqueue(new Uint8Array(16), () => {})
+  f.cost(501)
+  // Model the throttled event loop of a hidden window.
+  for (const timer of f.timers.values()) timer.at = 501
+  f.advance(0)
+  assert.equal(paused, 0)
+  assert.deepEqual(written, [16])
+  assert.equal(queue.pendingBytes, 0)
+})
+
 test('cancellation removes scheduled history work and ignores old writes', () => {
   const f = fixture()
   let calls = 0
