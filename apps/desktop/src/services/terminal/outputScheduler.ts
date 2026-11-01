@@ -1,7 +1,12 @@
 /** Fair, bounded terminal parsing on the shared WebView thread. Author: jaswtao · Date: 2026-10-31 */
 export const OUTPUT_QUEUE_LIMIT = 256 * 1024
-const MAX_QUEUE_AGE = 500
 const WRITE_TIMEOUT = 100
+const MIN_CHUNK = 4 * 1024
+const MAX_CHUNK = 16 * 1024
+const MAINTENANCE_MAX_DELAY = 2000
+
+/** Overflow, a hung parser, or a synchronous parse failure requires a fresh subscription. */
+export type OutputDropReason = 'overflow' | 'timeout' | 'error'
 
 export interface SchedulerClock {
   now(): number
@@ -12,7 +17,6 @@ export interface SchedulerClock {
 interface OutputItem {
   data: Uint8Array
   offset: number
-  added: number
   processed: () => void
 }
 
@@ -72,7 +76,7 @@ export class OutputScheduler {
     this.ready.push(queue)
     this.visibleTurns = queue.visible() ? this.visibleTurns + 1 : 0
     const started = this.clock.now()
-    const token = { queue, timer: this.clock.later(() => queue.overload(), WRITE_TIMEOUT) }
+    const token = { queue, timer: this.clock.later(() => queue.overload('timeout'), WRITE_TIMEOUT) }
     this.active = token
     const complete = () => {
       if (this.active !== token) return
@@ -81,7 +85,7 @@ export class OutputScheduler {
       this.spent += this.clock.now() - started
       this.schedule()
     }
-    try { queue.run(complete) } catch { queue.overload(); complete() }
+    try { queue.run(complete) } catch { queue.overload('error'); complete() }
   }
 }
 
@@ -91,26 +95,28 @@ export class OutputQueue {
   private chunkSize = 8 * 1024
   private generation = 0
   private maintenance: (() => boolean) | null = null
-  private maintenanceTurn = false
+  private maintenanceSince = 0
 
   constructor(
     private readonly scheduler: OutputScheduler,
     private readonly write: (data: Uint8Array, complete: () => void) => void,
     readonly visible: () => boolean,
-    private readonly onOverload: (discarded: number) => void,
+    private readonly onDrop: (discarded: number, reason: OutputDropReason) => void,
   ) {}
 
   get hasWork(): boolean { return this.items.length > 0 || this.maintenance !== null }
   get pendingBytes(): number { return this.bytes }
 
   enqueue(data: Uint8Array, processed: () => void): void {
-    if (this.bytes + data.byteLength > OUTPUT_QUEUE_LIMIT) { this.overload(data.byteLength); return }
-    this.items.push({ data, offset: 0, added: this.scheduler.clock.now(), processed })
+    if (this.bytes + data.byteLength > OUTPUT_QUEUE_LIMIT) { this.overload('overflow', data.byteLength); return }
+    this.items.push({ data, offset: 0, processed })
     this.bytes += data.byteLength
     this.scheduler.wake(this)
   }
 
   scheduleMaintenance(step: () => boolean): void {
+    // Repeated scheduling must not push the deferral cap forward indefinitely.
+    if (this.maintenance === null) this.maintenanceSince = this.scheduler.clock.now()
     this.maintenance = step
     this.scheduler.wake(this)
   }
@@ -127,31 +133,30 @@ export class OutputQueue {
     return discarded
   }
 
-  overload(incoming = 0): void { this.onOverload(this.clear() + incoming) }
+  overload(reason: OutputDropReason = 'timeout', incoming = 0): void {
+    this.onDrop(this.clear() + incoming, reason)
+  }
 
   run(complete: () => void): void {
-    // Only the display needs fresh output. A hidden queue may lag behind throttled
-    // timers and still has to keep its content instead of discarding it as stale.
-    if (this.items[0] && this.visible() && this.scheduler.clock.now() - this.items[0].added > MAX_QUEUE_AGE) {
-      this.overload(); complete(); return
-    }
-    if (this.maintenance && (!this.items.length || this.maintenanceTurn)) {
-      this.maintenanceTurn = false
+    const item = this.items[0]
+    const now = this.scheduler.clock.now()
+    // History comparison yields to streaming output, but forced slices every two
+    // seconds keep unread detection from being starved by a continuous TUI.
+    if (this.maintenance && (!item || now - this.maintenanceSince >= MAINTENANCE_MAX_DELAY)) {
+      this.maintenanceSince = now
       if (this.maintenance()) this.maintenance = null
       complete()
       return
     }
-    const item = this.items[0]
     if (!item) { complete(); return }
-    this.maintenanceTurn = true
     const generation = this.generation
     const length = Math.min(this.chunkSize, item.data.byteLength - item.offset)
     const started = this.scheduler.clock.now()
     this.write(item.data.subarray(item.offset, item.offset + length), () => {
       if (generation !== this.generation) return
       const elapsed = this.scheduler.clock.now() - started
-      if (elapsed > 4) this.chunkSize = Math.max(1024, this.chunkSize >> 1)
-      else if (elapsed < 2) this.chunkSize = Math.min(16 * 1024, this.chunkSize * 2)
+      if (elapsed > 8) this.chunkSize = Math.max(MIN_CHUNK, this.chunkSize >> 1)
+      else if (elapsed < 4) this.chunkSize = Math.min(MAX_CHUNK, this.chunkSize * 2)
       item.offset += length
       this.bytes -= length
       if (item.offset === item.data.byteLength) {

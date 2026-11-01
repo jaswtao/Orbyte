@@ -9,7 +9,7 @@ import { Channel } from '@tauri-apps/api/core'
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal, type IDisposable, type ITerminalOptions } from '@xterm/xterm'
 
-import { terminalApi, type TerminalSize, type TerminalStatus, type TerminalSessionInfo } from '../terminalApi'
+import { terminalApi, type TerminalSize, type TerminalStatus, type TerminalSessionInfo, type TerminalDiagnosticEvent } from '../terminalApi'
 import { AckQueue, OutputRecovery, withTimeout } from './recovery'
 import { decodeFrame, decodeJsonPayload, FrameKind, type TerminalFrameData } from './frame'
 import { InputQueue } from './inputQueue'
@@ -19,7 +19,7 @@ import { bindTerminalSelection } from './selection'
 import { ShellIntegration, type ShellEvent } from './shellIntegration'
 import { remoteDirectory, type RemotePromptEvent } from '../remote/directory'
 import { ContentActivity } from './contentActivity'
-import { OutputQueue, terminalOutputScheduler, OUTPUT_QUEUE_LIMIT } from './outputScheduler'
+import { OutputQueue, terminalOutputScheduler, OUTPUT_QUEUE_LIMIT, type OutputDropReason } from './outputScheduler'
 import { t } from '../../i18n/translate'
 
 const ACK_BYTES = 32 * 1024
@@ -99,7 +99,7 @@ export class TerminalClient {
   private backendDroppedBytes = 0
   private readonly output = new OutputQueue(terminalOutputScheduler,
     (data, complete) => this.term.write(data, complete), () => this.visible && document.visibilityState !== 'hidden',
-    (discarded) => this.pauseDisplay(discarded))
+    (discarded, reason) => this.handleOutputDrop(discarded, reason))
   private lastSize: TerminalSize | null = null
   private readonly observer: ResizeObserver
   private readonly ime: ReturnType<typeof bindTerminalIme>
@@ -243,7 +243,7 @@ export class TerminalClient {
       for (const frame of subscription.frames) this.safe(() => this.handleFrame(frame))
       subscription.frames = []
       subscription.bytes = 0
-      if (subscription.dropped) this.pauseDisplay(this.output.clear() + subscription.dropped)
+      if (subscription.dropped) this.handleOutputDrop(this.output.clear() + subscription.dropped, 'overflow')
     }
     this.syncInput()
     void this.flushAck()
@@ -332,6 +332,13 @@ export class TerminalClient {
     }, this.displayRetryDelay)
   }
 
+  private handleOutputDrop(discarded: number, reason: OutputDropReason): void {
+    const event: TerminalDiagnosticEvent = reason === 'overflow' ? 'output_overflow'
+      : reason === 'timeout' ? 'output_timeout' : 'output_error'
+    this.diagnostic(event, discarded)
+    this.pauseDisplay(discarded)
+  }
+
   private pauseDisplay(discarded: number, request = true): void {
     this.localDroppedBytes += discarded
     if (this.displayPaused || this.disposed) return
@@ -380,7 +387,7 @@ export class TerminalClient {
       this.term.reset()
       this.ime.recover()
       this.recovery.reset()
-      await this.reconnect()
+      await this.reconnect(true)
       if (this.disposed || this.displayEpoch !== epoch || this.terminalId !== terminalId || this.operationPaused || this.status.state !== 'running') return
       if (this.connection !== 'connected') this.pauseDisplay(this.output.clear())
       if (!this.displayPaused) this.displayRestoredAt = performance.now()
@@ -473,7 +480,7 @@ export class TerminalClient {
     }
   }
 
-  async reconnect(): Promise<void> {
+  async reconnect(nudge = false): Promise<void> {
     const terminalId = this.terminalId
     if (!terminalId || this.disposed || this.reconnecting || this.operationPaused || this.displayPaused || this.status.state !== 'running') return
     this.reconnecting = true
@@ -498,8 +505,9 @@ export class TerminalClient {
       this.attach(terminalId)
       const size = this.measure()
       if (size) {
-        // The nudge and restore finish inside one backend call, so a late call after timeout cannot stay one column off.
-        await withTimeout(terminalApi.resizeTerminal(terminalId, size, true))
+        // Only a cleared display needs the program to repaint. A fault reconnect keeps
+        // its content, and nudging a TUI would trigger an avoidable full redraw.
+        await withTimeout(terminalApi.resizeTerminal(terminalId, size, nudge))
         if (cancelled() || this.status.state !== 'running') return
       }
       await withTimeout(parsed)
@@ -553,9 +561,9 @@ export class TerminalClient {
     try { this.events.onConnection?.(state) } catch { /* Connection notifications must not block recovery. */ }
   }
 
-  private diagnostic(event: Parameters<typeof terminalApi.reportDiagnostic>[1]): void {
+  private diagnostic(event: TerminalDiagnosticEvent, droppedBytes?: number): void {
     try {
-      if (this.terminalId) void terminalApi.reportDiagnostic(this.terminalId, event, this.generation, this.processedSeq).catch(() => {})
+      if (this.terminalId) void terminalApi.reportDiagnostic(this.terminalId, event, this.generation, this.processedSeq, droppedBytes).catch(() => {})
     } catch { /* Diagnostic failures must not block ordered message handling. */ }
   }
 

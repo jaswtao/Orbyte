@@ -224,6 +224,7 @@ pub async fn list_terminal_sessions(state: State<'_, AppState>) -> CmdResult<Vec
 #[serde(rename_all = "snake_case")]
 pub enum TerminalDiagnostic {
     FrameError, AckFailed, ReconnectStarted, ReconnectSucceeded, ReconnectFailed, PollFailed,
+    OutputOverflow, OutputTimeout, OutputError,
 }
 
 #[tauri::command]
@@ -233,20 +234,28 @@ pub async fn report_terminal_diagnostic(
     event: TerminalDiagnostic,
     generation: u32,
     seq: Option<u64>,
+    dropped_bytes: Option<u64>,
 ) -> CmdResult<()> {
     if terminal_id.is_empty() || terminal_id.len() > 64 || terminal_id.bytes().any(|byte| byte.is_ascii_control()) {
         return Err("无效的终端标识".into());
     }
     let terminals = state.terminals.clone();
+    let ssh = state.ssh.clone();
     blocking(move || {
         // A failed session list must not take the session lock, so it cannot pile onto an already stuck query.
         if matches!(event, TerminalDiagnostic::PollFailed) {
-            log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?}");
+            log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?} dropped_bytes={dropped_bytes:?}");
+            return Ok(());
+        }
+        // Remote sessions live in the SSH hub rather than the local terminal manager.
+        if let Some(session) = ssh.terminal(&terminal_id) {
+            let info = session.info();
+            log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?} dropped_bytes={dropped_bytes:?} status={:?} output={:?}", info.status, info.output);
             return Ok(());
         }
         let session = terminals.get(&terminal_id).map_err(err_text)?;
         let info = session.info();
-        log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?} status={:?} output={:?}", info.status, info.output);
+        log::info!(target: "orbyte_terminal", "frontend session={terminal_id} event={event:?} generation={generation} seq={seq:?} dropped_bytes={dropped_bytes:?} status={:?} output={:?}", info.status, info.output);
         Ok(())
     }).await
 }

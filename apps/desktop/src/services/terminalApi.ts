@@ -53,9 +53,13 @@ export interface CreatedTerminal {
 
 export interface LaunchPreset { preset: 'codex' | 'claude-code'; description: string; available: boolean; unavailableReason: string | null }
 
+export type TerminalDiagnosticEvent =
+  | 'frame_error' | 'ack_failed' | 'reconnect_started' | 'reconnect_succeeded' | 'reconnect_failed' | 'poll_failed'
+  | 'output_overflow' | 'output_timeout' | 'output_error'
+
 export const terminalApi = {
-  reportDiagnostic: (terminalId: string, event: 'frame_error' | 'ack_failed' | 'reconnect_started' | 'reconnect_succeeded' | 'reconnect_failed' | 'poll_failed', generation: number, seq: number | null) =>
-    invoke<void>('report_terminal_diagnostic', { terminalId, event, generation, seq }),
+  reportDiagnostic: (terminalId: string, event: TerminalDiagnosticEvent, generation: number, seq: number | null, droppedBytes?: number) =>
+    invoke<void>('report_terminal_diagnostic', { terminalId, event, generation, seq, ...(droppedBytes === undefined ? {} : { droppedBytes }) }),
   setActiveTerminal: (terminalId: string | null) => invoke<void>('set_active_terminal', { terminalId }),
   readClipboardText: () => invoke<string | null>('read_clipboard_text'),
   writeClipboardText: (text: string) => invoke<void>('write_clipboard_text', { text }),

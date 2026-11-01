@@ -440,6 +440,19 @@ test('showing a paused terminal resumes before the retry timer fires', async (t)
   assert.equal(f.displays.at(-1).paused, false)
 })
 
+test('resuming a paused display asks the program to repaint once', async (t) => {
+  const f = automaticDisplayFixture(t)
+  f.container.offsetWidth = 800
+  f.container.offsetHeight = 600
+  const nudges = []
+  f.api.resizeTerminal = async (id, size, nudge) => { nudges.push([id, size.cols, size.rows, nudge]) }
+  f.client.pauseDisplay(1)
+  f.clock.advance(1000)
+  await flush()
+  assert.deepEqual(nudges.filter((item) => item[3] === true), [['session', 80, 24, true]])
+  assert.equal(f.displays.at(-1).paused, false)
+})
+
 test('hiding the window cancels a pending display retry', async (t) => {
   const f = automaticDisplayFixture(t)
   f.client.pauseDisplay(1)
@@ -638,10 +651,22 @@ test('a timed-out parser cannot starve another client or acknowledge a late writ
   normal.deliver(1, 'other terminal remains usable')
   await waitForOutput(normal, 'other terminal remains usable')
   assert.equal(broken.displays.at(-1).paused, true)
+  assert.ok(broken.diagnostics.some((args) => args[1] === 'output_timeout' && typeof args[4] === 'number'))
   assert.equal(normal.displays.at(-1).paused, false)
   late()
   await flush()
   assert.deepEqual(acknowledgements, [])
+})
+
+test('a local queue overflow reports output_overflow with the discarded bytes', async (t) => {
+  const f = clientFixture(t)
+  f.client.term.write = () => {}
+  f.deliver(2, '{"state":"running"}')
+  for (let index = 0; index < 17; index++) f.deliver(1, new Uint8Array(16 * 1024))
+  const diagnostic = f.diagnostics.find((args) => args[1] === 'output_overflow')
+  assert.ok(diagnostic)
+  assert.equal(diagnostic[4], 17 * 16 * 1024)
+  assert.equal(f.displays.at(-1).paused, true)
 })
 
 test('output failure still forwards Escape and Ctrl+C to the running process', async (t) => {
@@ -815,7 +840,8 @@ test('帧异常自动恢复一次，后续异常保留手动重连入口且不�
   await flush()
   assert.equal(subscriptions, 1)
   assert.equal(f.client.term.options.disableStdin, false)
-  assert.deepEqual(nudges.filter((item) => item[3] === true), [['session', 80, 24, true]])
+  assert.equal(nudges.some((item) => item[3] === true), false, 'A fault reconnect must not nudge the program to repaint')
+  assert.ok(nudges.some((item) => item[3] === false))
   assert.ok(f.diagnostics.some((args) => args[1] === 'reconnect_succeeded'))
   newest.onmessage(frame(2, '{bad again'))
   await flush()
@@ -826,7 +852,7 @@ test('帧异常自动恢复一次，后续异常保留手动重连入口且不�
   assert.equal(subscriptions, 2)
   assert.equal(f.client.id, 'session')
   assert.equal(f.client.term.options.disableStdin, false)
-  assert.deepEqual(nudges.filter((item) => item[3] === true), [['session', 80, 24, true], ['session', 80, 24, true]])
+  assert.equal(nudges.some((item) => item[3] === true), false)
 })
 
 test('停止取消进行中的重连后，连接回到可手动重连且不报恢复失败', async (t) => {

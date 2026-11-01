@@ -86,12 +86,12 @@ test('a missing write callback only suspends its own terminal and ignores late c
   const paused = []
   let late
   let ack = 0
-  const broken = new OutputQueue(f.scheduler, (_, done) => { late = done }, () => true, (bytes) => paused.push(bytes))
+  const broken = new OutputQueue(f.scheduler, (_, done) => { late = done }, () => true, (bytes, reason) => paused.push([bytes, reason]))
   const normal = new OutputQueue(f.scheduler, (_, done) => done(), () => true, () => assert.fail('normal terminal paused'))
   broken.enqueue(new Uint8Array(64), () => ack++)
   normal.enqueue(new Uint8Array(64), () => ack++)
   f.advance(101)
-  assert.deepEqual(paused, [64])
+  assert.deepEqual(paused, [[64, 'timeout']])
   assert.equal(ack, 1)
   late()
   assert.equal(ack, 1)
@@ -101,32 +101,67 @@ test('a missing write callback only suspends its own terminal and ignores late c
 test('queue overflow discards locally, without accepting unbounded data', () => {
   const f = fixture()
   const discarded = []
-  const queue = new OutputQueue(f.scheduler, () => assert.fail('unexpected write'), () => true, (bytes) => discarded.push(bytes))
+  const queue = new OutputQueue(f.scheduler, () => assert.fail('unexpected write'), () => true, (bytes, reason) => discarded.push([bytes, reason]))
   queue.enqueue(new Uint8Array(OUTPUT_QUEUE_LIMIT), () => assert.fail('discarded frame acknowledged'))
   queue.enqueue(new Uint8Array(1), () => {})
-  assert.deepEqual(discarded, [OUTPUT_QUEUE_LIMIT + 1])
+  assert.deepEqual(discarded, [[OUTPUT_QUEUE_LIMIT + 1, 'overflow']])
   assert.equal(queue.pendingBytes, 0)
   f.advance(1000)
 })
 
-test('stale queues suspend while other sessions remain scheduled', () => {
+test('aged visible output is still parsed in order without pausing the display', () => {
   const f = fixture()
+  const written = []
+  const acknowledged = []
   let paused = 0
-  let acknowledged = false
-  const queue = new OutputQueue(f.scheduler, () => assert.fail('stale output parsed'), () => true, () => paused++)
-  queue.enqueue(new Uint8Array(16), () => {})
+  const queue = new OutputQueue(f.scheduler, (data, done) => { written.push(data.length); done() }, () => true, () => paused++)
+  queue.enqueue(new Uint8Array(16), () => acknowledged.push('old'))
+  queue.enqueue(new Uint8Array(32), () => acknowledged.push('new'))
   f.cost(501)
   // Move the ready timer forward to model a suspended WebView event loop.
   for (const timer of f.timers.values()) timer.at = 501
   f.advance(0)
-  const normal = new OutputQueue(f.scheduler, (_, done) => done(), () => true, () => {})
-  normal.enqueue(new Uint8Array(16), () => { acknowledged = true })
-  f.advance(20)
-  assert.equal(paused, 1)
-  assert.equal(acknowledged, true)
+  assert.equal(paused, 0)
+  assert.deepEqual(written, [16, 32])
+  assert.deepEqual(acknowledged, ['old', 'new'])
+  assert.equal(queue.pendingBytes, 0)
 })
 
-test('hidden queues keep stale output because only the visible display needs fresh data', () => {
+test('a slow parser keeps enough output per slice to make progress', () => {
+  const f = fixture()
+  const sizes = []
+  const queue = new OutputQueue(f.scheduler, (data, done) => { sizes.push(data.length); f.cost(9); done() }, () => true, () => {})
+  queue.enqueue(new Uint8Array(128 * 1024), () => {})
+  f.advance(1000)
+  assert.ok(sizes.length > 1)
+  assert.ok(sizes.every((size) => size >= 4 * 1024), `Slices shrank below the floor: ${sizes.join(',')}`)
+  queue.clear()
+})
+
+test('busy output still runs history scans within the maximum delay', () => {
+  const f = fixture()
+  let scans = 0
+  const queue = new OutputQueue(f.scheduler, (_, done) => { f.cost(50); done() }, () => true, () => {})
+  queue.scheduleMaintenance(() => { scans++; return false })
+  queue.enqueue(new Uint8Array(OUTPUT_QUEUE_LIMIT), () => {})
+  f.advance(2500)
+  assert.equal(scans, 1, 'A streaming queue must not defer history comparison indefinitely')
+  queue.clear()
+  f.advance(10000)
+  assert.equal(scans, 1)
+})
+
+test('a synchronous parser failure is reported separately from a timeout', () => {
+  const f = fixture()
+  const drops = []
+  const queue = new OutputQueue(f.scheduler, () => { throw new Error('parser failed') }, () => true, (bytes, reason) => drops.push([bytes, reason]))
+  queue.enqueue(new Uint8Array(16), () => {})
+  f.advance(0)
+  assert.deepEqual(drops, [[16, 'error']])
+  assert.equal(queue.pendingBytes, 0)
+})
+
+test('hidden queues keep output while the window is in the background', () => {
   const f = fixture()
   const written = []
   let paused = 0
