@@ -59,7 +59,17 @@ pub(super) async fn run(pool: &SqlitePool) -> Result<(), MigrateError> {
         }
     }
 
-    migrator.run(&mut *connection).await
+    // SQLite must disable foreign keys before the migration transaction rebuilds
+    // t_project; the migration checks all references before it commits.
+    let rebuild_project = !applied.iter().any(|entry| entry.version == 12);
+    if rebuild_project {
+        sqlx::query("PRAGMA foreign_keys = OFF").execute(&mut *connection).await?;
+    }
+    let result = migrator.run(&mut *connection).await;
+    if rebuild_project {
+        sqlx::query("PRAGMA foreign_keys = ON").execute(&mut *connection).await?;
+    }
+    result
 }
 
 #[cfg(test)]

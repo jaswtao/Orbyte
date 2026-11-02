@@ -410,27 +410,6 @@ async fn project_path_change_and_deletion_clean_runtime_sessions() {
         ProjectInput {
             name: project.name.clone(),
             path: root.to_str().unwrap().into(),
-            group_id: None,
-            favorite: false,
-        },
-    )
-    .await
-    .unwrap_err();
-    assert!(error.contains("重复"));
-    assert!(!app
-        .state::<AppState>()
-        .terminals
-        .get(&created.terminal_id)
-        .unwrap()
-        .is_exited());
-    db.delete_project(&duplicate).await.unwrap();
-    let error = crate::commands::project::update_project(
-        app.state(),
-        app.state(),
-        project.id.clone(),
-        ProjectInput {
-            name: project.name.clone(),
-            path: root.to_str().unwrap().into(),
             group_id: Some("missing-group".into()),
             favorite: false,
         },
@@ -457,6 +436,7 @@ async fn project_path_change_and_deletion_clean_runtime_sessions() {
     )
     .await
     .unwrap();
+    assert!(db.list_projects().await.unwrap().iter().any(|p| p.id == duplicate && p.path == root.to_str().unwrap()));
     assert!(list_terminal_sessions(app.state())
         .await
         .unwrap()
@@ -490,6 +470,7 @@ async fn project_path_change_and_deletion_clean_runtime_sessions() {
         .await
         .unwrap()
         .is_empty());
-    assert!(db.list_projects().await.unwrap().is_empty());
+    assert_eq!(db.list_projects().await.unwrap()[0].id, duplicate);
+    db.delete_project(&duplicate).await.unwrap();
     std::fs::remove_dir(root).unwrap();
 }

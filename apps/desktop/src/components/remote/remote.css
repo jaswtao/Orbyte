@@ -27,6 +27,12 @@
   text-align: left;
 }
 
+.remote-connection-sortable { cursor: grab; align-self: stretch; }
+.remote-connection.dragging { opacity: 0.5; }
+.remote-connection.dragging .remote-connection-sortable { cursor: grabbing; }
+.remote-connection.drop-before { box-shadow: 0 -2px 0 var(--accent); }
+.remote-connection.drop-after { box-shadow: 0 2px 0 var(--accent); }
+
 .remote-connection.active {
   border-color: var(--accent);
   background: var(--selection);

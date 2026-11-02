@@ -15,7 +15,7 @@ import { t } from '../../i18n'
 const store = useProjects()
 const git = useGit()
 defineProps<{ activities: Map<string, Activity> }>()
-const emit = defineEmits<{ worktree: [project: Project]; editProject: [project?: Project, groupId?: string]; editGroup: [group?: ProjectGroup]; deleteItem: [item: { kind: 'project' | 'group'; id: string; name: string }] }>()
+const emit = defineEmits<{ worktree: [project: Project]; editProject: [project?: Project, groupId?: string]; duplicateProject: [project: Project]; editGroup: [group?: ProjectGroup]; deleteItem: [item: { kind: 'project' | 'group'; id: string; name: string }] }>()
 const search = ref('')
 const searchInput = ref<{ focus: () => void } | null>(null)
 const projectList = ref<HTMLElement | null>(null)
@@ -49,7 +49,7 @@ async function setShowHidden(show: boolean) {
   }
 }
 const dragging = ref<{ kind: 'project' | 'group'; id: string } | null>(null)
-const dropHint = ref<{ groupId: string; beforeId: string | null } | null>(null)
+const dropHint = ref<{ groupId: string; beforeId: string | null; after?: boolean } | null>(null)
 let swallowClick = false
 const contextMenu = ref<{ kind: 'group' | 'project'; id: string; x: number; y: number } | null>(null)
 const menuOptions = computed(() => {
@@ -75,6 +75,7 @@ function onMenuSelect(key: string) {
     if (!project) return
     if (key === 'worktree') emit('worktree', project)
     else if (key === 'edit') emit('editProject', project)
+    else if (key === 'duplicate') emit('duplicateProject', project)
     else if (key === 'favorite') void toggleFavorite(project)
     else if (key === 'hidden') void toggleHidden(project)
     else if (key === 'delete') emit('deleteItem', { kind: 'project', id: project.id, name: project.name })
@@ -154,10 +155,15 @@ function overProject(event: DragEvent, groupId: string, projectId: string) {
     dropHint.value = null
     return
   }
-  dropHint.value = { groupId, beforeId: projectId }
+  dropHint.value = { groupId, beforeId: projectId, after: isAfterProject(event) }
+}
+function isAfterProject(event: DragEvent) {
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  return event.clientY >= bounds.top + bounds.height / 2
 }
 async function drop(event: DragEvent, group: string, before?: string) {
   const source = dragSource(event)
+  const after = !!before && isAfterProject(event)
   dragging.value = null
   endDrag()
   if (!source || store.busy) return
@@ -167,7 +173,7 @@ async function drop(event: DragEvent, group: string, before?: string) {
     await store.run(() => projectApi.reorderGroups(ids))
   } else {
     if (before === source.id) return
-    const ordered = reorderProjectEntries(store.projects, source.id, group || null, before)
+    const ordered = reorderProjectEntries(store.projects, source.id, group || null, before, after)
     const current = store.projects.map((project) => [project.id, project.groupId])
     if (ordered.every(([id, groupId], index) => current[index]?.[0] === id && current[index]?.[1] === groupId)) return
     await store.run(() => projectApi.reorderProjects(ordered))
@@ -306,7 +312,8 @@ defineExpose({
                   :class="{
                     selected: store.active?.id === project.id,
                     dragging: dragging?.kind === 'project' && dragging.id === project.id,
-                    'drop-before': dropHint?.beforeId === project.id,
+                    'drop-before': dropHint?.beforeId === project.id && !dropHint.after,
+                    'drop-after': dropHint?.beforeId === project.id && dropHint.after,
                   }"
                   @dragenter.prevent.stop
                   @dragover.prevent.stop="overProject($event, group.id, project.id)"

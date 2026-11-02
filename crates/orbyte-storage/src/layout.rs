@@ -40,7 +40,7 @@ async fn persist(
     Ok(())
 }
 
-async fn read_repaired(tx: &mut Transaction<'_, Sqlite>, workspace_id: &str) -> Result<Layout> {
+pub(super) async fn read_repaired(tx: &mut Transaction<'_, Sqlite>, workspace_id: &str) -> Result<Layout> {
     let ids = configs(tx, workspace_id).await?;
     let raw: Option<String> =
         sqlx::query_scalar("SELECT layout_json FROM t_workspace_layout WHERE workspace_id = ?")

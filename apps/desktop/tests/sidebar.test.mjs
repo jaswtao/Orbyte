@@ -11,6 +11,34 @@ const { dragPayload, parseDragPayload, reorderGroupIds, reorderProjectEntries } 
 const { filterProjects, firstVisibleProject } = await loadService('sidebar/filter')
 const target = { kind: 'project', id: 'a' }
 test('空目标没有菜单', () => assert.deepEqual(buildMenuOptions(null, [], null, false), []))
+test('复制项目预填原目录并允许选择其他分组', async () => {
+  const source = await readFile(new URL('../src/components/dialogs/ProjectDialog.vue', import.meta.url), 'utf8')
+  const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
+  const show = ref(false), calls = []
+  const project = { id: 'source', name: 'Service', path: 'C:/service', groupId: 'a', favorite: true }
+  const store = { groups: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }], projects: [project], run: async (action) => { await action(); return true } }
+  const context = vm.createContext({
+    computed, reactive, watch, defineProps: () => ({ project: null, duplicateSource: project }), defineModel: () => show,
+    useProjects: () => store, t: (_key, params) => params ? `${params.name} copy` : '',
+    copyName: (name) => Array.from(`${name} copy`).slice(0, 100).join(''),
+    projectApi: { duplicateProject: async (id, input) => { calls.push([id, { ...input }]); return 'copy' }, setSetting: async () => {} },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const run = (code) => vm.runInContext(code, context)
+  show.value = true
+  await nextTick()
+  assert.equal(run('form.path'), 'C:/service')
+  run("form.groupId = 'b'")
+  await run('saveProject()')
+  assert.equal(calls[0][0], 'source')
+  assert.equal(calls[0][1].path, 'C:/service')
+  assert.equal(calls[0][1].groupId, 'b')
+  assert.equal(show.value, false)
+  project.name = '项'.repeat(100)
+  show.value = true
+  await nextTick()
+  assert.equal([...run('form.name')].length, 100)
+})
 test('分组菜单可添加项目、重命名和删除', () => assert.deepEqual(buildMenuOptions({ kind: 'group', id: 'g' }, [], null, false).map((o) => [o.key, o.label]), [['add-project', 'Add project'], ['rename', 'Rename group'], ['delete', 'Delete group']]))
 test('收藏文案跟随项目状态', () => { for (const favorite of [false, true]) assert.equal(buildMenuOptions(target, [{ id: 'a', favorite }], null, false).find((o) => o.key === 'favorite').label, favorite ? 'Remove favorite' : 'Favorite project') })
 
@@ -74,6 +102,8 @@ function sidebarFixture(activeId = 'visible', fail = false) {
   })
   const context = {
     computed, reactive, ref, t: (key) => key, filterProjects, firstVisibleProject,
+    dragPayload, parseDragPayload, reorderGroupIds, reorderProjectEntries,
+    window: { setTimeout: (fn) => fn() },
     watch: (...args) => { const stop = watch(...args); cleanup.push(stop); return stop },
     onBeforeUnmount: (fn) => cleanup.push(fn),
     ResizeObserver: class {
@@ -88,6 +118,8 @@ function sidebarFixture(activeId = 'visible', fail = false) {
     useProjects: () => store, useGit: () => ({ available: false }),
     defineProps() {}, defineEmits: () => () => {}, defineExpose() {},
     projectApi: {
+      async reorderProjects(entries) { calls.push(['reorderProjects', structuredClone(entries)]) },
+      async reorderGroups(ids) { calls.push(['reorderGroups', structuredClone(ids)]) },
       async setProjectHidden(...args) { calls.push(['hidden', ...args]); if (fail) throw new Error('write failed') },
       async setSettings(input) { calls.push(['settings', structuredClone(input)]); if (fail) throw new Error('write failed') },
     },
@@ -286,6 +318,37 @@ test('忙碌时禁用所有操作', () => assert.ok(buildMenuOptions(target, [],
 test('组前移且保留原数组', () => { const ids = ['a', 'b', 'c']; assert.deepEqual(reorderGroupIds(ids, 'c', 'a'), ['c', 'a', 'b']); assert.deepEqual(ids, ['a', 'b', 'c']) })
 const projects = [{ id: 'a', groupId: 'x' }, { id: 'b', groupId: 'x' }, { id: 'c', groupId: 'y' }]
 test('项目组内前移', () => assert.deepEqual(reorderProjectEntries(projects, 'b', 'x', 'a'), [['b', 'x'], ['a', 'x'], ['c', 'y']]))
+test('项目可放到目标之后，包括组尾和跨组', () => {
+  assert.deepEqual(reorderProjectEntries(projects, 'a', 'x', 'b', true), [['b', 'x'], ['a', 'x'], ['c', 'y']])
+  assert.deepEqual(reorderProjectEntries(projects, 'a', 'y', 'c', true), [['b', 'x'], ['c', 'y'], ['a', 'y']])
+  assert.deepEqual(reorderProjectEntries(visibilityProjects, 'loose', 'a', 'hidden', true).map(([id]) => id), ['hidden', 'loose', 'other', 'visible'])
+})
+test('项目行按鼠标位置显示提示并保存对应落点', async (t) => {
+  const fixture = sidebarFixture()
+  t.after(fixture.unmount)
+  fixture.store.event = { clientY: 124, currentTarget: { getBoundingClientRect: () => ({ top: 100, height: 50 }) } }
+  fixture.evaluate("dragging.value = { kind: 'project', id: 'hidden' }; overProject(store.event, 'a', 'visible')")
+  assert.equal(fixture.evaluate('dropHint.value.after'), false)
+  fixture.store.event.clientY = 125
+  fixture.evaluate("overProject(store.event, 'a', 'visible')")
+  assert.equal(fixture.evaluate('dropHint.value.after'), true)
+  await fixture.evaluate("drop(store.event, 'a', 'visible')")
+  assert.deepEqual(fixture.calls[0], ['reorderProjects', [['other', 'b'], ['visible', 'a'], ['hidden', 'a'], ['loose', null]]])
+})
+test('拖到自身或未改变的位置不会保存，分组标题拖放仍可用', async (t) => {
+  const fixture = sidebarFixture()
+  t.after(fixture.unmount)
+  fixture.store.event = { clientY: 110, currentTarget: { getBoundingClientRect: () => ({ top: 100, height: 50 }) } }
+  fixture.evaluate("dragging.value = { kind: 'project', id: 'hidden' }")
+  await fixture.evaluate("drop(store.event, 'a', 'hidden')")
+  fixture.store.projects = [fixture.store.projects[0], fixture.store.projects[2], fixture.store.projects[1], fixture.store.projects[3]]
+  fixture.evaluate("dragging.value = { kind: 'project', id: 'hidden' }")
+  await fixture.evaluate("drop(store.event, 'a', 'visible')")
+  assert.equal(fixture.calls.length, 0)
+  fixture.evaluate("dragging.value = { kind: 'group', id: 'b' }")
+  await fixture.evaluate("drop(store.event, 'a')")
+  assert.deepEqual(fixture.calls[0], ['reorderGroups', ['b', 'a']])
+})
 test('跨组拖拽', () => assert.deepEqual(reorderProjectEntries(projects, 'a', 'y', 'c'), [['b', 'x'], ['a', 'y'], ['c', 'y']]))
 test('拖到组尾与未分组', () => assert.deepEqual(reorderProjectEntries(projects, 'a', null), [['b', 'x'], ['c', 'y'], ['a', null]]))
 test('自身或失效目标不改变顺序', () => { for (const before of ['a', 'missing']) assert.deepEqual(reorderProjectEntries(projects, 'a', 'y', before), projects.map((p) => [p.id, p.groupId])) })

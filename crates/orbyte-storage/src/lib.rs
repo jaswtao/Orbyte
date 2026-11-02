@@ -19,6 +19,7 @@ use uuid::Uuid;
 type Result<T> = std::result::Result<T, String>;
 
 mod draft;
+mod duplicate;
 pub use draft::{EditorDraft, MAX_DRAFT_BYTES};
 mod terminal;
 mod layout;
@@ -43,9 +44,6 @@ fn db_error(error: sqlx::Error) -> String {
         log::error!("database_operation_failed error={error} location={location}");
     }
     if let sqlx::Error::Database(ref error) = error {
-        if error.is_unique_violation() {
-            return "该项目目录已经添加，请勿重复添加".into();
-        }
         if error.is_foreign_key_violation() {
             return "分组不存在或仍包含项目，请先移动或删除组内项目".into();
         }
@@ -99,7 +97,7 @@ impl Database {
             .collect())
     }
 
-    /// path 在服务边界规范化后传入；数据库以 NOCASE 再次约束唯一性。
+    /// path 在服务边界规范化后传入。
     pub async fn create_project(&self, input: ProjectInput) -> Result<String> {
         let name = validate_name(&input.name)?;
         let id = Uuid::new_v4().to_string();

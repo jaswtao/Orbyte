@@ -100,14 +100,62 @@ async fn hidden_migration_preserves_existing_projects() {
     let path = directory.join("old.db");
     let pool = SqlitePoolOptions::new().max_connections(1).connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true)).await.unwrap();
     sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
-    sqlx::raw_sql("INSERT INTO t_project(id,name,path,favorite) VALUES ('p','existing','C:/existing',1); INSERT INTO t_workspace(id,project_id) VALUES ('w','p');").execute(&pool).await.unwrap();
+    sqlx::raw_sql("INSERT INTO t_project(id,name,path,favorite) VALUES ('p','existing','C:/existing',1); INSERT INTO t_workspace(id,project_id) VALUES ('w','p'); INSERT INTO t_terminal_config(id,workspace_id,name,shell_type) VALUES ('t','w','Shell','cmd'); INSERT INTO t_workspace_layout(id,workspace_id,schema_version,layout_json) VALUES ('l','w',1,'{}'); INSERT INTO t_editor_draft(project_id,path,project_path,content,baseline,encoding,bom,line_ending,revision) VALUES ('p','a.txt','C:/existing','draft','','utf-8',0,'LF','rev');").execute(&pool).await.unwrap();
     pool.close().await;
     let db = Database::open(&path).await.unwrap();
     let project = &db.list_projects().await.unwrap()[0];
     assert!(!project.hidden);
     assert!(project.favorite);
     assert_eq!(project.workspace_id, "w");
+    assert_eq!(db.list_terminal_configs("w").await.unwrap().len(), 1);
+    let count: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM t_workspace_layout) + (SELECT COUNT(*) FROM t_editor_draft)").fetch_one(&db.pool).await.unwrap();
+    assert_eq!(count, 2);
+    assert_eq!(sqlx::query_scalar::<_, i64>("PRAGMA foreign_keys").fetch_one(&db.pool).await.unwrap(), 1);
     assert!(sqlx::query("UPDATE t_project SET hidden = 2 WHERE id = 'p'").execute(&db.pool).await.is_err());
+    let copy = db.create_project(input("C:/existing", None)).await.unwrap();
+    db.delete_project("p").await.unwrap();
+    assert_eq!(db.list_projects().await.unwrap()[0].id, copy);
+    let remaining: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM t_workspace_layout) + (SELECT COUNT(*) FROM t_editor_draft) + (SELECT COUNT(*) FROM t_terminal_config)").fetch_one(&db.pool).await.unwrap();
+    assert_eq!(remaining, 0);
+    db.pool.close().await;
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[tokio::test]
+async fn shared_path_migration_keeps_child_rows_from_version_11() {
+    let directory = std::env::temp_dir().join(format!("orbyte-project-rebuild-{}", Uuid::new_v4()));
+    let migrations = directory.join("migrations");
+    std::fs::create_dir_all(&migrations).unwrap();
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+    for entry in std::fs::read_dir(&source).unwrap() {
+        let entry = entry.unwrap();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        let version: i64 = name.split('_').next().unwrap().parse().unwrap();
+        if version >= 12 {
+            continue;
+        }
+        std::fs::copy(entry.path(), migrations.join(name.as_ref())).unwrap();
+    }
+    let path = directory.join("old.db");
+    let pool = SqlitePoolOptions::new().max_connections(1)
+        .connect_with(SqliteConnectOptions::new().filename(&path).create_if_missing(true).foreign_keys(true))
+        .await.unwrap();
+    sqlx::migrate::Migrator::new(migrations.as_path()).await.unwrap().run(&pool).await.unwrap();
+    let applied: Vec<i64> = sqlx::query_scalar("SELECT version FROM _sqlx_migrations ORDER BY version").fetch_all(&pool).await.unwrap();
+    assert_eq!(applied.last().copied(), Some(11));
+    assert!(!applied.contains(&12));
+    sqlx::raw_sql("INSERT INTO t_project(id,name,path,favorite) VALUES ('p','existing','C:/existing',1); INSERT INTO t_workspace(id,project_id) VALUES ('w','p'); INSERT INTO t_terminal_config(id,workspace_id,name,shell_type) VALUES ('t','w','Shell','cmd'); INSERT INTO t_workspace_layout(id,workspace_id,schema_version,layout_json) VALUES ('l','w',1,'{}'); INSERT INTO t_editor_draft(project_id,path,project_path,content,baseline,encoding,bom,line_ending,revision) VALUES ('p','a.txt','C:/existing','draft','','utf-8',0,'LF','rev');").execute(&pool).await.unwrap();
+    pool.close().await;
+    let db = Database::open(&path).await.unwrap();
+    let project = &db.list_projects().await.unwrap()[0];
+    assert_eq!(project.id, "p");
+    assert_eq!(project.workspace_id, "w");
+    assert_eq!(db.list_terminal_configs("w").await.unwrap().len(), 1);
+    let count: i64 = sqlx::query_scalar("SELECT (SELECT COUNT(*) FROM t_workspace) + (SELECT COUNT(*) FROM t_workspace_layout) + (SELECT COUNT(*) FROM t_editor_draft WHERE project_id = 'p' AND content = 'draft')").fetch_one(&db.pool).await.unwrap();
+    assert_eq!(count, 3);
+    assert_eq!(sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM _sqlx_migrations WHERE version = 12").fetch_one(&db.pool).await.unwrap(), 1);
+    assert_eq!(sqlx::query_scalar::<_, i64>("PRAGMA foreign_keys").fetch_one(&db.pool).await.unwrap(), 1);
     db.pool.close().await;
     std::fs::remove_dir_all(directory).unwrap();
 }
@@ -323,27 +371,24 @@ async fn terminal_configs_survive_database_reopen() {
 }
 
 #[tokio::test]
-async fn creates_default_workspace_rejects_duplicates_and_rolls_back_invalid_group() {
+async fn creates_default_workspaces_for_shared_paths_and_rolls_back_invalid_group() {
     let db = memory().await;
     let id = db.create_project(input(r"C:\项目 A", None)).await.unwrap();
     let projects = db.list_projects().await.unwrap();
     assert_eq!(projects[0].id, id);
     assert!(!projects[0].workspace_id.is_empty());
-    assert!(db
-        .create_project(input(r"c:\项目 a", None))
-        .await
-        .unwrap_err()
-        .contains("重复"));
+    let other = db.create_project(input(r"c:\项目 a", None)).await.unwrap();
+    assert_ne!(id, other);
     assert!(db
         .create_project(input(r"C:\项目 B", Some("missing")))
         .await
         .is_err());
-    assert_eq!(db.list_projects().await.unwrap().len(), 1);
+    assert_eq!(db.list_projects().await.unwrap().len(), 2);
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM t_workspace")
         .fetch_one(&db.pool)
         .await
         .unwrap();
-    assert_eq!(count, 1);
+    assert_eq!(count, 2);
 }
 
 #[tokio::test]

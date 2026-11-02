@@ -53,6 +53,8 @@ export const projectApi = {
   listProjects: () => invoke<Project[]>('list_projects'),
   createProject: (input: ProjectInput) =>
     invoke<string>('create_project', { input: projectInput(input) }),
+  duplicateProject: (sourceId: string, input: ProjectInput) =>
+    invoke<string>('duplicate_project', { sourceId, input: projectInput(input) }),
   updateProject: (id: string, input: ProjectInput) =>
     invoke<void>('update_project', { id, input: projectInput(input) }),
   deleteProject: (id: string) => invoke<void>('delete_project', { id }),

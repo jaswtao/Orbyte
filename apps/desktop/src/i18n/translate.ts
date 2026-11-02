@@ -28,6 +28,13 @@ export function t(key: MessageKey, params?: Params): string {
   return translate(current, key, params)
 }
 
+const MAX_NAME_LENGTH = 100
+
+/** Duplicate labels stay within the stored name limit. */
+export function copyName(name: string): string {
+  return Array.from(t('common.copyName', { name })).slice(0, MAX_NAME_LENGTH).join('')
+}
+
 export function commandLabel(id: string): string {
   return t(`shortcut.command.${id}` as MessageKey)
 }

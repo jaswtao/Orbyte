@@ -20,11 +20,11 @@ export function reorderGroupIds(ids: string[], source: string, before: string): 
   return next
 }
 
-export function reorderProjectEntries(projects: { id: string; groupId: string | null }[], source: string, group: string | null, before?: string): [string, string | null][] {
+export function reorderProjectEntries(projects: { id: string; groupId: string | null }[], source: string, group: string | null, before?: string, after = false): [string, string | null][] {
   const original: [string, string | null][] = projects.map((p) => [p.id, p.groupId])
   if (source === before || !projects.some((p) => p.id === source) || (before && !projects.some((p) => p.id === before))) return original
   const next = original.filter(([id]) => id !== source)
-  const index = before ? next.findIndex(([id]) => id === before) : next.length
+  const index = before ? next.findIndex(([id]) => id === before) + (after ? 1 : 0) : next.length
   next.splice(index, 0, [source, group])
   return next
 }

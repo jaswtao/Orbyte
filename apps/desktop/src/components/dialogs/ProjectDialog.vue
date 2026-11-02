@@ -4,14 +4,14 @@ import { computed, reactive, watch } from 'vue'
 import { NAlert, NButton, NForm, NFormItem, NInput, NModal, NSelect, NSwitch } from 'naive-ui'
 import { projectApi, type Project, type ProjectInput } from '../../services/projectApi'
 import { useProjects } from '../../stores/projects'
-import { t } from '../../i18n'
+import { copyName, t } from '../../i18n'
 const store = useProjects()
-const props = defineProps<{ project: Project | null; defaultGroupId?: string; confirmProjectChange: (id: string) => Promise<boolean> }>()
+const props = defineProps<{ project: Project | null; duplicateSource: Project | null; defaultGroupId?: string; confirmProjectChange: (id: string) => Promise<boolean> }>()
 const show = defineModel<boolean>('show', { required: true })
 const editingId = computed(() => props.project?.id ?? null)
 const form = reactive({ name: '', path: '', groupId: '', favorite: false })
 const groupOptions = computed(() => [{ label: t('sidebar.ungrouped'), value: '' }, ...store.groups.map((g) => ({ label: g.name, value: g.id }))])
-watch(show, (visible) => { if (visible) Object.assign(form, props.project ? { ...props.project, groupId: props.project.groupId ?? '' } : { name: '', path: '', groupId: props.defaultGroupId ?? '', favorite: false }) })
+watch(show, (visible) => { if (visible) Object.assign(form, props.project ? { ...props.project, groupId: props.project.groupId ?? '' } : props.duplicateSource ? { name: copyName(props.duplicateSource.name), path: props.duplicateSource.path, groupId: props.duplicateSource.groupId ?? '', favorite: props.duplicateSource.favorite } : { name: '', path: '', groupId: props.defaultGroupId ?? '', favorite: false }) })
 async function chooseDirectory() {
   try {
     const path = await projectApi.chooseDirectory(
@@ -39,7 +39,7 @@ async function saveProject() {
       if (editingId.value)
         await projectApi.updateProject(editingId.value, input)
       else {
-        const id = await projectApi.createProject(input)
+        const id = props.duplicateSource ? await projectApi.duplicateProject(props.duplicateSource.id, input) : await projectApi.createProject(input)
         await projectApi.setSetting('active_project_id', id)
       }
     })
@@ -51,7 +51,7 @@ async function saveProject() {
       <NModal
         v-model:show="show"
         preset="card"
-        :title="editingId ? t('project.edit') : t('project.add')"
+        :title="editingId ? t('project.edit') : props.duplicateSource ? t('common.duplicate') : t('project.add')"
         class="form-modal"
       >
         <NForm @submit.prevent="saveProject"

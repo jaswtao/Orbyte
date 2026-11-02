@@ -78,6 +78,11 @@ pub async fn create_project(
     state.database()?.create_project(input).await
 }
 #[tauri::command]
+pub async fn duplicate_project(state: State<'_, StorageState>, source_id: String, mut input: ProjectInput) -> CmdResult<String> {
+    input.path = normalize(input.path).await?;
+    state.database()?.duplicate_project(&source_id, input).await
+}
+#[tauri::command]
 pub async fn update_project(
     state: State<'_, StorageState>,
     runtime: State<'_, AppState>,
@@ -91,12 +96,6 @@ pub async fn update_project(
     let projects = db.list_projects().await?;
     let previous = projects.iter().find(|p| p.id == id).ok_or("项目已不存在")?;
     // 先拒绝可预见的数据校验错误，避免失败的编辑请求结束原项目终端。
-    if projects
-        .iter()
-        .any(|p| p.id != id && p.path.to_lowercase() == input.path.to_lowercase())
-    {
-        return Err("该项目目录已经添加，请勿重复添加".into());
-    }
     if let Some(group_id) = &input.group_id {
         if !db.list_groups().await?.iter().any(|g| &g.id == group_id) {
             return Err("分组不存在，请刷新后重试".into());

@@ -1,5 +1,7 @@
 /** English UI copy. Author: jaswtao · Date: 2026-10-16 */
 export const en = {
+  'common.duplicate': 'Duplicate',
+  'common.copyName': '{name} copy',
   'shortcut.command.rename': 'Rename project or tab',
   'project.rename': 'Rename project',
   'project.renameFailed': 'Failed to rename project. Try again.',

@@ -19,6 +19,7 @@ test('remote project context menu renames and confirms deletion of the clicked p
   const context = vm.createContext({
     computed, ref, onMounted() {}, defineExpose() {}, useRemote: () => remote,
     defineEmits: () => (_event, message) => errors.push(message), t: (key) => key,
+    copyName: (name) => Array.from(`${name} copy`).slice(0, 100).join(''),
     remoteApi: {
       saveProject: async (...args) => { saved.push(args); return args[0] },
       deleteProject: async (id) => deleted.push(id),
@@ -29,7 +30,7 @@ test('remote project context menu renames and confirms deletion of the clicked p
   run('openMenu({ clientX: 120, clientY: 240 }, remote.projects[1])')
   assert.equal(run('contextMenu.value.x'), 120)
   assert.equal(run('contextMenu.value.y'), 240)
-  assert.deepEqual(Array.from(run('menuOptions.value'), (item) => item.key), ['rename', 'delete'])
+  assert.deepEqual(Array.from(run('menuOptions.value'), (item) => item.key), ['rename', 'duplicate', 'delete'])
   run("onMenuSelect('rename')")
   assert.equal(run('contextMenu.value'), null)
   assert.equal(run('projectDialog.value'), true)
@@ -53,9 +54,88 @@ test('remote project context menu renames and confirms deletion of the clicked p
   run('busy.value = false; openMenu({ clientX: 1, clientY: 2 }, remote.projects[1]); remote.projects.pop()')
   run("onMenuSelect('rename')")
   assert.equal(run('projectDialog.value'), false)
+  remote.projects[0].name = 'N'.repeat(100)
+  run('duplicate(remote.projects[0])')
+  assert.equal(run('name.value'), 'N'.repeat(100))
+  assert.equal(run('editing.value'), null)
+  assert.equal(run('duplicating.value.id'), 'one')
   assert.deepEqual(errors, [])
   assert.match(source, /@contextmenu\.prevent\.stop="openMenu\(\$event, project\)"/)
   assert.match(source, /<ProjectContextMenu\b[^>]*@clickoutside="contextMenu = null"/)
+})
+
+test('duplicating an SSH connection pre-fills its settings without copying its saved password', async () => {
+  const source = await readFile(new URL('../src/components/remote/ConnectionDialog.vue', import.meta.url), 'utf8')
+  const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
+  const show = ref(false)
+  const calls = []
+  const connection = { id: 'source', name: 'Server', host: 'example.com', port: 22, username: 'root', authType: 'password', privateKeyPath: null, hasSavedPassword: true }
+  const context = vm.createContext({
+    computed, reactive, ref, watch, defineProps: () => ({ connection: null, duplicateSource: connection }),
+    defineModel: () => show, defineEmits: () => () => {}, t: (key, params) => params ? `${params.name} copy` : key,
+    copyName: (name) => Array.from(`${name} copy`).slice(0, 100).join(''),
+    remoteApi: { listKnownHosts: async () => [], createConnection: async (input) => calls.push(structuredClone(input)) },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const run = (code) => vm.runInContext(code, context)
+  show.value = true
+  await nextTick()
+  assert.equal(run('form.name'), 'Server copy')
+  connection.name = 'S'.repeat(100)
+  show.value = false
+  await nextTick()
+  show.value = true
+  await nextTick()
+  assert.equal(run('form.name'), 'S'.repeat(100))
+  assert.equal(run('form.host'), 'example.com')
+  assert.equal(run('password.value'), '')
+  await run('save()')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].passwordChange.operation, 'keep')
+  assert.equal('password' in calls[0].passwordChange, false)
+  assert.equal(show.value, false)
+})
+
+test('SSH connection drag starts from the name and reorders below the target', async () => {
+  const source = await readFile(new URL('../src/components/remote/ConnectionManager.vue', import.meta.url), 'utf8')
+  const script = source.split('<script setup lang="ts">')[1].split('</script>')[0].replace(/^import .*$/gm, '')
+  const reordered = []
+  const transferred = []
+  const dragEvent = {
+    preventDefault() {},
+    clientY: 30,
+    currentTarget: { getBoundingClientRect: () => ({ top: 0, height: 40 }) },
+    dataTransfer: {
+      effectAllowed: '',
+      dropEffect: '',
+      setData(_type, value) { transferred.push(value) },
+      getData() { return transferred.at(-1) ?? '' },
+    },
+  }
+  const context = vm.createContext({
+    ref, onMounted() {}, defineExpose() {}, defineEmits: () => () => {}, t: (key) => key, dragEvent,
+    remoteApi: { reorderConnections: async (ids) => { reordered.push([...ids]) } },
+  })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const run = (code) => vm.runInContext(code, context)
+  run("connections.value = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }, { id: 'c', name: 'C' }]")
+  run('startDrag(dragEvent, "a")')
+  assert.deepEqual(transferred, ['a'])
+  assert.equal(dragEvent.dataTransfer.effectAllowed, 'move')
+  run('allowDrop(dragEvent, "b")')
+  run('dragOver(dragEvent, "b")')
+  assert.equal(dragEvent.dataTransfer.dropEffect, 'move')
+  assert.equal(run('dropTarget.value.after'), true)
+  await run('drop(dragEvent, "b")')
+  assert.deepEqual(reordered, [['b', 'a', 'c']])
+  const card = source.slice(source.indexOf('class="remote-connection"'), source.indexOf('remote-connection-name'))
+  const name = source.slice(source.indexOf('remote-connection-name'), source.indexOf('remote-connection-endpoint'))
+  const actions = source.slice(source.indexOf('remote-connection-actions'), source.indexOf('ConnectionDialog'))
+  assert.doesNotMatch(card, /draggable/)
+  assert.match(name, /:draggable="!sorting"/)
+  assert.match(name, /startDrag/)
+  assert.match(card, /@dragenter="allowDrop\(\$event, connection\.id\)"/)
+  assert.doesNotMatch(actions, /draggable/)
 })
 
 test('remote terminal tabs rename persistently, validate names and preserve edits after failure', async () => {

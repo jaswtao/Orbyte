@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { loadService } from './load-service.mjs'
 
-const { translate } = await loadService('../i18n/translate')
+const { translate, copyName, setLocale } = await loadService('../i18n/translate')
 
 test('中英文翻译原样保留参数中的替换特殊字符', () => {
   const name = "$& $$ $` $'"
@@ -16,6 +16,20 @@ test('只替换模板占位符，参数内容不再参与插值', () => {
   const params = { project: '{message}', name: 'cmd', message: 'gap' }
   assert.equal(translate('en', 'terminal.warning', params), '{message} · cmd: gap')
   assert.equal(translate('zh', 'terminal.warning', params), '{message} · cmd：gap')
+})
+
+test('副本名称按 100 个字符截断', () => {
+  const name = '项'.repeat(100)
+  setLocale('en')
+  try {
+    const english = copyName(name)
+    assert.equal([...english].length, 100)
+    assert.equal(english, [...`${name} copy`].slice(0, 100).join(''))
+    setLocale('zh')
+    const chinese = copyName(name)
+    assert.equal([...chinese].length, 100)
+    assert.equal(chinese, [...`${name} 副本`].slice(0, 100).join(''))
+  } finally { setLocale('en') }
 })
 
 test('缺失参数保留占位符，空字符串与数字零正常插入', () => {

@@ -163,7 +163,9 @@ const defaultGroupId = ref('')
 const groupDialog = ref(false)
 const editingGroup = ref<ProjectGroup | null>(null)
 const deleting = ref<{ kind: 'project' | 'group'; id: string; name: string } | null>(null)
-function editProject(project?: Project, groupId?: string) { editingProject.value = project ?? null; defaultGroupId.value = project ? '' : (groupId ?? ''); projectDialog.value = true }
+const duplicatingProject = ref<Project | null>(null)
+function editProject(project?: Project, groupId?: string) { duplicatingProject.value = null; editingProject.value = project ?? null; defaultGroupId.value = project ? '' : (groupId ?? ''); projectDialog.value = true }
+function duplicateProject(project: Project) { editingProject.value = null; duplicatingProject.value = project; projectDialog.value = true }
 function editGroup(group?: ProjectGroup) { editingGroup.value = group ?? null; groupDialog.value = true }
 function confirmProjectChange(id: string) { return deck.value?.confirmProjectChange(id) ?? Promise.resolve(true) }
 async function workspaceShortcut(event: KeyboardEvent) {
@@ -323,7 +325,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
           <RemoteSidebar v-else-if="sidebarView === 'remote'" ref="remoteSidebar" @error="reportError" />
           <KeepAlive v-else>
           <ProjectSidebar v-if="sidebarView !== 'files' || !store.active" ref="sidebar" :activities="activities" @worktree="openWorktree"
-            @edit-project="editProject" @edit-group="editGroup" @delete-item="deleting = $event" />
+            @edit-project="editProject" @duplicate-project="duplicateProject" @edit-group="editGroup" @delete-item="deleting = $event" />
           </KeepAlive>
         </aside>
         <div v-show="sidebarVisible" class="sidebar-resizer" role="separator" aria-orientation="vertical" :aria-label="t('app.resizeSidebar')" :title="t('app.resizeSidebarTitle')" :aria-valuenow="sidebarWidth" :aria-valuemin="SIDEBAR_MIN" :aria-valuemax="SIDEBAR_MAX" tabindex="0" @pointerdown="startSidebarResize" @keydown="onSidebarResizeKey" />
@@ -350,7 +352,7 @@ onBeforeUnmount(() => { disposed = true; cleanupResize?.(); unlistenClose?.(); d
       </div>
       <SettingsDialog v-model:show="settingsDialog" />
       <WorktreeDialog v-model:show="worktreeDialog" :project="worktreeProject" />
-      <ProjectDialog v-model:show="projectDialog" :project="editingProject" :default-group-id="defaultGroupId" :confirm-project-change="confirmProjectChange" />
+      <ProjectDialog v-model:show="projectDialog" :project="editingProject" :duplicate-source="duplicatingProject" :default-group-id="defaultGroupId" :confirm-project-change="confirmProjectChange" />
       <ProjectRenameDialog v-model:project="renamingProject" />
       <GroupDialog v-model:show="groupDialog" :group="editingGroup" />
       <DeleteConfirmDialog v-model:item="deleting" :confirm-project-change="confirmProjectChange" />

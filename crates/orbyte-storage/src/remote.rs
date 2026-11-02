@@ -257,6 +257,21 @@ impl Database {
         rows.into_iter().map(connection_from_row).collect()
     }
 
+    pub async fn reorder_ssh_connections(&self, ids: &[String]) -> Result<()> {
+        let mut tx = self.pool.begin().await.map_err(remote_db_error)?;
+        let existing: Vec<String> = sqlx::query_scalar("SELECT id FROM t_ssh_connection")
+            .fetch_all(&mut *tx).await.map_err(remote_db_error)?;
+        let requested: HashSet<_> = ids.iter().collect();
+        if requested.len() != ids.len() || existing.len() != ids.len()
+            || existing.iter().any(|id| !requested.contains(id)) {
+            return Err("Connection list changed. Refresh and try again.".into());
+        }
+        let order = serde_json::to_string(ids).map_err(|error| error.to_string())?;
+        sqlx::query("UPDATE t_ssh_connection SET sort_order = (SELECT CAST(json_each.key AS INTEGER)) FROM json_each(?) WHERE t_ssh_connection.id = json_each.value")
+            .bind(order).execute(&mut *tx).await.map_err(remote_db_error)?;
+        tx.commit().await.map_err(remote_db_error)
+    }
+
     pub async fn create_ssh_connection(&self, input: SshConnectionInput) -> Result<String> {
         let id = Uuid::new_v4().to_string();
         sqlx::query("INSERT INTO t_ssh_connection(id, name, host, port, username, auth_type, private_key_path, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM t_ssh_connection))")
@@ -672,6 +687,22 @@ mod tests {
         db.delete_ssh_connection(&connection).await.unwrap();
         assert!(db.list_remote_connection_tabs().await.unwrap().is_empty());
         assert_eq!(db.list_remote_projects().await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn connection_order_is_persisted_and_rejects_stale_lists() {
+        let db = memory().await;
+        let first = db.create_ssh_connection(parse_connection("one", "one.example", None, "a", "password", None).unwrap()).await.unwrap();
+        let second = db.create_ssh_connection(parse_connection("two", "two.example", None, "b", "password", None).unwrap()).await.unwrap();
+        let third = db.create_ssh_connection(parse_connection("three", "three.example", None, "c", "password", None).unwrap()).await.unwrap();
+        let order = vec![third.clone(), first.clone(), second.clone()];
+        db.reorder_ssh_connections(&order).await.unwrap();
+        let ids = db.list_ssh_connections().await.unwrap().into_iter().map(|item| item.id).collect::<Vec<_>>();
+        assert_eq!(ids, order);
+        assert!(db.reorder_ssh_connections(&[first.clone(), first, third]).await.is_err());
+        assert!(db.reorder_ssh_connections(&[second]).await.is_err());
+        let ids = db.list_ssh_connections().await.unwrap().into_iter().map(|item| item.id).collect::<Vec<_>>();
+        assert_eq!(ids, order);
     }
 
     #[tokio::test]

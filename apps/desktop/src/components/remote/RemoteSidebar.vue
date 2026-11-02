@@ -6,13 +6,14 @@ import ConnectionManager from './ConnectionManager.vue'
 import ProjectContextMenu from '../sidebar/ProjectContextMenu.vue'
 import { useRemote } from '../../stores/remote'
 import { remoteApi, type RemoteProject } from '../../services/remoteApi'
-import { t } from '../../i18n'
+import { copyName, t } from '../../i18n'
 import './remote.css'
 
 const emit = defineEmits<{ error: [message: string] }>()
 const remote = useRemote()
 const manager = ref(false)
 const editing = ref<RemoteProject | null>(null)
+const duplicating = ref<RemoteProject | null>(null)
 const projectDialog = ref(false)
 const name = ref('')
 const deleting = ref<RemoteProject | null>(null)
@@ -21,6 +22,7 @@ const projectList = ref<HTMLElement>()
 const contextMenu = ref<{ id: string; x: number; y: number } | null>(null)
 const menuOptions = computed(() => [
   { key: 'rename', label: t('remote.renameProject'), disabled: busy.value },
+  { key: 'duplicate', label: t('common.duplicate'), disabled: busy.value },
   { key: 'delete', label: t('remote.deleteProject'), disabled: busy.value },
 ])
 function openMenu(event: MouseEvent, project: RemoteProject) {
@@ -31,20 +33,28 @@ function onMenuSelect(key: string) {
   contextMenu.value = null
   if (!project || busy.value) return
   if (key === 'rename') edit(project)
+  else if (key === 'duplicate') duplicate(project)
   else if (key === 'delete') deleting.value = project
 }
 function fail(reason: unknown) { emit('error', String(reason)) }
 async function reload() { try { await remote.reload() } catch (reason) { fail(reason) } }
 function edit(project?: RemoteProject) {
+  duplicating.value = null
   editing.value = project ?? null
   name.value = project?.name ?? ''
+  projectDialog.value = true
+}
+function duplicate(project: RemoteProject) {
+  editing.value = null
+  duplicating.value = project
+  name.value = copyName(project.name)
   projectDialog.value = true
 }
 async function save() {
   if (busy.value || !name.value.trim()) return
   busy.value = true
   try {
-    const id = await remoteApi.saveProject(editing.value?.id ?? null, name.value.trim())
+    const id = duplicating.value ? await remoteApi.duplicateProject(duplicating.value.id, name.value.trim()) : await remoteApi.saveProject(editing.value?.id ?? null, name.value.trim())
     await remote.reload()
     remote.selectProject(id)
     projectDialog.value = false
@@ -92,7 +102,7 @@ onMounted(reload)
     <NModal v-model:show="manager" preset="card" :title="t('remote.manageConnections')" class="form-modal">
       <ConnectionManager @changed="reload" @error="emit('error', $event)" />
     </NModal>
-    <NModal v-model:show="projectDialog" preset="card" :title="t(editing ? 'remote.renameProject' : 'remote.addProject')" class="form-modal" :mask-closable="!busy">
+    <NModal v-model:show="projectDialog" preset="card" :title="t(editing ? 'remote.renameProject' : duplicating ? 'common.duplicate' : 'remote.addProject')" class="form-modal" :mask-closable="!busy">
       <form @submit.prevent="save">
         <NInput v-model:value="name" :maxlength="100" :placeholder="t('remote.projectName')" :disabled="busy" />
         <div class="dialog-actions">

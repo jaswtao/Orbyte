@@ -1,7 +1,9 @@
 /** 响应式语言。模板里的 t() 会在切换后重新渲染。Author: jaswtao · Date: 2026-10-16 */
 import { ref } from 'vue'
 import { en, type MessageKey } from './en'
-import { setLocale as applyLocale, translate, type Locale, type Params } from './translate'
+import { copyName, setLocale as applyLocale, translate, type Locale, type Params } from './translate'
+
+export { copyName }
 
 export const locale = ref<Locale>('en')
 

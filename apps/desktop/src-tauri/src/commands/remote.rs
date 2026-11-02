@@ -142,6 +142,12 @@ pub async fn list_ssh_connections(state: tauri::State<'_, AppState>, storage: ta
 }
 
 #[tauri::command]
+pub async fn reorder_ssh_connections(state: tauri::State<'_, AppState>, storage: tauri::State<'_, StorageState>, ids: Vec<String>) -> CmdResult<()> {
+    let _guard = state.ssh_connections.lock().await;
+    storage.database()?.reorder_ssh_connections(&ids).await
+}
+
+#[tauri::command]
 pub async fn create_ssh_connection(
     state: tauri::State<'_, AppState>,
     storage: tauri::State<'_, StorageState>,
@@ -270,6 +276,11 @@ pub async fn list_remote_projects(storage: tauri::State<'_, StorageState>) -> Cm
 #[tauri::command]
 pub async fn save_remote_project(storage: tauri::State<'_, StorageState>, id: Option<String>, name: String) -> CmdResult<String> {
     storage.database()?.save_remote_project(id.as_deref(), &name).await
+}
+
+#[tauri::command]
+pub async fn duplicate_remote_project(storage: tauri::State<'_, StorageState>, source_id: String, name: String) -> CmdResult<String> {
+    storage.database()?.duplicate_remote_project(&source_id, &name).await
 }
 
 #[tauri::command]

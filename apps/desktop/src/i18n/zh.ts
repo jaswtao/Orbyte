@@ -2,6 +2,8 @@
 import type { MessageKey } from './en'
 
 export const zh: Record<MessageKey, string> = {
+  'common.duplicate': '复制',
+  'common.copyName': '{name} 副本',
   'shortcut.command.rename': '重命名项目或页签',
   'project.rename': '重命名项目',
   'project.renameFailed': '项目重命名失败，请重试。',

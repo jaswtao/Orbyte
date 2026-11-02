@@ -4,9 +4,9 @@ import { computed, reactive, ref, watch } from 'vue'
 import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal, NSelect } from 'naive-ui'
 import { open } from '@tauri-apps/plugin-dialog'
 import { remoteApi, type KnownHost, type SshConnection, type PasswordChange } from '../../services/remoteApi'
-import { t } from '../../i18n'
+import { copyName, t } from '../../i18n'
 
-const props = defineProps<{ connection: SshConnection | null }>()
+const props = defineProps<{ connection: SshConnection | null; duplicateSource?: SshConnection | null }>()
 const show = defineModel<boolean>('show', { required: true })
 const emit = defineEmits<{ saved: []; error: [message: string] }>()
 const form = reactive({ name: '', host: '', port: 22 as number | null, username: '', authType: 'password' as 'password' | 'privateKey', privateKeyPath: '' })
@@ -24,10 +24,11 @@ watch(show, (visible) => {
   clearPassword.value = false
   if (!visible) return
   error.value = ''
-  const current = props.connection
+  const current = props.connection ?? props.duplicateSource
   Object.assign(form, current
     ? { name: current.name, host: current.host, port: current.port, username: current.username, authType: current.authType, privateKeyPath: current.privateKeyPath ?? '' }
     : { name: '', host: '', port: 22, username: '', authType: 'password', privateKeyPath: '' })
+  if (props.duplicateSource) form.name = copyName(props.duplicateSource.name)
   void refreshKeys()
 })
 watch(() => form.authType, () => { password.value = '' })
@@ -80,7 +81,7 @@ async function save() {
 }
 </script>
 <template>
-  <NModal v-model:show="show" preset="card" :title="connection ? t('remote.edit') : t('remote.add')" class="form-modal">
+  <NModal v-model:show="show" preset="card" :title="connection ? t('remote.edit') : duplicateSource ? t('common.duplicate') : t('remote.add')" class="form-modal">
     <NForm @submit.prevent="save">
       <NFormItem :label="t('remote.name')"><NInput v-model:value="form.name" :maxlength="100" /></NFormItem>
       <NFormItem :label="t('remote.host')"><NInput v-model:value="form.host" @change="refreshKeys" /></NFormItem>
