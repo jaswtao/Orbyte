@@ -1,6 +1,6 @@
 # Orbyte
 
-[简体中文](README.md) · [Download for Windows](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) · [Quick start](doc/getting-started.en.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
+[简体中文](README.md) · [Download for Windows](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) · [Quick start](doc/getting-started.en.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
 
 **Keep your projects, terminals and AI coding CLIs in one Windows workspace.**
 
@@ -17,16 +17,16 @@ Chinese and English interfaces. Built with Tauri 2, Vue 3, Rust and CodeMirror; 
 
 ## Status and installation
 
-The first public preview, **v0.1.0, is available for Windows x64**. Using the installer does not require Rust, Node.js or build tools.
+The current public release, **v0.4.0, is available for Windows x64**. Using the installer does not require Rust, Node.js or build tools.
 
-1. Download [Orbyte_0.1.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt).
+1. Download [Orbyte_0.4.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/SHA256SUMS.txt).
 2. Run the command below and compare the hash with the installer's entry in the checksum file before installing.
 3. Open Orbyte, add a local project directory and select **New terminal**. Follow the [quick start](doc/getting-started.en.md) for a first walkthrough.
 
 The installer is unsigned and Windows may display a trust warning.
 
 ```powershell
-Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.4.0_x64-setup.exe -Algorithm SHA256
 ```
 
 PowerShell and CMD are supported. WSL requires an installed distribution. Git, Codex and Claude Code are optional tools discovered from your environment; Orbyte does not include those CLIs.
@@ -84,7 +84,7 @@ The unsigned NSIS installer is written to target/release/bundle/nsis/ by default
 
 ## Local data and privacy
 
-Draft recovery, index optimizations and SSH/SFTP in this branch still require installed desktop acceptance; the public v0.1.0 download does not imply these changes are included. See [SSH protocol probe](doc/ssh-probe.md) for automated protocol results and [validation records](doc/next-stage-validation.md) for other runs.
+Installed desktop acceptance for draft recovery, index optimizations and SSH/SFTP is still incomplete. See [SSH protocol probe](doc/ssh-probe.md) for automated protocol results and [validation records](doc/next-stage-validation.md) for other runs.
 
 Drafts stay in the local SQLite database and are excluded from diagnostics. Writes occur after 750 ms idle or at most every 5 seconds of continuous input, plus queue and storage time; draft text is limited to 5 MiB of UTF-8 bytes. Recovery changes only the editor buffer. Explicitly discarding changes, saving, or undoing to a known disk baseline removes the corresponding draft; cancellation and abnormal exits keep the last successfully persisted copy. Changed project roots allow viewing, copying or discarding old drafts, with no automatic application to the new root.
 

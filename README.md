@@ -1,6 +1,6 @@
 # Orbyte
 
-[English](README.en.md) · [下载 Windows 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) · [快速上手](doc/getting-started.md) · [发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
+[English](README.en.md) · [下载 Windows 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) · [快速上手](doc/getting-started.md) · [发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
 
 **将多个项目、终端和 AI 编码 CLI 集中到一个 Windows 窗口，减少来回切换。**
 
@@ -17,14 +17,14 @@ Orbyte 是一个开源的本地开发工作台。按项目组织终端和文件�
 
 ## 版本与下载
 
-首个公开预览版本 **v0.1.0 已提供下载，仅支持 Windows x64**。普通用户使用安装包即可，无需安装 Rust、Node.js 或构建工具。
+当前公开版本 **v0.4.0 已提供下载，仅支持 Windows x64**。普通用户使用安装包即可，无需安装 Rust、Node.js 或构建工具。
 
-1. 下载 [Orbyte_0.1.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt)。
+1. 下载 [Orbyte_0.4.0_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/SHA256SUMS.txt)。
 2. 执行下方命令，将输出与校验文件中同名安装包的 SHA-256 比较，一致后安装。
 3. 打开 Orbyte，添加本地项目目录，点击「新建终端」。完整步骤见[快速上手](doc/getting-started.md)。
 
 ```powershell
-Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.4.0_x64-setup.exe -Algorithm SHA256
 ```
 
 安装包暂未签名，Windows 可能显示信任提示。Git、WSL、Codex、Claude Code 需自行安装；Orbyte 不捆绑这些 CLI。
@@ -79,11 +79,11 @@ pnpm build
 
 构建会生成第三方声明并随安装包放入 licenses/。开发请使用 pnpm dev，以加载独立开发标识，避免与安装版共用数据。
 
-安装包生成在 `target/release/bundle/nsis/Orbyte_0.1.0_x64-setup.exe`。本地 MVP 包尚未签名；安装时按 Windows 提示确认。NSIS 安装程序在缺少 WebView2 Runtime 时提供运行时安装。
+安装包生成在 `target/release/bundle/nsis/Orbyte_0.4.0_x64-setup.exe`。本地构建的安装包尚未签名；安装时按 Windows 提示确认。NSIS 安装程序在缺少 WebView2 Runtime 时提供运行时安装。
 
 ## 使用说明
 
-- 添加本地项目目录后，可创建一层分组、收藏和拖动排序。同一目录只能添加一次；不支持 UNC 或 WSL 网络目录。
+- 添加本地项目目录后，可创建一层分组、收藏和拖动排序。同一目录可以重复添加；不支持 UNC 或 WSL 网络目录。
 - 选择 PowerShell、CMD 或 WSL 新建终端。PowerShell 优先使用已安装的 PowerShell 7，否则回退到 Windows PowerShell。WSL 需要已安装的发行版。
 - 项目和 Tab 切换、窗口最小化时，终端继续运行，编辑器保留未保存修改和撤销历史。
 - 左侧栏右缘可拖动调整宽度，宽度会记住。Tab 可双击或右键「修改名称」。`Ctrl+Tab`、`Ctrl+Shift+Tab`、`Alt+←/→` 与 `Alt+1`–`Alt+9` 在终端和编辑器聚焦时也能切换当前项目的 Tab。
@@ -149,7 +149,7 @@ pnpm build
 
 草稿正文保存在同一个本地 SQLite 数据库中，不上传、不写入诊断日志。输入停止 750 毫秒后写入，持续输入时最长每 5 秒刷新（另需排队及存储耗时），正文上限为 5 MiB UTF-8 字节。恢复只修改编辑缓冲区，不自动写回源文件，也不恢复撤销历史。明确放弃修改、保存成功或撤销到已知磁盘基线时清理对应草稿；取消关闭和异常退出保留最近成功落盘的副本。项目路径变更后仅支持查看、复制或丢弃旧草稿。
 
-本分支新增草稿恢复、索引优化以及 SSH／SFTP 尚待安装版交互验收，公开 v0.1.0 下载不代表包含这些改动。SSH 协议自动探针结果见 [SSH 协议探针](doc/ssh-probe.md)，其余执行记录见[下一阶段验收](doc/next-stage-validation.md)。
+草稿恢复、索引优化以及 SSH／SFTP 的安装版交互验收仍未完成。SSH 协议自动探针结果见 [SSH 协议探针](doc/ssh-probe.md)，其余执行记录见[下一阶段验收](doc/next-stage-validation.md)。
 
 应用诊断日志位于应用数据目录的 `logs/orbyte-<UTC日编号>-<分片>.log`，使用 JSON Lines 格式，包含时间戳（Unix 毫秒）、级别、进程、模块，以及启动/退出、数据库错误、终端状态、前端异常和操作结果/耗时。操作日志包含请求编号与项目/会话 ID，不记录终端正文、键盘输入、文件正文、剪贴板或设置值。日志按 UTC 日及 2 MiB 大小轮转，最多保留最近 30 天；启动、跨日写入及运行期间每小时清理过期文件，旧版 `terminal.log*` 也按修改时间清理。应用未运行时将在下次启动清理；清理失败会报告错误并重试。详情见 [终端恢复与诊断](doc/terminal-recovery.md)。
 

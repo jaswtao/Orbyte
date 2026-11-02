@@ -6,10 +6,10 @@ Author: jaswtao · Date: 2026-10-22
 
 ## 安装
 
-Orbyte 当前仅支持 Windows x64。下载 [v0.1.0 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt)，在下载目录执行：
+Orbyte 当前仅支持 Windows x64。下载 [v0.4.0 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/SHA256SUMS.txt)，在下载目录执行：
 
 ```powershell
-Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.4.0_x64-setup.exe -Algorithm SHA256
 ```
 
 将输出与校验文件中安装包对应的值比较，一致后再运行安装程序。安装包尚未签名，Windows 可能显示信任提示；哈希比对用于确认文件一致性，不代替发布者身份验证。安装需要 WebView2 Runtime，缺少时安装程序提供引导，可能需要联网下载微软组件。

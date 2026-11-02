@@ -6,10 +6,10 @@ Author: jaswtao · Date: 2026-10-22
 
 ## Install
 
-Orbyte currently supports Windows x64 only. Download the [v0.1.0 installer](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/Orbyte_0.1.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.1.0/SHA256SUMS.txt). In your download directory, run:
+Orbyte currently supports Windows x64 only. Download the [v0.4.0 installer](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/Orbyte_0.4.0_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.4.0/SHA256SUMS.txt). In your download directory, run:
 
 ```powershell
-Get-FileHash .\Orbyte_0.1.0_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.4.0_x64-setup.exe -Algorithm SHA256
 ```
 
 Compare the result with the installer's entry in the checksum file before installing. The installer is unsigned and Windows may display a trust warning. Matching hashes verify file consistency, not publisher identity. WebView2 Runtime is required; the installer offers setup if it is missing, which may download Microsoft components.

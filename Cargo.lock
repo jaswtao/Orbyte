@@ -2951,7 +2951,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orbyte-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2959,7 +2959,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-desktop"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "arboard",
  "clipboard-win",
@@ -2989,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-files"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dunce",
  "encoding_rs",
@@ -3005,7 +3005,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-git"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "orbyte-platform",
  "serde",
@@ -3014,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-platform"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "dunce",
  "log",
@@ -3026,7 +3026,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-ssh"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64 0.22.1",
  "dunce",
@@ -3044,7 +3044,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-storage"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "orbyte-core",
@@ -3057,7 +3057,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-terminal"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "log",
  "orbyte-platform",

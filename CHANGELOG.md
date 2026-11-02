@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.4.0 — 2026-11-02
+
+- Add SSH connections, host-key confirmation, remote terminals and SFTP browsing, upload and download.
+- Save SSH passwords in Windows Credential Manager, and submit a saved password on a physical Enter at a standard remote sudo prompt.
+- Persist remote projects, connection tabs and split layouts, and follow the focused terminal directory in the remote file panel when the prompt is idle.
+- Allow the same project path more than once, duplicate local and remote projects and SSH connections, and reorder projects and connections by dragging.
+- Add an editor context menu, reveal files in Explorer, close tabs with the middle mouse button, and rename the focused project or tab with F2.
+- Keep hidden and aged terminal output, resume display recovery when a session becomes visible, and preserve tab names when layout saves overlap.
+- Native installation and desktop acceptance remain incomplete; see the [release notes](doc/releases/v0.4.0.md) for verification limits and known limitations.
+
 ## 0.3.0 — 2026-10-29
 
 - Show the installed Orbyte version in Settings → About Orbyte and view bundled release highlights offline in Chinese or English.

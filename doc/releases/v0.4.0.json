@@ -1,0 +1,30 @@
+{
+  "version": "0.4.0",
+  "date": "2026-11-02",
+  "en": {
+    "features": [
+      "Save SSH connections, confirm host keys, open remote terminals, and browse, upload or download files with SFTP.",
+      "Store SSH passwords in Windows Credential Manager. At a standard sudo prompt, a physical Enter can submit the saved password.",
+      "Keep remote projects, connection tabs and split layouts, and follow the focused terminal directory when its prompt is idle.",
+      "Add the same project path more than once, duplicate projects and SSH connections, and reorder them by dragging.",
+      "Use the editor context menu, reveal files in Explorer, close tabs with the middle mouse button, and rename the focused project or tab with F2."
+    ],
+    "fixes": [
+      "Keep terminal output that arrives while a session is hidden or falls behind, and resume display recovery when it becomes visible.",
+      "Preserve tab names when layout saves overlap, and keep the input-method cursor position across display recovery."
+    ]
+  },
+  "zh": {
+    "features": [
+      "保存 SSH 连接，确认主机密钥，打开远程终端，并通过 SFTP 浏览、上传和下载文件。",
+      "SSH 密码保存在 Windows 凭据管理器中；遇到标准 sudo 提示时，按物理 Enter 可提交已保存的密码。",
+      "远程项目、连接标签和分屏布局会保留，提示符空闲时文件面板跟随当前终端目录。",
+      "同一项目路径可以重复添加，可复制项目和 SSH 连接，并拖动调整顺序。",
+      "编辑器支持右键菜单，可在资源管理器中显示文件，中键关闭标签，F2 重命名当前项目或标签。"
+    ],
+    "fixes": [
+      "终端隐藏或输出积压时保留内容，会话重新可见后继续恢复显示。",
+      "重叠保存布局时保留标签名称，显示恢复后保持输入法光标位置。"
+    ]
+  }
+}

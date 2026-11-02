@@ -60,6 +60,6 @@ pnpm build
 
 ## 安装
 
-安装包输出：`target/release/bundle/nsis/Orbyte_0.1.0_x64-setup.exe`。
+安装包输出：`target/release/bundle/nsis/Orbyte_0.4.0_x64-setup.exe`。
 
 先保存编辑器文件并处理其他终端的运行任务，再退出旧版进行安装。此次不自动关闭或覆盖正在使用的应用，不迁移或清除 Codex 对话、登录状态与项目数据库。
