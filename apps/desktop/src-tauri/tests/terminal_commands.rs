@@ -436,7 +436,8 @@ async fn project_path_change_and_deletion_clean_runtime_sessions() {
     )
     .await
     .unwrap();
-    assert!(db.list_projects().await.unwrap().iter().any(|p| p.id == duplicate && p.path == root.to_str().unwrap()));
+    let normalized_root = orbyte_platform::path::normalize_project_path(root.to_str().unwrap()).unwrap();
+    assert!(db.list_projects().await.unwrap().iter().any(|p| p.id == duplicate && p.path == normalized_root));
     assert!(list_terminal_sessions(app.state())
         .await
         .unwrap()
