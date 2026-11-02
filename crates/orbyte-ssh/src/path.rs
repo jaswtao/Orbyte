@@ -103,8 +103,10 @@ pub fn guarded_join(root: &Path, relative: &str) -> Result<PathBuf, String> {
             return Err(format!("下载路径越过了所选目录（重解析点或链接）：{relative}"));
         }
     }
+    // Compare the joined path with the granted directory's own spelling. Canonicalization
+    // can expand an 8.3 temp path, which is still the same directory.
     let lexical = lexical_normalize(&target);
-    if !is_within(&lexical_normalize(&root_canon), &lexical) && !is_within(&root_canon, &lexical) {
+    if !is_within(&lexical_normalize(root), &lexical) {
         return Err(format!("下载路径越过了所选目录：{relative}"));
     }
     Ok(target)
@@ -194,7 +196,8 @@ mod tests {
         assert!(guarded_join(&root, "C:/abs").is_err());
         assert!(guarded_join(&root, "ok/CON/child.txt").is_err());
         assert!(guarded_join(&root, "ok/invalid:/child.txt").is_err());
-        assert!(guarded_join(&root, "ok/文件.txt").is_ok());
+        guarded_join(&root, "ok/文件.txt").unwrap();
+        guarded_join(&root.join("."), "ok/文件.txt").unwrap();
         let _ = fs::remove_dir_all(&root);
     }
 
