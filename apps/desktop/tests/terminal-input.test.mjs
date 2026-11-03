@@ -839,6 +839,15 @@ function inverseLine(columns) {
   } : undefined }
 }
 
+/** Build a fake buffer line lookup from absolute row -> [columns]. */
+function caretLines(...entries) {
+  const lines = new Map(entries)
+  return (y) => {
+    const columns = lines.get(y)
+    return columns ? inverseLine(columns) : { length: 0, getCell: () => undefined }
+  }
+}
+
 test('孤立反色格覆盖硬件光标，延迟覆写和短暂消失后仍锚在假光标', async () => {
   const fixture = imeFixture()
   fixture.listeners.get('?l')([25])
@@ -1029,7 +1038,7 @@ test('RGB cursor resolves the default ANSI palette, color cube and grayscale', a
   }
 })
 
-test('RGB cursor at either screen edge is ignored when visible or ambiguous during composition', async (t) => {
+test('RGB cursor at either screen edge stays anchored while the redraw is ambiguous', async (t) => {
   const terminal = new xterm.Terminal({ cols: 80, rows: 24 })
   const fixture = imeFixture(terminal)
   t.after(() => { fixture.binding.dispose(); terminal.dispose() })
@@ -1038,14 +1047,103 @@ test('RGB cursor at either screen edge is ignored when visible or ambiguous duri
     await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25l\x1b[3;${col === 0 ? 1 : 79}H${content}\x1b[5;35H`, resolve))
     fixture.textarea.dispatchEvent(new Event('compositionstart'))
     assert.equal(fixture.textarea.style.left, `${col * 10}px`)
+    // The old caret is still on screen while a distant one appears: ambiguity must
+    // not drag the IME window to the parked hardware cursor or the new caret.
     await new Promise((resolve) => terminal.write(`\x1b[7;4H${qoderText}x${qoderCaret} ${qoderText}x\x1b[5;35H`, resolve))
     fixture.listeners.get('onRender')()
-    assert.equal(fixture.textarea.style.left, '340px')
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, `${col * 10}px`)
+    // Once the old caret is erased the distant caret is the only candidate and takes over.
+    await new Promise((resolve) => terminal.write('\x1b[3;1H\x1b[K\x1b[5;35H', resolve))
+    fixture.listeners.get('onRender')()
+    fixture.listeners.get('onRender')()
+    fixture.listeners.get('onRender')()
+    assert.equal(fixture.textarea.style.left, '40px')
     fixture.textarea.dispatchEvent(new Event('compositionend'))
   }
   await new Promise((resolve) => terminal.write(`\x1b[0m\x1b[2J\x1b[?25h\x1b[3;4H${qoderText}x${qoderCaret} ${qoderText}x\x1b[5;35H`, resolve))
   fixture.textarea.dispatchEvent(new Event('compositionstart'))
   assert.equal(fixture.textarea.style.left, '340px')
+})
+
+test('组词期间硬件光标移动和多处高亮不会拖动输入法锚点', () => {
+  const fixture = imeFixture()
+  fixture.listeners.get('?l')([25])
+  fixture.buffer.getLine = caretLines([12, [4]])
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(fixture.textarea.style.left, '40px')
+  assert.equal(fixture.textarea.style.top, '40px')
+  // Spinner redraw adds a second highlight while the hardware cursor keeps moving.
+  fixture.buffer.getLine = caretLines([12, [4]], [20, [10]])
+  // Keep the hardware cursor inside the viewport, otherwise apply() early-returns
+  // and a lost pin would leave the old position in place unnoticed.
+  fixture.buffer.cursorX = 30
+  fixture.buffer.cursorY = 15
+  fixture.listeners.get('onCursorMove')()
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '40px')
+  assert.equal(fixture.textarea.style.top, '40px')
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '40px')
+  fixture.binding.dispose()
+})
+
+test('远离锚点的假光标连续三次观察后才接管', () => {
+  const fixture = imeFixture()
+  fixture.listeners.get('?l')([25])
+  fixture.buffer.getLine = caretLines([12, [4]])
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(fixture.textarea.style.left, '40px')
+  fixture.buffer.getLine = caretLines([20, [6]])
+  fixture.listeners.get('onRender')()
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '40px')
+  assert.equal(fixture.textarea.style.top, '40px')
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '60px')
+  assert.equal(fixture.textarea.style.top, '200px')
+  fixture.binding.dispose()
+})
+
+test('组词开始时没有假光标则冻结硬件位置，后续输出不拖动锚点', () => {
+  const fixture = imeFixture()
+  fixture.listeners.get('?l')([25])
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(fixture.textarea.style.left, '790px')
+  assert.equal(fixture.textarea.style.top, '100px')
+  // Move the hardware cursor within the viewport so losing the frozen anchor
+  // would visibly move the textarea instead of early-returning in apply().
+  fixture.buffer.cursorX = 10
+  fixture.buffer.cursorY = 15
+  fixture.listeners.get('onCursorMove')()
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '790px')
+  assert.equal(fixture.textarea.style.top, '100px')
+  fixture.binding.dispose()
+})
+
+test('组词期间重绘同步纠正锚点，不等待动画帧', (t) => {
+  const previousRequest = globalThis.requestAnimationFrame
+  const previousCancel = globalThis.cancelAnimationFrame
+  const frames = new Map()
+  let next = 0
+  globalThis.requestAnimationFrame = (callback) => { frames.set(++next, callback); return next }
+  globalThis.cancelAnimationFrame = (id) => frames.delete(id)
+  const fixture = imeFixture()
+  t.after(() => {
+    fixture.binding.dispose()
+    globalThis.requestAnimationFrame = previousRequest
+    globalThis.cancelAnimationFrame = previousCancel
+  })
+  fixture.listeners.get('?l')([25])
+  fixture.buffer.getLine = caretLines([12, [4]])
+  fixture.textarea.dispatchEvent(new Event('compositionstart'))
+  assert.equal(fixture.textarea.style.left, '40px')
+  assert.equal(frames.size, 0)
+  fixture.buffer.getLine = caretLines([12, [5]])
+  fixture.listeners.get('onRender')()
+  assert.equal(fixture.textarea.style.left, '50px')
+  assert.equal(frames.size, 0)
 })
 
 test('RGB cursor pin survives blinking, follows movement and releases on show or reset', async (t) => {

@@ -80,6 +80,13 @@ function visualCarets(term: Terminal): { col: number; row: number }[] {
   return found
 }
 
+type Anchor = { col: number; row: number }
+
+/** Rows a caret may jump and still follow immediately while composing. */
+const PIN_FOLLOW_ROWS = 2
+/** Consecutive observations a distant candidate must persist before it replaces the anchor. */
+const PIN_STABLE_SAMPLES = 3
+
 export function bindTerminalIme(term: Terminal, visible: () => boolean = () => true): IDisposable & { reset(): void; recover(): void; refresh(): void } {
   const textarea = term.textarea!
   const screen = term.element!.querySelector<HTMLElement>('.xterm-screen')!
@@ -87,27 +94,90 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
   let composing = false
   let disposed = false
   let cursorHidden = false
-  let pinned: { col: number; row: number } | null = null
+  let pinned: Anchor | null = null
+  let pinSource: 'visual' | 'hardware' | null = null
+  let pending: { anchor: Anchor; samples: number } | null = null
+  /** A new composition adopts the current unambiguous caret without settling. */
+  let freshStart = false
   let observer: MutationObserver | undefined
   let frame: number | undefined
   let delayed: ReturnType<typeof setTimeout> | undefined
+
+  const hardwareAnchor = (): Anchor | null => {
+    const buffer = term.buffer.active
+    const row = buffer.baseY + buffer.cursorY - buffer.viewportY
+    if (row < 0 || row >= term.rows) return null
+    return { col: Math.min(buffer.cursorX, term.cols - 1), row }
+  }
+  const sameAnchor = (left: Anchor, right: Anchor) => left.col === right.col && left.row === right.row
+  /** Prefer candidates on the anchor row: row jumps move the IME window the most. */
+  const nearest = (hits: Anchor[], reference: Anchor): Anchor => {
+    let best = hits[0]!
+    let distance = Math.abs(best.row - reference.row) * term.cols + Math.abs(best.col - reference.col)
+    for (const hit of hits.slice(1)) {
+      const next = Math.abs(hit.row - reference.row) * term.cols + Math.abs(hit.col - reference.col)
+      if (next < distance) { best = hit; distance = next }
+    }
+    return best
+  }
+  const clearPin = () => { pinned = null; pinSource = null; pending = null; freshStart = false }
 
   const watch = () => {
     observer?.observe(textarea, { attributes: true, attributeFilter: ['style'] })
     observer?.observe(composition, { attributes: true, attributeFilter: ['style'] })
   }
-  const sync = () => {
+  const updatePin = () => {
+    const fresh = freshStart
+    freshStart = false
+    if (!composing) {
+      // 只有程序隐藏真实光标时才寻找假光标，普通 Shell 反色输出不参与定位。
+      const hits = cursorHidden ? visualCarets(term) : []
+      pending = null
+      if (hits.length === 1) { pinned = hits[0]!; pinSource = 'visual' }
+      else { pinned = null; pinSource = null }
+      return
+    }
+    if (!cursorHidden) { clearPin(); return }
+
+    const hits = visualCarets(term)
+    if (!pinned) {
+      if (hits.length === 1) { pinned = hits[0]!; pinSource = 'visual'; pending = null }
+      else {
+        // Freeze the pre-composition position while the TUI redraw is ambiguous;
+        // xterm keeps writing the textarea to the moving hardware cursor otherwise.
+        pinned = hardwareAnchor()
+        pinSource = pinned ? 'hardware' : null
+        pending = null
+      }
+      return
+    }
+    if (hits.length === 0) { pending = null; return }
+
+    const candidate = hits.length === 1 ? hits[0]! : nearest(hits, pinned)
+    const nearby = Math.abs(candidate.row - pinned.row) <= PIN_FOLLOW_ROWS
+    // A lone visual caret, or one that stayed on the input line, is unambiguous.
+    if ((hits.length === 1 && (fresh || nearby || pinSource === 'hardware')) || (pinSource === 'visual' && nearby)) {
+      pinned = candidate
+      pinSource = 'visual'
+      pending = null
+      return
+    }
+    // A distant candidate may be a spinner or a half-drawn frame: settle before moving.
+    if (pending && sameAnchor(pending.anchor, candidate)) pending.samples += 1
+    else pending = { anchor: candidate, samples: 1 }
+    if (pending.samples >= PIN_STABLE_SAMPLES) {
+      pinned = candidate
+      pinSource = 'visual'
+      pending = null
+    }
+  }
+  const apply = () => {
     if (disposed || !visible()) return
     if (!composing && textarea.ownerDocument && textarea.ownerDocument.activeElement !== textarea) return
     if (!screen.clientWidth || !screen.clientHeight) return
-    const buffer = term.buffer.active
-    // 只有程序隐藏真实光标时才寻找假光标，普通 Shell 反色输出不参与定位。
-    const hits = cursorHidden ? visualCarets(term) : []
-    if (hits.length === 1) pinned = hits[0]!
-    else if (hits.length > 1 || !cursorHidden || !composing) pinned = null
-    const col = pinned ? pinned.col : Math.min(buffer.cursorX, term.cols - 1)
-    const row = pinned ? pinned.row : buffer.baseY + buffer.cursorY - buffer.viewportY
-    if (!screen.clientWidth || !screen.clientHeight || row < 0 || row >= term.rows) return
+    const anchor = pinned ?? hardwareAnchor()
+    if (!anchor || anchor.row < 0 || anchor.row >= term.rows) return
+    const { col, row } = anchor
     const cellWidth = screen.clientWidth / term.cols
     const cellHeight = screen.clientHeight / term.rows
     const left = col * cellWidth
@@ -132,22 +202,39 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
     }
     watch()
   }
+  const sync = () => {
+    if (disposed || !visible()) return
+    if (!composing && textarea.ownerDocument && textarea.ownerDocument.activeElement !== textarea) return
+    if (!screen.clientWidth || !screen.clientHeight) return
+    updatePin()
+    apply()
+  }
+  /** Re-apply the settled anchor without rescanning, for same-frame corrections. */
+  const correct = () => { apply() }
   const schedule = () => {
     if (disposed || !visible() || frame !== undefined) return
     if (typeof requestAnimationFrame === 'undefined') { sync(); return }
     frame = requestAnimationFrame(() => { frame = undefined; sync() })
   }
   // 排在 xterm 的 setTimeout(0) 之后，把被写回硬件光标的坐标再钉到假光标。
-  const resync = () => { sync(); clearTimeout(delayed); delayed = setTimeout(sync, 0) }
-  const start = () => { composing = true; resync() }
-  const end = () => { composing = false; pinned = null; resync() }
+  const resync = () => {
+    sync()
+    clearTimeout(delayed)
+    delayed = setTimeout(() => {
+      delayed = undefined
+      if (composing) correct()
+      else sync()
+    }, 0)
+  }
+  const start = () => { composing = true; pending = null; freshStart = true; resync() }
+  const end = () => { composing = false; clearPin(); resync() }
   // 捕获阶段先定位；冒泡阶段再覆盖 xterm 按组词长度扩展的输入框。
   textarea.addEventListener('compositionstart', start, true)
   textarea.addEventListener('compositionupdate', resync)
   textarea.addEventListener('compositionend', end)
   textarea.addEventListener('focus', sync)
   const clearPosition = () => {
-    pinned = null
+    clearPin()
     clearTimeout(delayed)
     delayed = undefined
     if (frame !== undefined) cancelAnimationFrame(frame)
@@ -160,14 +247,19 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
   // Leave an active native composition intact to avoid losing unsent text.
   const recover = () => { clearPosition() }
   const subscriptions = [
-    term.onRender(schedule), term.onCursorMove(schedule), term.onResize(schedule), term.onScroll(schedule),
+    // While composing, xterm schedules its own setTimeout(0) write-backs; correct
+    // in the same render instead of leaving the anchor to drift for a frame.
+    term.onRender(() => { if (composing) sync(); else schedule() }),
+    term.onCursorMove(() => { if (composing) correct(); else schedule() }),
+    term.onResize(() => { if (composing) sync(); else schedule() }),
+    term.onScroll(() => { if (composing) sync(); else schedule() }),
     // 返回 false，继续交由 xterm 执行原有模式切换和重置。
     term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
       if (params.includes(25)) cursorHidden = true
       return false
     }),
     term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
-      if (params.includes(25)) { cursorHidden = false; pinned = null }
+      if (params.includes(25)) { cursorHidden = false; clearPin() }
       return false
     }),
     term.parser.registerCsiHandler({ intermediates: '!', final: 'p' }, () => { reset(); return false }),
@@ -176,11 +268,13 @@ export function bindTerminalIme(term: Terminal, visible: () => boolean = () => t
   // 真实 DOM 上 xterm 一改 style 就立刻钉回。测试里的假元素不是 HTMLElement，不挂观察器。
   if (typeof MutationObserver !== 'undefined' && typeof HTMLElement !== 'undefined'
     && textarea instanceof HTMLElement && composition instanceof HTMLElement) {
-    observer = new MutationObserver(schedule)
+    // Mutation records run in a microtask, after xterm's zero-delay write-back but
+    // before paint, so the IME anchor never lands on the hardware cursor.
+    observer = new MutationObserver(() => { if (composing) correct(); else schedule() })
     watch()
   }
   sync()
-  return { reset, recover, refresh: schedule, dispose() {
+  return { reset, recover, refresh: () => { if (composing) sync(); else schedule() }, dispose() {
     disposed = true
     clearTimeout(delayed)
     if (frame !== undefined) cancelAnimationFrame(frame)
