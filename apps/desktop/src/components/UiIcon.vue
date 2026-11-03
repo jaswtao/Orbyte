@@ -1,8 +1,10 @@
 <!-- Author: jaswtao · Date: 2026-10-15 -->
 <script setup lang="ts">
-withDefaults(defineProps<{ name: 'folder' | 'search' | 'settings' | 'chevron' | 'star' | 'terminal' | 'plus' | 'info'; size?: number }>(), { size: 18 })
+withDefaults(defineProps<{ name: 'folder' | 'folder-open' | 'file' | 'search' | 'settings' | 'chevron' | 'star' | 'terminal' | 'plus' | 'info'; size?: number }>(), { size: 18 })
 const paths = {
   folder: 'M3 7V5a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z',
+  'folder-open': 'M3 18V5a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v2M3 18l2-8a1 1 0 0 1 1-.8h15l-2.3 9a1 1 0 0 1-1 .8H4a1 1 0 0 1-1-1Z',
+  file: 'M6 3h8l4 4v14H6V3Zm8 0v5h4',
   search: 'm16 16 4 4M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z',
   chevron: 'm9 5 7 7-7 7',
   star: 'm12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z',

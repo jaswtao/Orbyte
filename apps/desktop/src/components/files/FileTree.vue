@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { NButton, NDropdown, NInput, NModal } from 'naive-ui'
+import UiIcon from '../UiIcon.vue'
 import { fileApi, fileError, type DirectoryEntry, type FileChange } from '../../services/fileApi'
 import { useGit } from '../../stores/git'
 import type { GitKind } from '../../services/gitApi'
@@ -122,7 +123,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escapeMenu))
     <div class="file-actions"><NButton size="tiny" :disabled="disabled" @click="action('file')">{{ t('files.newFile') }}</NButton><NButton size="tiny" :disabled="disabled" @click="action('directory')">{{ t('files.newDirectory') }}</NButton><NButton size="tiny" @click="refresh">{{ t('files.refresh') }}</NButton></div>
     <p class="sidebar-tip">{{ t('files.hint') }}</p>
     <NDropdown trigger="manual" placement="bottom-start" :show="menu" :x="menuPosition.x" :y="menuPosition.y" :options="menuOptions" @select="selectMenu" @clickoutside="menu = false" />
-    <div class="file-rows"><button v-for="entry in rows" :key="entry.path" :style="{ paddingLeft: `${8 + entry.depth * 16}px` }" :class="[{ selected: selected?.path === entry.path }, gitClass(entry)]" :title="entry.accessible ? entry.path : t('files.inaccessible')" @click="toggle(entry)" @contextmenu.prevent.stop="openMenu($event, entry)">{{ entry.isDirectory ? expanded.has(entry.path) ? '▾' : '▸' : '·' }} {{ entry.name }}{{ !entry.accessible && !entry.truncated ? ' 🔒' : '' }}</button></div>
+    <div class="file-rows"><button v-for="entry in rows" :key="entry.path" :style="{ paddingLeft: `${8 + entry.depth * 16}px` }" :class="[{ selected: selected?.path === entry.path }, gitClass(entry)]" :title="entry.accessible ? entry.path : t('files.inaccessible')" :aria-expanded="entry.isDirectory ? expanded.has(entry.path) : undefined" @click="toggle(entry)" @contextmenu.prevent.stop="openMenu($event, entry)">
+      <span class="file-row-chevron"><UiIcon v-if="entry.isDirectory" name="chevron" :size="12" :class="{ expanded: expanded.has(entry.path) }" /></span>
+      <UiIcon v-if="!entry.truncated" class="file-row-icon" :name="entry.isDirectory ? (expanded.has(entry.path) ? 'folder-open' : 'folder') : 'file'" :size="16" />
+      <span v-else class="file-row-icon" />
+      <span class="file-row-name">{{ entry.name }}</span><span v-if="!entry.accessible && !entry.truncated" aria-hidden="true"> 🔒</span>
+    </button></div>
     <NModal :show="!!dialog" preset="card" :title="dialog?.operation === 'delete' ? t('files.confirmTrash') : dialog?.operation === 'rename' ? t('files.rename') : t('files.createTitle')" class="form-modal" @update:show="(show) => { if (!show && !busy) dialog = null }"><template v-if="dialog"><p v-if="dialog.operation === 'delete'">{{ t('files.confirmTrashBody', { name: dialog.original }) }}</p><NInput v-else v-model:value="dialog.path" :placeholder="t('files.pathPlaceholder')" /><div class="dialog-actions"><NButton :disabled="busy" @click="dialog = null">{{ t('common.cancel') }}</NButton><NButton :loading="busy" :disabled="!dialog.path" @click="execute">{{ t('common.confirm') }}</NButton></div></template></NModal>
   </div>
 </template>
