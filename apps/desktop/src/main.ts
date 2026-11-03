@@ -6,6 +6,9 @@ import { installDiagnostics, attachVueDiagnostics } from './services/diagnostics
 
 installDiagnostics()
 
+// Suppress the WebView native context menu in every environment; in-app menus are rendered by components.
+document.addEventListener('contextmenu', (event) => event.preventDefault(), true)
+
 if (import.meta.env.PROD) {
   // 正式版阻止 WebView 的刷新和开发者工具快捷键，避免丢失未保存文档。
   // 不能阻止传播：终端仍需收到 Ctrl+R（反向历史搜索）、F5、F12 等按键。
@@ -16,7 +19,6 @@ if (import.meta.env.PROD) {
       event.preventDefault()
     }
   }, true)
-  document.addEventListener('contextmenu', (event) => event.preventDefault())
 }
 
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('probe')) {

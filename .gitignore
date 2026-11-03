@@ -31,3 +31,4 @@ __pycache__/
 
 # Tool runtime state
 .codebuddy/scheduled_task_executions.json
+.qoder/settings.local.json

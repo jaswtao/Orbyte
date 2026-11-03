@@ -268,7 +268,11 @@ button:focus-visible, select:focus-visible {
 }
 
 .group {
-  margin-bottom: 12px;
+  padding-bottom: 8px;
+}
+
+.group + .group {
+  border-top: 1px solid var(--border);
 }
 
 .group-heading {
