@@ -287,6 +287,7 @@ export const en = {
   'quickOpen.empty': 'No matching files',
   'quickOpen.emptyHint': 'Try a shorter name or another keyword',
 
+  'files.help': 'File tips',
   'files.hint': 'Select a directory before creating a file. Right-click to rename or move to the Recycle Bin.',
   'files.newFile': 'New file',
   'files.newDirectory': 'New directory',
@@ -349,6 +350,7 @@ export const en = {
   'remote.projects': 'Remote projects',
   'remote.addProject': 'New project',
   'remote.renameProject': 'Rename project',
+  'remote.projectActions': 'Project actions',
   'remote.deleteProject': 'Delete remote project',
   'remote.deleteProjectBody': 'Delete “{name}” and close its connections and transfers? Saved connection profiles and server files stay.',
   'remote.projectName': 'Project name',

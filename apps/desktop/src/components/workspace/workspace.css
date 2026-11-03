@@ -275,14 +275,20 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 8px;
   min-height: 0;
 }
 
-.file-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 6px 0;
+.file-toolbar {
+  flex-shrink: 0;
+}
+
+.file-tree .file-rows {
+  flex: 1;
+}
+
+.file-help {
+  flex-shrink: 0;
 }
 
 .file-rows {

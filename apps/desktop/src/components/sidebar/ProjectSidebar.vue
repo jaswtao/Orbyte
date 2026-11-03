@@ -1,7 +1,7 @@
 <!-- Author: jaswtao · Date: 2026-10-14 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
-import { NButton, NInput, NSwitch } from 'naive-ui'
+import { NButton, NInput } from 'naive-ui'
 import { projectApi, type Project, type ProjectGroup } from '../../services/projectApi'
 import { useProjects } from '../../stores/projects'
 import { buildMenuOptions } from '../../services/sidebar/menu'
@@ -20,6 +20,7 @@ const search = ref('')
 const searchInput = ref<{ focus: () => void } | null>(null)
 const projectList = ref<HTMLElement | null>(null)
 const favoritesOnly = ref(false)
+const showHidden = computed(() => store.settings?.show_hidden_projects ?? false)
 const collapsed = reactive(new Set<string>())
 const sections = computed(() => [
   ...store.groups,
@@ -250,36 +251,55 @@ defineExpose({
 })
 </script>
 <template>
-          <div class="sidebar-heading">
-            <strong>{{ t('app.projects') }}</strong
-            ><NButton
-              size="small"
+          <div class="project-toolbar">
+            <NInput
+              ref="searchInput"
+              v-model:value="search"
+              :placeholder="t('sidebar.searchPlaceholder')"
+              clearable
+              :aria-label="t('sidebar.search')"
+            ><template #prefix><UiIcon name="search" :size="15" /></template></NInput>
+            <button
+              class="sidebar-action"
+              type="button"
               :disabled="!store.ready || store.busy"
+              :title="t('sidebar.newGroup')"
+              :aria-label="t('sidebar.newGroup')"
               @click="emit('editGroup')"
-              >{{ t('sidebar.newGroup') }}</NButton
-            ><NButton
-              size="small"
+            >
+              <UiIcon name="plus" :size="16" />
+            </button>
+            <button
+              class="sidebar-action"
+              type="button"
               :disabled="!store.ready || store.busy"
+              :title="t('sidebar.addProject')"
+              :aria-label="t('sidebar.addProject')"
               @click="emit('editProject')"
-              >{{ t('sidebar.addProject') }}</NButton
             >
+              <UiIcon name="folder-plus" :size="16" />
+            </button>
           </div>
-          <NInput
-            ref="searchInput"
-            v-model:value="search"
-            :placeholder="t('sidebar.searchPlaceholder')"
-            clearable
-            :aria-label="t('sidebar.search')"
-          ><template #prefix><UiIcon name="search" :size="15" /></template></NInput>
           <div class="project-filters">
-            <label class="favorites-filter"
-              ><NSwitch v-model:value="favoritesOnly" size="small" />
-              {{ t('sidebar.favoritesOnly') }}</label
+            <button
+              class="filter-chip"
+              type="button"
+              :class="{ active: favoritesOnly }"
+              :aria-pressed="favoritesOnly"
+              @click="favoritesOnly = !favoritesOnly"
             >
-            <label class="favorites-filter">
-              <NSwitch :value="store.settings?.show_hidden_projects ?? false" size="small" :disabled="!store.ready || store.busy" @update:value="setShowHidden" />
-              {{ t('sidebar.showHiddenProjects') }}
-            </label>
+              <UiIcon name="star" :size="12" class="chip-star" />{{ t('sidebar.favoritesOnly') }}
+            </button>
+            <button
+              class="filter-chip"
+              type="button"
+              :class="{ active: showHidden }"
+              :aria-pressed="showHidden"
+              :disabled="!store.ready || store.busy"
+              @click="setShowHidden(!showHidden)"
+            >
+              <UiIcon name="eye" :size="13" />{{ t('sidebar.showHiddenProjects') }}
+            </button>
           </div>
           <div ref="projectList" class="project-list" @scroll.passive="onProjectListScroll">
             <section

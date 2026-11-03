@@ -120,8 +120,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escapeMenu))
 </script>
 <template>
   <div class="file-tree" @contextmenu.prevent="openMenu($event)" @scroll.capture="menu = false">
-    <div class="file-actions"><NButton size="tiny" :disabled="disabled" @click="action('file')">{{ t('files.newFile') }}</NButton><NButton size="tiny" :disabled="disabled" @click="action('directory')">{{ t('files.newDirectory') }}</NButton><NButton size="tiny" @click="refresh">{{ t('files.refresh') }}</NButton></div>
-    <p class="sidebar-tip">{{ t('files.hint') }}</p>
+    <div class="project-toolbar file-toolbar">
+      <button class="sidebar-action" type="button" :disabled="disabled" :title="t('files.newFile')" :aria-label="t('files.newFile')" @click="action('file')"><UiIcon name="file-plus" :size="16" /></button>
+      <button class="sidebar-action" type="button" :disabled="disabled" :title="t('files.newDirectory')" :aria-label="t('files.newDirectory')" @click="action('directory')"><UiIcon name="folder-plus" :size="16" /></button>
+      <span class="toolbar-spacer" aria-hidden="true" />
+      <button class="sidebar-action" type="button" :title="t('files.refresh')" :aria-label="t('files.refresh')" @click="refresh"><UiIcon name="refresh" :size="16" /></button>
+    </div>
     <NDropdown trigger="manual" placement="bottom-start" :show="menu" :x="menuPosition.x" :y="menuPosition.y" :options="menuOptions" @select="selectMenu" @clickoutside="menu = false" />
     <div class="file-rows"><button v-for="entry in rows" :key="entry.path" :style="{ paddingLeft: `${8 + entry.depth * 16}px` }" :class="[{ selected: selected?.path === entry.path }, gitClass(entry)]" :title="entry.accessible ? entry.path : t('files.inaccessible')" :aria-expanded="entry.isDirectory ? expanded.has(entry.path) : undefined" @click="toggle(entry)" @contextmenu.prevent.stop="openMenu($event, entry)">
       <span class="file-row-chevron"><UiIcon v-if="entry.isDirectory" name="chevron" :size="12" :class="{ expanded: expanded.has(entry.path) }" /></span>
@@ -129,6 +133,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', escapeMenu))
       <span v-else class="file-row-icon" />
       <span class="file-row-name">{{ entry.name }}</span><span v-if="!entry.accessible && !entry.truncated" aria-hidden="true"> 🔒</span>
     </button></div>
+    <details class="sidebar-help file-help"><summary>{{ t('files.help') }}</summary><p class="sidebar-tip">{{ t('files.hint') }}</p></details>
     <NModal :show="!!dialog" preset="card" :title="dialog?.operation === 'delete' ? t('files.confirmTrash') : dialog?.operation === 'rename' ? t('files.rename') : t('files.createTitle')" class="form-modal" @update:show="(show) => { if (!show && !busy) dialog = null }"><template v-if="dialog"><p v-if="dialog.operation === 'delete'">{{ t('files.confirmTrashBody', { name: dialog.original }) }}</p><NInput v-else v-model:value="dialog.path" :placeholder="t('files.pathPlaceholder')" /><div class="dialog-actions"><NButton :disabled="busy" @click="dialog = null">{{ t('common.cancel') }}</NButton><NButton :loading="busy" :disabled="!dialog.path" @click="execute">{{ t('common.confirm') }}</NButton></div></template></NModal>
   </div>
 </template>

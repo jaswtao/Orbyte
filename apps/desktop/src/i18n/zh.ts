@@ -289,6 +289,7 @@ export const zh: Record<MessageKey, string> = {
   'quickOpen.empty': '没有匹配文件',
   'quickOpen.emptyHint': '试试更短的文件名或其他关键词',
 
+  'files.help': '文件提示',
   'files.hint': '选择目录后新建；右键可重命名或移入回收站。',
   'files.newFile': '新建文件',
   'files.newDirectory': '新建目录',
@@ -351,6 +352,7 @@ export const zh: Record<MessageKey, string> = {
   'remote.projects': '远程项目',
   'remote.addProject': '新建项目',
   'remote.renameProject': '重命名项目',
+  'remote.projectActions': '项目操作',
   'remote.deleteProject': '删除远程项目',
   'remote.deleteProjectBody': '删除“{name}”并关闭其中的连接和传输？已保存的连接配置和服务器文件会保留。',
   'remote.projectName': '项目名称',

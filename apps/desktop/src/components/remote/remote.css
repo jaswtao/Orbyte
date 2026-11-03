@@ -8,8 +8,24 @@
 }
 
 .remote-empty {
+  margin: 2px 10px 6px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.remote-sidebar-toolbar {
+  flex-shrink: 0;
+}
+
+.remote-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .remote-connection {
@@ -79,6 +95,8 @@
 }
 
 .remote-project {
+  display: flex;
+  align-items: center;
   margin: 2px 0;
   border-radius: 8px;
 }
@@ -92,19 +110,57 @@
 }
 
 .remote-project-select {
-  width: 100%;
-  padding: 5px 9px 0;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 0 7px 9px;
   border: 0;
   color: var(--text);
   background: transparent;
   text-align: left;
 }
 
+.remote-project-icon {
+  color: var(--muted);
+}
+
+.remote-project.active .remote-project-icon {
+  color: var(--accent);
+}
+
 .remote-project-title {
   display: flex;
+  flex: 1;
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+}
+
+.remote-project-menu {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.remote-project-menu:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.remote-project-menu:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .remote-project-name {
@@ -122,8 +178,6 @@
   font-size: 11px;
 }
 
-.remote-project-actions { display: flex; gap: 6px; padding: 3px 9px 5px; }
-.remote-manage-button { flex-shrink: 0; }
 .remote-status-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--muted); }
 .remote-status-dot.ready { background: #36ad6a; }
 .remote-status-dot.failed { background: #e35b65; }

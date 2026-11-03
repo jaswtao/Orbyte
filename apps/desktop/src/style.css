@@ -238,21 +238,90 @@ button:focus-visible, select:focus-visible {
   font-weight: 600;
 }
 
+.project-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-toolbar .n-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-spacer {
+  flex: 1;
+}
+
+.sidebar-action {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.sidebar-action:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sidebar-action:active:not(:disabled) {
+  background: var(--selection);
+  color: var(--accent);
+}
+
+.sidebar-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .project-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
-.favorites-filter {
-  display: flex;
-  flex-shrink: 0;
+.filter-chip {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  white-space: nowrap;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.filter-chip:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.filter-chip.active {
+  border-color: transparent;
+  background: var(--selection);
+  color: var(--accent);
+}
+
+.filter-chip.active .chip-star {
+  fill: currentColor;
+}
+
+.filter-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .hidden-project-label {

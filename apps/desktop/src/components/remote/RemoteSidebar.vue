@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { NButton, NInput, NModal } from 'naive-ui'
 import ConnectionManager from './ConnectionManager.vue'
 import ProjectContextMenu from '../sidebar/ProjectContextMenu.vue'
+import UiIcon from '../UiIcon.vue'
 import { useRemote } from '../../stores/remote'
 import { remoteApi, type RemoteProject } from '../../services/remoteApi'
 import { copyName, t } from '../../i18n'
@@ -26,7 +27,14 @@ const menuOptions = computed(() => [
   { key: 'delete', label: t('remote.deleteProject'), disabled: busy.value },
 ])
 function openMenu(event: MouseEvent, project: RemoteProject) {
-  contextMenu.value = busy.value ? null : { id: project.id, x: event.clientX, y: event.clientY }
+  if (busy.value) {
+    contextMenu.value = null
+    return
+  }
+  // Keyboard activation reports no pointer position.
+  const keyboard = event.detail === 0 && event.clientX === 0 && event.clientY === 0
+  const rect = keyboard ? (event.currentTarget as HTMLElement | null)?.getBoundingClientRect() : null
+  contextMenu.value = { id: project.id, x: rect?.left ?? event.clientX, y: rect?.bottom ?? event.clientY }
 }
 function onMenuSelect(key: string) {
   const project = remote.projects.find((item) => item.id === contextMenu.value?.id)
@@ -80,27 +88,25 @@ onMounted(reload)
 </script>
 <template>
   <div class="remote-sidebar">
-    <div class="sidebar-heading">
-      <strong>{{ t('remote.projects') }}</strong>
-      <NButton size="small" @click="edit()">{{ t('remote.addProject') }}</NButton>
+    <div class="project-toolbar remote-sidebar-toolbar">
+      <strong class="remote-title">{{ t('remote.projects') }}</strong>
+      <button class="sidebar-action" type="button" :disabled="busy" :title="t('remote.addProject')" :aria-label="t('remote.addProject')" @click="edit()"><UiIcon name="plus" :size="16" /></button>
+      <button class="sidebar-action" type="button" :title="t('remote.manageConnections')" :aria-label="t('remote.manageConnections')" @click="manager = true"><UiIcon name="link" :size="16" /></button>
     </div>
     <p v-if="!remote.projects.length" class="remote-empty">{{ t('remote.noProjects') }}</p>
     <div ref="projectList" class="project-list" role="list">
       <div v-for="project in remote.projects" :key="project.id" :data-project-id="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem" @contextmenu.prevent.stop="openMenu($event, project)">
         <button class="remote-project-select" :aria-pressed="project.id === remote.activeProjectId" @click="remote.selectProject(project.id)">
+          <UiIcon name="terminal" :size="16" class="remote-project-icon" />
           <span class="remote-project-title">
             <span class="remote-project-name">{{ project.name }}</span>
             <small class="remote-project-meta">{{ t('remote.terminalCount', { count: remote.terminalCounts.get(project.id) ?? project.terminalCount ?? 0 }) }}</small>
           </span>
         </button>
-        <div class="remote-project-actions">
-          <NButton size="tiny" @click="edit(project)">{{ t('remote.renameProject') }}</NButton>
-          <NButton size="tiny" @click="deleting = project">{{ t('common.delete') }}</NButton>
-        </div>
+        <button class="remote-project-menu" type="button" :disabled="busy" :title="t('remote.projectActions')" :aria-label="t('remote.projectActions')" aria-haspopup="menu" @click.stop="openMenu($event, project)"><UiIcon name="ellipsis" :size="15" /></button>
       </div>
     </div>
     <ProjectContextMenu trigger="manual" placement="bottom-start" :show="!!contextMenu" :x="contextMenu?.x ?? 0" :y="contextMenu?.y ?? 0" :options="menuOptions" @select="onMenuSelect" @clickoutside="contextMenu = null" />
-    <NButton class="remote-manage-button" @click="manager = true">{{ t('remote.manageConnections') }}</NButton>
     <NModal v-model:show="manager" preset="card" :title="t('remote.manageConnections')" class="form-modal">
       <ConnectionManager @changed="reload" @error="emit('error', $event)" />
     </NModal>
