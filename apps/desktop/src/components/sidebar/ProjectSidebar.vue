@@ -28,6 +28,16 @@ const sections = computed(() => [
 const filteredProjects = computed(() => filterProjects(store.projects, store.settings?.show_hidden_projects ?? false, favoritesOnly.value, search.value))
 const visibleProjects = (id: string) => filteredProjects.value.filter((p) => (p.groupId ?? '') === id)
 
+function gitSummary(id: string) {
+  const status = git.statuses.get(id)
+  if (!status?.isRepo) return ''
+  return `${status.branch ?? 'detached'} · ${status.files.length}${status.truncated ? '+' : ''}${status.ahead ? ` ↑${status.ahead}` : ''}${status.behind ? ` ↓${status.behind}` : ''}`
+}
+function gitTitle(id: string) {
+  const summary = gitSummary(id)
+  return git.statuses.get(id)?.truncated ? `${summary} — ${t('sidebar.changesTruncated')}` : summary
+}
+
 function replacementProject(excludedId: string) {
   return firstVisibleProject(store.projects, sections.value.map((group) => group.id), excludedId, favoritesOnly.value, search.value)
 }
@@ -211,7 +221,7 @@ function revealProject(id: string) {
   if (!list || !row || !row.getClientRects().length || !list.clientHeight) return
   revealedProjectId.value = id
   scrollProjectIntoView(list, row)
-  // Git information can increase the row height after the initial reveal.
+  // Later layout changes, such as sidebar resizing, can move the row after the initial reveal.
   const observer = new ResizeObserver(() => {
     if (revealObserver !== observer || revealFrame !== undefined) return
     revealFrame = requestAnimationFrame(() => {
@@ -330,8 +340,11 @@ defineExpose({
                     @dragstart.stop="startDrag($event, 'project', project.id)"
                     @dragend="endDrag"
                   >
-                    <span>{{ project.name }} <small v-if="project.hidden" class="hidden-project-label">{{ t('sidebar.hiddenProject') }}</small> <i v-if="activities.get(project.id) && !(store.active?.id === project.id && activities.get(project.id) === 'unread')" class="activity-dot" :class="activities.get(project.id)" /></span
-                    ><small v-if="git.statuses.get(project.id)?.isRepo" :title="git.statuses.get(project.id)?.truncated ? t('sidebar.changesTruncated') : ''">{{ git.statuses.get(project.id)?.branch ?? 'detached' }} · {{ git.statuses.get(project.id)?.files.length }}{{ git.statuses.get(project.id)?.truncated ? '+' : '' }} <template v-if="git.statuses.get(project.id)?.ahead">↑{{ git.statuses.get(project.id)?.ahead }}</template> <template v-if="git.statuses.get(project.id)?.behind">↓{{ git.statuses.get(project.id)?.behind }}</template></small><small>{{ project.path }}</small>
+                    <span class="project-title"
+                      ><span class="project-name">{{ project.name }} <small v-if="project.hidden" class="hidden-project-label">{{ t('sidebar.hiddenProject') }}</small> <i v-if="activities.get(project.id) && !(store.active?.id === project.id && activities.get(project.id) === 'unread')" class="activity-dot" :class="activities.get(project.id)" /></span
+                      ><small v-if="git.statuses.get(project.id)?.isRepo" class="project-git" :title="gitTitle(project.id)">{{ gitSummary(project.id) }}</small
+                    ></span
+                    ><small class="project-path">{{ project.path }}</small>
                   </button>
                   <NButton
                     text
