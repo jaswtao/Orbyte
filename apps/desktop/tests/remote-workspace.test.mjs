@@ -780,7 +780,7 @@ test('SFTP status events work before and after the connection command returns', 
           remote: { connections: [{ id: 'connection', authType: 'password' }] },
           fileContext: ref({ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }),
           record: ref({ contexts: [{ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }] }), pathInput: ref('.'), directory: ref('.'), terminalDirectory: ref(null),
-          sftpUp: ref(false), sftpError: ref(''), savePassword: ref(false), credential: ref(null), challenge: ref(null),
+          sftpUp: ref(false), sftpError: ref(''), filesVisible: ref(true), savePassword: ref(false), credential: ref(null), challenge: ref(null),
           Channel: class {}, setRemoteLink() {}, syncVisibility() {}, t: (key) => key, batchCancelId,
           markSftpReady: (...args) => ready.push(args), browse: (path) => browsed.push(path), fail: (error) => errors.push(error),
           remoteApi: {

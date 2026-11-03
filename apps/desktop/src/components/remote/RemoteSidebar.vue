@@ -88,8 +88,10 @@ onMounted(reload)
     <div ref="projectList" class="project-list" role="list">
       <div v-for="project in remote.projects" :key="project.id" :data-project-id="project.id" class="remote-project" :class="{ active: project.id === remote.activeProjectId }" role="listitem" @contextmenu.prevent.stop="openMenu($event, project)">
         <button class="remote-project-select" :aria-pressed="project.id === remote.activeProjectId" @click="remote.selectProject(project.id)">
-          <strong>{{ project.name }}</strong>
-          <span>{{ t('remote.terminalCount', { count: remote.terminalCounts.get(project.id) ?? project.terminalCount ?? 0 }) }}</span>
+          <span class="remote-project-title">
+            <span class="remote-project-name">{{ project.name }}</span>
+            <small class="remote-project-meta">{{ t('remote.terminalCount', { count: remote.terminalCounts.get(project.id) ?? project.terminalCount ?? 0 }) }}</small>
+          </span>
         </button>
         <div class="remote-project-actions">
           <NButton size="tiny" @click="edit(project)">{{ t('remote.renameProject') }}</NButton>

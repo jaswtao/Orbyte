@@ -5,6 +5,7 @@ import { Channel } from '@tauri-apps/api/core'
 import { NAlert, NButton, NCheckbox, NInput, NModal, NSelect } from 'naive-ui'
 import RemoteLayoutPane from './RemoteLayoutPane.vue'
 import ConnectionManager from './ConnectionManager.vue'
+import UiIcon from '../UiIcon.vue'
 import { remoteApi, type DirBatch, type DirEntry, type RemoteProjectWorkspace as WorkspaceRecord, type RemoteContext, type ProjectTerminal, type SshUiEvent, type TransferView } from '../../services/remoteApi'
 import { terminalApi, type TerminalSessionInfo } from '../../services/terminalApi'
 import { TerminalRegistry } from '../../services/terminal/registry'
@@ -29,6 +30,7 @@ const entries = ref<DirEntry[]>([])
 const pathInput = ref('.')
 const directory = ref('.')
 const browsing = ref(false)
+const filesVisible = ref(readFilesVisible())
 const sftpUp = ref(false)
 const selected = ref<string[]>([])
 const remote = useRemote()
@@ -158,7 +160,7 @@ function onUi(event: SshUiEvent, context: RemoteContext) {
     if (fileContext.value?.id === context.id) {
       sftpUp.value = event.state === 'ready'
       sftpError.value = event.state === 'failed' ? event.message || t('remote.sftpFailed') : ''
-      if (sftpUp.value) void browse(terminalDirectory.value || context.lastDirectory || '.')
+      if (filesVisible.value && sftpUp.value) void browse(terminalDirectory.value || context.lastDirectory || '.')
     }
   }
 }
@@ -235,11 +237,11 @@ async function connectMissing(connectNew = true) {
     const session = sessions.find((candidate) => candidate.terminalId === item.terminalId)
     if (session) entry.client.updateStatus(session.status)
   }
-  const needSftp = !!fileContext.value && !isSftpReady(fileContext.value.id)
-  sftpUp.value = !!fileContext.value && !needSftp
+  sftpUp.value = !!fileContext.value && isSftpReady(fileContext.value.id)
+  const needSftp = filesVisible.value && !!fileContext.value && !sftpUp.value
   if (!connectNew) return
   if (!connect.length && !needSftp) {
-    if (fileContext.value) await browse(terminalDirectory.value || fileContext.value.lastDirectory || '.')
+    if (filesVisible.value && fileContext.value) await browse(terminalDirectory.value || fileContext.value.lastDirectory || '.')
     return
   }
   await launch(connect, needSftp)
@@ -333,7 +335,7 @@ async function browse(path: string, resolvePath = false, syncTerminal = false) {
 function followTerminalDirectory() {
   if (pendingTerminalPath && pendingTerminalConfig === focused.value) return
   const path = terminalDirectory.value
-  if (props.active && sftpUp.value && path && path !== directory.value) void browse(path)
+  if (props.active && filesVisible.value && sftpUp.value && path && path !== directory.value) void browse(path)
 }
 function queueTerminalDirectory(path: string, configId: string | null, sessionId: string | null) {
   if (!configId || !sessionId || focused.value !== configId || !path.startsWith('/')) return
@@ -638,6 +640,7 @@ async function activateFiles(connect = true) {
   directory.value = context?.lastDirectory || '.'
   pathInput.value = directory.value
   sftpUp.value = !!context && isSftpReady(context.id)
+  if (!filesVisible.value) return
   if (!context || !props.active || initializing.value || busy.value || launching.value || !focused.value || !registry.byConfig.has(focused.value)) return
   if (sftpUp.value) await browse(terminalDirectory.value || directory.value)
   else if (connect) await launch([], true)
@@ -697,6 +700,37 @@ function progress(item: TransferView) {
 function kindLabel(kind: string) {
   return t(kindText[kind] ?? 'remote.kind.other')
 }
+function entryIcon(kind: string): 'folder' | 'file' | 'link' {
+  if (kind === 'dir') return 'folder'
+  return kind === 'symlink' ? 'link' : 'file'
+}
+function formatMtime(seconds: number | null) {
+  if (seconds == null) return '—'
+  const date = new Date(seconds * 1000)
+  const options: Intl.DateTimeFormatOptions = date.getFullYear() === new Date().getFullYear()
+    ? { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }
+    : { year: 'numeric', month: '2-digit', day: '2-digit' }
+  return date.toLocaleString(undefined, options)
+}
+function mtimeTitle(seconds: number | null) {
+  return seconds == null ? '' : new Date(seconds * 1000).toLocaleString()
+}
+function readFilesVisible(): boolean {
+  try { return localStorage.getItem('orbyte.remote-files-visible') !== 'false' } catch { return true }
+}
+function setFilesVisible(visible: boolean) {
+  filesVisible.value = visible
+  try { localStorage.setItem('orbyte.remote-files-visible', String(visible)) } catch { /* Keep the change for this window. */ }
+  if (!visible) {
+    browseGeneration += 1
+    if (browseId) { void remoteApi.cancelBrowse(browseId).catch(() => {}); browseId = '' }
+    browsing.value = false
+    void nextTick(focusTerminal)
+    return
+  }
+  // Reopen with fresh listings after the panel was hidden.
+  void nextTick(() => { if (props.active && filesVisible.value) void activateFiles() })
+}
 async function syncSessions() {
   let sessions: TerminalSessionInfo[]
   try { sessions = await remoteApi.listSessions() }
@@ -743,6 +777,9 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       <NButton size="small" @click="addTerminal()">{{ t('remote.newTab') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('horizontal')">{{ t('remote.splitHorizontal') }}</NButton>
       <NButton size="small" :disabled="!focused" @click="addTerminal('vertical')">{{ t('remote.splitVertical') }}</NButton>
+      <button class="remote-files-toggle" :class="{ active: filesVisible }" type="button" :disabled="!activeTab" :aria-pressed="filesVisible" :aria-label="filesVisible ? t('remote.hideFiles') : t('remote.showFiles')" :title="filesVisible ? t('remote.hideFiles') : t('remote.showFiles')" @click="setFilesVisible(!filesVisible)">
+        <UiIcon name="panel-right" :size="16" />
+      </button>
     </div>
     <Teleport v-if="active" to="#remote-titlebar-tabs">
       <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
@@ -761,43 +798,80 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       <div class="remote-terminals">
         <RemoteLayoutPane v-if="activeTab" :node="activeTab.root" :path="[]" :registry="registry" :names="names" :focused="focused" :visible="active" :endpoints="endpoints" @focus="focused = $event" @close="askClose([$event], t('remote.closePane'))" @reconnect="(id) => launch([id], false)" @ratio="onRatio" />
       </div>
-      <aside class="remote-files">
-        <div class="remote-file-toolbar">
-          <strong :title="endpoint">{{ t('remote.files') }} · {{ connection?.name }}</strong>
-          <NButton size="tiny" :disabled="browsing || !sftpUp" @click="browse(directory)">{{ t('remote.refresh') }}</NButton>
-          <NButton size="tiny" :disabled="!browsing" @click="browseId && remoteApi.cancelBrowse(browseId)">{{ t('remote.cancelBrowse') }}</NButton>
-        </div>
-        <div class="remote-current-path" :title="directory">{{ t('remote.path') }}: {{ directory }}</div>
-        <div v-if="terminalDirectory && terminalDirectory !== directory" class="remote-current-path" :title="terminalDirectory">{{ t('remote.terminalPath') }}: {{ terminalDirectory }}</div>
-        <div class="remote-path">
-          <NButton size="tiny" :disabled="!parent" @click="openParent">{{ t('remote.parent') }}</NButton>
-          <NInput v-model:value="pathInput" :title="directory" :placeholder="t('remote.path')" @keydown.enter="submitPath" />
-        </div>
-        <div class="remote-file-toolbar">
-          <NButton size="tiny" @click="transfer('upload-files')">{{ t('remote.uploadFiles') }}</NButton>
-          <NButton size="tiny" @click="transfer('upload-folders')">{{ t('remote.uploadFolders') }}</NButton>
-          <NButton size="tiny" :disabled="!selected.length" @click="transfer('download', selected)">{{ t('remote.download') }}</NButton>
-          <NButton size="tiny" @click="folderOpen = true">{{ t('remote.mkdir') }}</NButton>
-          <NButton v-if="!sftpUp" size="tiny" @click="launch([], true)">{{ t('remote.connectSftp') }}</NButton>
+      <aside v-if="filesVisible" class="remote-files" :aria-label="t('remote.files')">
+        <header class="remote-files-header">
+          <div class="remote-files-heading">
+            <span class="remote-files-title">{{ t('remote.files') }}</span>
+            <span class="remote-files-count" :title="t('remote.itemCount', { count: entries.length })">{{ entries.length }}</span>
+            <span v-if="connection?.name" class="remote-files-connection" :title="endpoint">{{ connection.name }}</span>
+          </div>
+          <div class="remote-files-header-actions">
+            <button v-if="!browsing" class="remote-icon-button" type="button" :disabled="!sftpUp" :title="t('remote.refresh')" :aria-label="t('remote.refresh')" @click="browse(directory)">
+              <UiIcon name="refresh" :size="15" />
+            </button>
+            <button v-else class="remote-icon-button" type="button" :title="t('remote.cancelBrowse')" :aria-label="t('remote.cancelBrowse')" @click="browseId && remoteApi.cancelBrowse(browseId)">
+              <UiIcon name="stop" :size="15" />
+            </button>
+            <button class="remote-icon-button" type="button" :title="t('remote.hideFiles')" :aria-label="t('remote.hideFiles')" @click="setFilesVisible(false)">
+              <UiIcon name="close" :size="15" />
+            </button>
+          </div>
+        </header>
+        <div class="remote-files-toolbar">
+          <div class="remote-path">
+            <button class="remote-icon-button remote-path-up" type="button" :disabled="!parent" :title="t('remote.parent')" :aria-label="t('remote.parent')" @click="openParent">
+              <UiIcon name="arrow-up" :size="15" />
+            </button>
+            <NInput v-model:value="pathInput" size="small" :title="directory" :placeholder="t('remote.path')" @keydown.enter="submitPath" />
+          </div>
+          <div class="remote-file-actions">
+            <button class="remote-action-button" type="button" :title="t('remote.uploadFiles')" :aria-label="t('remote.uploadFiles')" @click="transfer('upload-files')"><UiIcon name="upload" :size="16" /></button>
+            <button class="remote-action-button" type="button" :title="t('remote.uploadFolders')" :aria-label="t('remote.uploadFolders')" @click="transfer('upload-folders')"><UiIcon name="folder-upload" :size="16" /></button>
+            <button class="remote-action-button" type="button" :disabled="!selected.length" :title="t('remote.download')" :aria-label="t('remote.download')" @click="transfer('download', selected)"><UiIcon name="download" :size="16" /></button>
+            <span class="remote-action-divider" aria-hidden="true" />
+            <button class="remote-action-button" type="button" :title="t('remote.mkdir')" :aria-label="t('remote.mkdir')" @click="folderOpen = true"><UiIcon name="folder-plus" :size="16" /></button>
+            <button v-if="!sftpUp" class="remote-connect-button" type="button" @click="launch([], true)"><UiIcon name="link" :size="14" /><span>{{ t('remote.connectSftp') }}</span></button>
+          </div>
+          <div v-if="terminalDirectory && terminalDirectory !== directory" class="remote-terminal-path" :title="terminalDirectory">
+            <UiIcon name="terminal" :size="12" />
+            <span>{{ t('remote.terminalPath') }}: {{ terminalDirectory }}</span>
+          </div>
         </div>
         <NAlert v-if="sftpError" type="error">{{ sftpError }}</NAlert>
         <div class="remote-listing">
-          <div class="remote-head"><span>{{ t('remote.col.name') }}</span><span>{{ t('remote.col.kind') }}</span><span>{{ t('remote.col.size') }}</span><span>{{ t('remote.col.mtime') }}</span></div>
+          <div class="remote-head"><span>{{ t('remote.col.name') }}</span><span>{{ t('remote.col.size') }}</span><span>{{ t('remote.col.mtime') }}</span></div>
           <button v-for="entry in entries" :key="entry.name" type="button" class="remote-row" :class="{ selected: selected.includes(entry.name) }" @click="toggleSelect(entry.name)" @dblclick="openEntry(entry)">
-            <span>{{ entry.name }}</span>
-            <span>{{ kindLabel(entry.kind) }}</span>
-            <span>{{ entry.kind === 'dir' ? '' : formatBytes(entry.size) }}</span>
-            <span>{{ entry.mtime == null ? '—' : new Date(entry.mtime * 1000).toLocaleString() }}</span>
+            <span class="remote-entry-name" :title="`${entry.name} · ${kindLabel(entry.kind)}`"><UiIcon :name="entryIcon(entry.kind)" :size="14" /><span>{{ entry.name }}</span></span>
+            <span class="remote-entry-size">{{ entry.kind === 'dir' ? '—' : formatBytes(entry.size) }}</span>
+            <span class="remote-entry-mtime" :title="mtimeTitle(entry.mtime)">{{ formatMtime(entry.mtime) }}</span>
           </button>
+          <div v-if="!entries.length && !sftpError" class="remote-listing-empty">
+            <template v-if="browsing || initializing || launching"><span class="remote-spinner" aria-hidden="true" />{{ t('remote.loading') }}</template>
+            <template v-else>
+              <UiIcon :name="sftpUp ? 'folder-open' : 'link'" :size="24" />
+              <p>{{ sftpUp ? t('remote.emptyFolder') : t('remote.sftpFailed') }}</p>
+            </template>
+          </div>
         </div>
-        <p class="remote-note">{{ t('remote.transferNote') }}</p>
-        <div class="remote-transfer">
-          <strong>{{ t('remote.transfers') }}</strong>
-          <div v-for="item in workspaceTransfers" :key="item.id">
-            <div>{{ remote.connections.find((connection) => connection.id === record?.contexts.find((context) => context.id === item.workspaceId)?.connectionId)?.name }} · {{ t(directionText[item.direction] ?? 'remote.direction.upload') }} · {{ progress(item) }}</div>
-            <div v-if="item.message">{{ item.message }}</div>
-            <NButton size="tiny" @click="remoteApi.cancelTransfer(item.id).catch(fail)">{{ t('remote.cancelTransfer') }}</NButton>
-            <NButton v-if="item.state === 'failed' || item.state === 'cancelled' || item.files.some((file) => file.status === 'failed')" size="tiny" @click="retry(item)">{{ t('remote.retryTransfer') }}</NButton>
+        <details class="remote-note">
+          <summary>{{ t('remote.transferNoteTitle') }}</summary>
+          <p>{{ t('remote.transferNote') }}</p>
+        </details>
+        <div v-if="workspaceTransfers.length" class="remote-transfer">
+          <div class="remote-transfer-head">
+            <strong>{{ t('remote.transfers') }}</strong>
+            <span class="remote-files-count">{{ workspaceTransfers.length }}</span>
+          </div>
+          <div v-for="item in workspaceTransfers" :key="item.id" class="remote-transfer-item">
+            <div class="remote-transfer-summary">
+              <span class="remote-transfer-name">{{ remote.connections.find((connection) => connection.id === record?.contexts.find((context) => context.id === item.workspaceId)?.connectionId)?.name }}</span>
+              <span class="remote-transfer-meta">{{ t(directionText[item.direction] ?? 'remote.direction.upload') }} · {{ progress(item) }}</span>
+            </div>
+            <div v-if="item.message" class="remote-transfer-message">{{ item.message }}</div>
+            <div class="remote-transfer-actions">
+              <NButton size="tiny" @click="remoteApi.cancelTransfer(item.id).catch(fail)">{{ t('remote.cancelTransfer') }}</NButton>
+              <NButton v-if="item.state === 'failed' || item.state === 'cancelled' || item.files.some((file) => file.status === 'failed')" size="tiny" @click="retry(item)">{{ t('remote.retryTransfer') }}</NButton>
+            </div>
           </div>
         </div>
       </aside>

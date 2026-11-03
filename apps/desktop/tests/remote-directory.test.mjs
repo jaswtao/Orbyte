@@ -71,7 +71,7 @@ function fixture(t) {
     ref, watch, props, focused, registry,
     terminalDirectory: computed(() => registry.byConfig.get(focused.value)?.shell.cwd ?? null),
     fileContext: ref({ id: 'workspace', connectionId: 'connection', lastDirectory: '/home' }),
-    pathInput: ref('/home'), directory: ref('/home'), browsing: ref(false), sftpUp: ref(true),
+    pathInput: ref('/home'), directory: ref('/home'), browsing: ref(false), sftpUp: ref(true), filesVisible: ref(true),
     selected: ref([]), entries: ref([]), sftpError: ref(''), browseId: '', browseGeneration: 0,
     Channel: class {}, isSftpReady: () => context.sftpUp.value,
     fail: (error) => { const message = String(error); errors.push(message); return message },

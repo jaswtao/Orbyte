@@ -1,9 +1,11 @@
 <!-- Author: jaswtao · Date: 2026-10-15 -->
 <script setup lang="ts">
-withDefaults(defineProps<{ name: 'folder' | 'folder-open' | 'file' | 'search' | 'settings' | 'chevron' | 'star' | 'terminal' | 'plus' | 'info'; size?: number }>(), { size: 18 })
+withDefaults(defineProps<{ name: 'folder' | 'folder-open' | 'folder-plus' | 'folder-upload' | 'file' | 'search' | 'settings' | 'chevron' | 'star' | 'terminal' | 'plus' | 'info' | 'refresh' | 'close' | 'stop' | 'upload' | 'download' | 'arrow-up' | 'link' | 'panel-right'; size?: number }>(), { size: 18 })
 const paths = {
   folder: 'M3 7V5a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Z',
   'folder-open': 'M3 18V5a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v2M3 18l2-8a1 1 0 0 1 1-.8h15l-2.3 9a1 1 0 0 1-1 .8H4a1 1 0 0 1-1-1Z',
+  'folder-plus': 'M3 7V5a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Zm9 4v6m-3-3h6',
+  'folder-upload': 'M3 7V5a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7Zm9 10v-6m0 0-2.5 2.5M12 11l2.5 2.5',
   file: 'M6 3h8l4 4v14H6V3Zm8 0v5h4',
   search: 'm16 16 4 4M18 10.5a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z',
   chevron: 'm9 5 7 7-7 7',
@@ -11,6 +13,14 @@ const paths = {
   terminal: 'm5 7 5 5-5 5m8 0h6M3 3h18v18H3V3Z',
   plus: 'M12 5v14M5 12h14',
   info: 'M12 8h.01M12 11v6M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z',
+  refresh: 'M20 12a8 8 0 1 1-2.34-5.66M20 4v4h-4',
+  close: 'm6 6 12 12M18 6 6 18',
+  stop: 'M7 7h10v10H7z',
+  upload: 'M12 15V4m0 0-4 4m4-4 4 4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
+  download: 'M12 4v11m0 0-4-4m4 4 4-4M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
+  'arrow-up': 'M12 19V5m0 0-6 6m6-6 6 6',
+  link: 'M9.5 14.5 14.5 9.5M8.5 12.5l-2 2a3.5 3.5 0 0 0 5 5l2-2M15.5 11.5l2-2a3.5 3.5 0 0 0-5-5l-2 2',
+  'panel-right': 'M4 5h16v14H4V5Zm10 0v14',
 }
 </script>
 <template>
