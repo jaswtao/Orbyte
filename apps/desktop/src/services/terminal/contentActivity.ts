@@ -1,4 +1,4 @@
-/** 比较终端解析后的文字，忽略光标、样式与相同内容重绘。Author: jaswtao · Date: 2026-10-15 */
+/** Compares parsed terminal text while ignoring cursor, styles, identical repaints, and small status refreshes on the alternate screen. Author: jaswtao · Date: 2026-10-15 */
 import type { IBuffer, IMarker, Terminal } from '@xterm/xterm'
 
 interface PromptRegion {
@@ -132,8 +132,67 @@ export class ContentActivity {
     }
     // 还原软换行，忽略终端为视口预留的空行，避免尺寸调整产生提示。
     const current = parts.join('').replace(/\n+$/, '')
+    // Compare with the last read screen so in-place quota or cursor updates do not accumulate unread; letter changes still count as new content.
+    if (buffer.type === 'alternate' && current !== this.lastRead && isMinorAlternateRefresh(this.lastRead, current)) {
+      this.previous = this.lastRead
+      return false
+    }
     const changed = current !== this.previous
     this.previous = current
     return changed
   }
+}
+
+/** Character budget for in-place refreshes. A status line changing a number stays within it. */
+const MINOR_ALTERNATE_CHARS = 24
+
+/** Treat it as a status refresh only when the alternate screen keeps its line count and letters and only a few characters change in place. */
+function isMinorAlternateRefresh(baseline: string, current: string): boolean {
+  if (!baseline) return false
+  const before = baseline.split('\n')
+  const after = current.split('\n')
+  if (before.length !== after.length || before.length < 2) return false
+  let distance = 0
+  let stable = 0
+  for (let index = 0; index < before.length; index++) {
+    if (before[index] === after[index]) { stable++; continue }
+    // Letters carry content: "Working..." -> "Approve? (y/N)" must notify; digits, symbols, and spinner glyphs are status values.
+    if (lettersOnly(before[index]) !== lettersOnly(after[index])) return false
+    distance += editDistance(before[index], after[index], MINOR_ALTERNATE_CHARS - distance + 1)
+    if (distance > MINOR_ALTERNATE_CHARS) return false
+  }
+  return stable >= 1
+}
+
+function lettersOnly(text: string): string {
+  return text.replace(/[^\p{L}]/gu, '')
+}
+
+function editDistance(left: string, right: string, cap: number): number {
+  let start = 0
+  while (start < left.length && start < right.length && left.charCodeAt(start) === right.charCodeAt(start)) start++
+  let leftEnd = left.length
+  let rightEnd = right.length
+  while (leftEnd > start && rightEnd > start && left.charCodeAt(leftEnd - 1) === right.charCodeAt(rightEnd - 1)) {
+    leftEnd--
+    rightEnd--
+  }
+  left = left.slice(start, leftEnd)
+  right = right.slice(start, rightEnd)
+  if (Math.abs(left.length - right.length) >= cap || left.length > 400 || right.length > 400) return cap
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= left.length; i++) {
+    const next = [i]
+    let best = i
+    const code = left.charCodeAt(i - 1)
+    for (let j = 1; j <= right.length; j++) {
+      const cost = code === right.charCodeAt(j - 1) ? 0 : 1
+      const value = Math.min(previous[j] + 1, next[j - 1] + 1, previous[j - 1] + cost)
+      next[j] = value
+      if (value < best) best = value
+    }
+    if (best >= cap) return cap
+    previous = next
+  }
+  return previous[right.length]
 }

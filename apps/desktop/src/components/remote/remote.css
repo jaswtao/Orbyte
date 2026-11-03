@@ -28,6 +28,10 @@
   white-space: nowrap;
 }
 
+.remote-workspace-title {
+  font-weight: 600;
+}
+
 .remote-connection {
   display: flex;
   flex-direction: column;

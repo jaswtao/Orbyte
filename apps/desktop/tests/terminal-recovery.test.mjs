@@ -58,8 +58,11 @@ function clientFixture(t, events = {}, clock = { setTimeout, clearTimeout, perfo
     options = {}
     buffer = { active: { type: 'normal', length: 0, getLine: () => undefined } }
     oscHandlers = new Map()
+    parsedHandlers = []
     parser = { registerOscHandler: (code, handler) => this.oscHandlers.set(code, handler) }
-    loadAddon() {} open() {} onResize() {} onWriteParsed() {} onData(callback) { this.data = callback }
+    loadAddon() {} open() {} onResize() {} onData(callback) { this.data = callback }
+    onWriteParsed(callback) { this.parsedHandlers.push(callback) }
+    emitWriteParsed() { for (const handler of this.parsedHandlers) handler() }
     write(data, callback) { if (this.failWrite) throw new Error('parser failed'); this.writes.push(new TextDecoder().decode(data)); callback?.() }
     dispose() {} reset() {}
   }
@@ -295,6 +298,37 @@ test('attaching a new session resets the previous unread baseline', (t) => {
   f.client.attach('new-session')
   f.client.flushContentActivity()
   assert.equal(f.outputActivity.at(-1), false)
+})
+
+test('备用屏幕内容比较等到安静后结算，持续输出每秒最多一次', (t) => {
+  const clock = displayClock()
+  const f = clientFixture(t, {}, clock)
+  let lines = ['Agent', 'quota 31%']
+  f.client.term.buffer.active = {
+    type: 'alternate',
+    get length() { return lines.length },
+    getLine: (index) => index < lines.length ? { isWrapped: false, translateToString: () => lines[index] } : undefined,
+  }
+  f.client.setVisible(false)
+  assert.equal(f.outputActivity.at(-1), true)
+  f.client.markContentRead()
+
+  lines = ['Agent', 'quota 30%']
+  f.client.term.emitWriteParsed()
+  assert.equal(f.outputActivity.length, 1, '比较必须等待安静窗口')
+  clock.advance(199)
+  assert.equal(f.outputActivity.length, 1)
+  clock.advance(1)
+  assert.equal(f.outputActivity.length, 2)
+  assert.equal(f.outputActivity.at(-1), false, '状态栏数值变化不算新输出')
+
+  const settled = f.outputActivity.length
+  for (let index = 0; index < 10; index++) {
+    lines = ['Agent', `run ${index}`]
+    f.client.term.emitWriteParsed()
+    clock.advance(100)
+  }
+  assert.equal(f.outputActivity.length, settled + 1, '持续输出每秒只结算一次')
 })
 
 test('真实 Tauri 有序 Channel 中，坏 JSON 后仍能接收退出状态', (t) => {

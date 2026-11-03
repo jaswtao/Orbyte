@@ -26,6 +26,7 @@ const ACK_BYTES = 32 * 1024
 const ACK_IDLE_MS = 16
 const RESIZE_DEBOUNCE_MS = 100
 const CONTENT_CHECK_MS = 1000
+const CONTENT_QUIET_MS = 200
 const DISPLAY_RETRY_INITIAL_MS = 1000
 const DISPLAY_RETRY_MAX_MS = 10000
 const DISPLAY_STABLE_MS = 30000
@@ -81,6 +82,7 @@ export class TerminalClient {
   private ackTimer: number | undefined
   private resizeTimer: number | undefined
   private contentTimer: number | undefined
+  private contentBurstAt: number | undefined
   private readonly contentActivity = new ContentActivity()
   private visible = true
   private displayPaused = false
@@ -118,8 +120,8 @@ export class TerminalClient {
     this.term.open(container)
     this.term.onResize(() => this.safe(() => this.contentActivity.resized(this.term.buffer.active)))
     this.term.onWriteParsed(() => {
-      // 合并清屏与重画；持续输出时最多每 200ms 比较一次。
-      if (!this.displayPaused && this.contentTimer === undefined) this.contentTimer = window.setTimeout(() => this.safe(() => this.flushContentActivity()), CONTENT_CHECK_MS)
+      // Merge the repaint after a clear into one comparison once output goes quiet; sustained output triggers at most one settle per second.
+      if (!this.displayPaused) this.scheduleContentCheck()
     })
     this.ime = bindTerminalIme(this.term, () => this.isVisible())
     this.selection = bindTerminalSelection(this.term)
@@ -284,8 +286,7 @@ export class TerminalClient {
 
   /** 可见性切换前结算内容变化，避免已看过的输出延迟触发未读。 */
   flushContentActivity(): void {
-    window.clearTimeout(this.contentTimer)
-    this.contentTimer = undefined
+    this.cancelContentCheck()
     if (this.displayPaused) return
     const wasVisible = this.visible && document.visibilityState !== 'hidden'
     const buffer = this.term.buffer.active
@@ -309,6 +310,27 @@ export class TerminalClient {
 
   markContentRead(): void {
     this.contentActivity.markRead()
+  }
+
+  private cancelContentCheck(): void {
+    window.clearTimeout(this.contentTimer)
+    this.contentTimer = undefined
+    this.contentBurstAt = undefined
+  }
+
+  /** Only compare the frame after writes go quiet; while output keeps streaming, settle once per second so a clear frame is not unread on its own. */
+  private scheduleContentCheck(): void {
+    if (this.displayPaused || this.disposed) return
+    const now = performance.now()
+    if (this.contentBurstAt === undefined) this.contentBurstAt = now
+    window.clearTimeout(this.contentTimer)
+    const elapsed = now - this.contentBurstAt
+    const delay = elapsed >= CONTENT_CHECK_MS ? 0 : Math.min(CONTENT_QUIET_MS, CONTENT_CHECK_MS - elapsed)
+    this.contentTimer = window.setTimeout(() => {
+      this.contentTimer = undefined
+      this.contentBurstAt = undefined
+      this.safe(() => this.flushContentActivity())
+    }, delay)
   }
 
   private notifyDisplay(): void {
@@ -352,8 +374,7 @@ export class TerminalClient {
     this.ack.reset()
     window.clearTimeout(this.ackTimer)
     this.ackTimer = undefined
-    window.clearTimeout(this.contentTimer)
-    this.contentTimer = undefined
+    this.cancelContentCheck()
     this.notifyDisplay()
     // Deliberately leave the process and its input queue running.
     if (request && this.terminalId) {
@@ -385,6 +406,8 @@ export class TerminalClient {
       this.output.clear()
       this.displayPaused = false
       this.term.reset()
+      // reset leaves a blank frame behind; drop that comparison and wait for the program to repaint before comparing with the pre-pause text.
+      this.cancelContentCheck()
       this.ime.recover()
       this.recovery.reset()
       await this.reconnect(true)
@@ -414,7 +437,7 @@ export class TerminalClient {
     document.removeEventListener('visibilitychange', this.onVisibilityChange)
     window.clearTimeout(this.ackTimer)
     window.clearTimeout(this.resizeTimer)
-    window.clearTimeout(this.contentTimer)
+    this.cancelContentCheck()
     this.input.setSender(null)
     this.ime.dispose()
     this.selection.dispose()

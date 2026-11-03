@@ -771,7 +771,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
 <template>
   <section v-if="record && layout" class="remote-workspace">
     <div class="remote-toolbar">
-      <span class="remote-title">{{ connection?.name }}</span>
+      <span class="remote-workspace-title">{{ connection?.name }}</span>
       <span class="remote-connection-endpoint">{{ endpoint }}</span>
       <NButton size="small" :disabled="launching || !focused" @click="focused && launch([focused], false)">{{ t('remote.reconnect') }}</NButton>
       <NButton size="small" @click="addTerminal()">{{ t('remote.newTab') }}</NButton>

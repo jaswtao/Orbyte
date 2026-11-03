@@ -86,6 +86,26 @@ test('提示符过滤不掩盖原行被真实输出覆盖及备用缓冲区变�
   assert.equal(f.changed(), true)
 })
 
+test('备用屏幕状态栏的小改动不触发未读，正文变化仍触发', async (t) => {
+  const f = contentFixture(t)
+  const paint = (body) => f.write(`\x1b[?1049h\x1b[2J\x1b[HAgent\r\n${body}\r\n\r\nquota 31%`)
+  await paint('ready')
+  assert.equal(f.changed(), true)
+  f.detector.markRead()
+  await paint('ready')
+  assert.equal(f.changed(), false)
+  await f.write('\x1b[2J\x1b[HAgent\r\nready\r\n\r\nquota 30%')
+  assert.equal(f.changed(), false)
+  assert.equal(f.detector.unread, false)
+  await f.write('\x1b[2J\x1b[HAgent\r\nApprove? (y/N)\r\n\r\nquota 30%')
+  assert.equal(f.changed(), true)
+  assert.equal(f.detector.unread, true)
+  f.detector.markRead()
+  await f.write('\x1b[2J\x1b[HAgent\r\nfinished rewriting the activity scan\r\n\r\nquota 30%')
+  assert.equal(f.changed(), true)
+  assert.equal(f.detector.unread, true)
+})
+
 test('显式命令开始后同一行的真实输出不被过滤', async (t) => {
   const f = contentFixture(t, true)
   await f.write(prompt() + 'command' + osc('C') + 'result')

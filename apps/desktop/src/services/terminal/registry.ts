@@ -92,10 +92,9 @@ export class TerminalRegistry {
       listSessions: remote ? () => import('../remoteApi').then((api) => api.remoteApi.listSessions()) : undefined,
       onConnection: (state) => { entry.connection = state },
       onDisplay: (paused, droppedBytes) => {
-        const changed = (paused && !entry.displayPaused) || droppedBytes > entry.droppedBytes
         entry.displayPaused = paused
         entry.droppedBytes = droppedBytes
-        if (paused && changed && !entry.visible) entry.unread = true
+        // Pausing only means bytes were dropped. Without a text change it is not new output.
       },
       onWarning,
       onStatus: (status) => {
