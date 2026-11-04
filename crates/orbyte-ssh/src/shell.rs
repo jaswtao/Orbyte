@@ -42,6 +42,8 @@ struct SecretWrite {
 
 const INPUT_CAP: usize = 256 * 1024;
 const READ_CHUNK: usize = 64 * 1024;
+// Socket polling cannot be interrupted by an input queue notification.
+const INTERACTIVE_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const SAVED_PASSWORD_TIMEOUT: Duration = Duration::from_secs(5);
 const SAVED_PASSWORD_EXPIRED: &str = "The saved password request expired. Enter the password manually.";
 
@@ -637,7 +639,7 @@ fn shell_loop(
                 Err(error) => return Err(SshError::Message(error.to_string())),
             }
         }
-        wait_session(stream, session, Duration::from_millis(200))?;
+        wait_session(stream, session, INTERACTIVE_POLL_INTERVAL)?;
     }
 }
 
