@@ -141,6 +141,29 @@ test('SSH connection drag starts from the name and reorders below the target', a
   assert.doesNotMatch(actions, /draggable/)
 })
 
+test('remote terminal tabs can be reordered in both directions and persist the selection', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const script = 'let draggingTab = null\n' + source.slice(source.indexOf('function startTabDrag('), source.indexOf('function renameTab('))
+  const record = ref({ layout: { activeTabId: 'two', tabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }] } })
+  const saved = []
+  const context = vm.createContext({ record, busy: ref(false), asLayout: (value) => value, fail: assert.fail,
+    persist: async (layout) => { record.value.layout = layout; saved.push(layout) } })
+  vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const event = { dataTransfer: { setData() {} }, preventDefault: assert.fail }
+  context.startTabDrag(event, 'one')
+  context.dropTab('three')
+  assert.deepEqual(Array.from(record.value.layout.tabs, (tab) => tab.id), ['two', 'three', 'one'])
+  assert.equal(record.value.layout.activeTabId, 'two')
+  context.startTabDrag(event, 'one')
+  context.dropTab('two')
+  assert.deepEqual(Array.from(record.value.layout.tabs, (tab) => tab.id), ['one', 'two', 'three'])
+  context.startTabDrag(event, 'two')
+  context.dropTab('two')
+  assert.equal(saved.length, 2)
+  assert.match(source, /:draggable="!busy" @dragstart="startTabDrag\(\$event, tab\.id\)"/)
+  assert.match(source, /@drop\.prevent="dropTab\(tab\.id\)"/)
+})
+
 test('remote terminal tabs rename persistently, validate names and preserve edits after failure', async () => {
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
   const script = source.slice(source.indexOf('let saveChain'), source.indexOf('async function persist('))
