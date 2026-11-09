@@ -952,3 +952,43 @@ test('mixed layouts batch authentication per profile while keeping each terminal
   assert.deepEqual(calls, [[['a1', 'a2'], 'a', true], [['b1'], 'b', false]])
   assert.equal(context.launching.value, false)
 })
+
+test('remote file sorting handles folders, natural names, values, and missing times', async () => {
+  const { sortRemoteEntries } = await loadService('remote/workspace')
+  const entries = [
+    { name: 'file10', kind: 'file', size: 20, mtime: null },
+    { name: 'folder2', kind: 'dir', size: 1, mtime: 30 },
+    { name: 'file2', kind: 'file', size: 10, mtime: 20 },
+    { name: 'file1', kind: 'file', size: 10, mtime: 20 },
+    { name: 'folder1', kind: 'dir', size: 5, mtime: null },
+  ]
+  const names = (column, direction, items = entries) => sortRemoteEntries(items, column, direction).map((entry) => entry.name)
+  assert.deepEqual(names('name', 'ascending'), ['folder1', 'folder2', 'file1', 'file2', 'file10'])
+  assert.deepEqual(names('name', 'descending'), ['folder2', 'folder1', 'file10', 'file2', 'file1'])
+  assert.deepEqual(names('size', 'ascending'), ['folder2', 'folder1', 'file1', 'file2', 'file10'])
+  assert.deepEqual(names('size', 'descending'), ['folder1', 'folder2', 'file10', 'file1', 'file2'])
+  assert.deepEqual(names('mtime', 'ascending'), ['folder2', 'folder1', 'file1', 'file2', 'file10'])
+  assert.deepEqual(names('mtime', 'descending'), ['folder2', 'folder1', 'file1', 'file2', 'file10'])
+  assert.deepEqual(names('name', 'ascending', entries.slice(0, 3)), ['folder2', 'file2', 'file10'])
+  assert.equal(entries[0].name, 'file10')
+})
+
+test('remote file sort controls preserve the selected sort as entries change', async () => {
+  const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
+  const { sortRemoteEntries } = await loadService('remote/workspace')
+  const setup = source.slice(source.indexOf('const entries = ref<DirEntry[]>'), source.indexOf('const pathInput ='))
+  const context = vm.createContext({ ref, computed, sortRemoteEntries })
+  vm.runInContext(ts.transpileModule(setup, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
+  const run = (code) => vm.runInContext(code, context)
+  run("entries.value = [{ name: 'b', kind: 'file', size: 1, mtime: 1 }]; changeSort('size'); changeSort('size')")
+  run("entries.value = [...entries.value, { name: 'a', kind: 'file', size: 2, mtime: 2 }]")
+  assert.deepEqual(Array.from(run('sortedEntries.value'), (entry) => entry.name), ['a', 'b'])
+  run("entries.value = [{ name: 'c', kind: 'file', size: 3, mtime: 3 }, ...entries.value]")
+  assert.equal(run('sortDirection.value'), 'descending')
+  assert.deepEqual(Array.from(run('sortedEntries.value'), (entry) => entry.name), ['c', 'a', 'b'])
+  run("changeSort('name')")
+  assert.equal(run('sortDirection.value'), 'ascending')
+  assert.deepEqual(Array.from(run('sortedEntries.value'), (entry) => entry.name), ['a', 'b', 'c'])
+  assert.match(source, /v-for="entry in sortedEntries"/)
+  assert.match(source, /@click="changeSort\(column\.key\)"/)
+})

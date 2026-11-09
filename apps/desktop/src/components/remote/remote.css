@@ -478,6 +478,25 @@
   font-size: 11px;
 }
 
+.remote-sort-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.remote-sort-button:hover,
+.remote-sort-button:focus-visible {
+  color: var(--text);
+}
+
 .remote-row {
   transition: background-color 120ms;
 }

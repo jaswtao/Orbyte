@@ -14,7 +14,7 @@ import type { AppearanceMode } from '../../services/appearance'
 import type { Settings } from '../../services/projectApi'
 import { leaves, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
 import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
-import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remoteCdCommand, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent } from '../../services/remote/workspace'
+import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remoteCdCommand, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent, sortRemoteEntries, type FileSortColumn, type FileSortDirection } from '../../services/remote/workspace'
 import { isSftpReady, markSftpReady } from '../../services/remote/status'
 import { t, type MessageKey } from '../../i18n'
 import { useRemote } from '../../stores/remote'
@@ -27,6 +27,18 @@ const emit = defineEmits<{ error: [message: string] }>()
 const record = ref<WorkspaceRecord | null>(null)
 const focused = ref<string | null>(null)
 const entries = ref<DirEntry[]>([])
+const sortColumn = ref<FileSortColumn>('name')
+const sortDirection = ref<FileSortDirection>('ascending')
+const sortedEntries = computed(() => sortRemoteEntries(entries.value, sortColumn.value, sortDirection.value))
+const sortColumns: { key: FileSortColumn; label: MessageKey }[] = [
+  { key: 'name', label: 'remote.col.name' },
+  { key: 'size', label: 'remote.col.size' },
+  { key: 'mtime', label: 'remote.col.mtime' },
+]
+function changeSort(column: FileSortColumn) {
+  if (sortColumn.value === column) sortDirection.value = sortDirection.value === 'ascending' ? 'descending' : 'ascending'
+  else { sortColumn.value = column; sortDirection.value = 'ascending' }
+}
 const pathInput = ref('.')
 const directory = ref('.')
 const browsing = ref(false)
@@ -858,8 +870,12 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
         </div>
         <NAlert v-if="sftpError" type="error">{{ sftpError }}</NAlert>
         <div class="remote-listing">
-          <div class="remote-head"><span>{{ t('remote.col.name') }}</span><span>{{ t('remote.col.size') }}</span><span>{{ t('remote.col.mtime') }}</span></div>
-          <button v-for="entry in entries" :key="entry.name" type="button" class="remote-row" :class="{ selected: selected.includes(entry.name) }" @click="toggleSelect(entry.name)" @dblclick="openEntry(entry)">
+          <div class="remote-head">
+            <button v-for="column in sortColumns" :key="column.key" class="remote-sort-button" type="button" :aria-label="t(sortColumn === column.key ? (sortDirection === 'ascending' ? 'remote.sortAscending' : 'remote.sortDescending') : 'remote.sortBy', { column: t(column.label) })" @click="changeSort(column.key)">
+              <span>{{ t(column.label) }}</span><span v-if="sortColumn === column.key" aria-hidden="true">{{ sortDirection === 'ascending' ? '↑' : '↓' }}</span>
+            </button>
+          </div>
+          <button v-for="entry in sortedEntries" :key="entry.name" type="button" class="remote-row" :class="{ selected: selected.includes(entry.name) }" @click="toggleSelect(entry.name)" @dblclick="openEntry(entry)">
             <span class="remote-entry-name" :title="`${entry.name} · ${kindLabel(entry.kind)}`"><UiIcon :name="entryIcon(entry.kind)" :size="14" /><span>{{ entry.name }}</span></span>
             <span class="remote-entry-size">{{ entry.kind === 'dir' ? '—' : formatBytes(entry.size) }}</span>
             <span class="remote-entry-mtime" :title="mtimeTitle(entry.mtime)">{{ formatMtime(entry.mtime) }}</span>

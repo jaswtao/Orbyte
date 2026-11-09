@@ -5,6 +5,28 @@
  * Date: 2026-10-31
  */
 import { leaves, type Layout } from '../workspace/layout'
+import type { DirEntry } from '../remoteApi'
+
+export type FileSortColumn = 'name' | 'size' | 'mtime'
+export type FileSortDirection = 'ascending' | 'descending'
+
+const fileNameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+
+export function sortRemoteEntries(entries: DirEntry[], column: FileSortColumn, direction: FileSortDirection): DirEntry[] {
+  const compareNames = (a: DirEntry, b: DirEntry) => fileNameCollator.compare(a.name, b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+  const multiplier = direction === 'ascending' ? 1 : -1
+  return [...entries].sort((a, b) => {
+    const directoryOrder = Number(b.kind === 'dir') - Number(a.kind === 'dir')
+    if (directoryOrder) return directoryOrder
+    if (column === 'name') return compareNames(a, b) * multiplier
+    if (column === 'mtime') {
+      if (a.mtime == null && b.mtime != null) return 1
+      if (a.mtime != null && b.mtime == null) return -1
+    }
+    const valueOrder = column === 'size' ? a.size - b.size : (a.mtime ?? 0) - (b.mtime ?? 0)
+    return valueOrder * multiplier || compareNames(a, b)
+  })
+}
 
 export interface RemoteSessionSnapshot {
   terminalId: string
