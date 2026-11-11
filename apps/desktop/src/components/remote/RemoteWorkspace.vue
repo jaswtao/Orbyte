@@ -497,8 +497,15 @@ async function answer(decision: 'once' | 'save' | 'cancel') {
   catch (reason) { fail(reason) }
   finally { nextPrompts() }
 }
-function selectTab(id: string) {
+let connectionTrigger: { id: string; element: HTMLElement } | null = null
+function selectTab(id: string, event?: MouseEvent) {
   if (!record.value || busy.value) return
+  if (event && event.currentTarget instanceof HTMLElement) {
+    const tab = asLayout(record.value.layout).tabs.find((item) => item.id === id)
+    const terminals = tab ? leaves(tab.root).filter((leaf) => leaf.type === 'terminal') : []
+    const terminal = (record.value.layout.activeTabId === id && terminals.find((leaf) => leaf.terminalConfigId === focused.value)) || terminals[0]
+    connectionTrigger = terminal?.type === 'terminal' ? { id: terminal.terminalConfigId, element: event.currentTarget } : null
+  }
   if (record.value.layout.activeTabId === id) { void connectMissing().catch(fail); return }
   const next = { ...asLayout(record.value.layout), activeTabId: id }
   const tab = next.tabs.find((tab) => tab.id === id)
@@ -774,6 +781,37 @@ async function syncSessions() {
   }
 }
 const sessionTimer = window.setInterval(() => { void syncSessions() }, 2000)
+let pendingTerminalFocus: string | null = null
+watch(() => {
+  const id = focused.value
+  return [id, id ? registry.byConfig.get(id)?.status.state : undefined] as const
+}, ([id, state], [previousId, previousState]) => {
+  if (!props.active || !id || state !== 'running' || (id === previousId && previousState === 'running')) return
+  pendingTerminalFocus = id
+  focusConnectedTerminal()
+}, { flush: 'post' })
+watch(dialogOpen, (open) => { if (!open) void nextTick(focusConnectedTerminal) })
+watch(() => props.shortcutsBlocked, (blocked) => { if (!blocked) void nextTick(focusConnectedTerminal) })
+function focusConnectedTerminal() {
+  const id = pendingTerminalFocus
+  if (!id || !props.active || focused.value !== id || dialogOpen.value || props.shortcutsBlocked) return
+  const entry = registry.byConfig.get(id)
+  if (!entry || entry.status.state !== 'running' || !activeTab.value ||
+    !leaves(activeTab.value.root).some((leaf) => leaf.type === 'terminal' && leaf.terminalConfigId === id)) return
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement && activeElement !== document.body && !entry.host.contains(activeElement) &&
+    !(connectionTrigger?.id === id && connectionTrigger.element === activeElement)) {
+    pendingTerminalFocus = null
+    connectionTrigger = null
+    return
+  }
+  pendingTerminalFocus = null
+  connectionTrigger = null
+  entry.client.focus()
+}
+function clearConnectionTrigger(event: FocusEvent) {
+  if (connectionTrigger && event.target !== connectionTrigger.element) connectionTrigger = null
+}
 watch(rename, (value) => { if (value) void nextTick(() => { renameInput.value?.focus(); renameInput.value?.select() }) })
 watch(() => fileContext.value?.id, () => { void activateFiles() })
 watch(() => remote.revision, () => { refreshPending.value = true })
@@ -786,9 +824,10 @@ watch(() => props.active, (active) => { if (active && !initializing.value) void 
 watch(() => [props.active, record.value?.layout.activeTabId, record.value?.layout.tabs.length], syncVisibility, { flush: 'post' })
 watch(() => props.settings, (settings) => registry.updateSettings(settings), { deep: true })
 watch(() => props.appearance, () => registry.updateSettings(props.settings))
-onMounted(() => { document.addEventListener('keydown', keydown, true); void remote.listenTransfers().catch(fail) })
+onMounted(() => { document.addEventListener('keydown', keydown, true); document.addEventListener('focusin', clearConnectionTrigger, true); void remote.listenTransfers().catch(fail) })
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', keydown, true)
+  document.removeEventListener('focusin', clearConnectionTrigger, true)
   window.clearInterval(sessionTimer)
   window.clearTimeout(ratioTimer)
   reloadToken += 1
@@ -815,7 +854,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
     <Teleport v-if="active" to="#remote-titlebar-tabs">
       <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
         <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" :draggable="!busy" @dragstart="startTabDrag($event, tab.id)" @dragend="draggingTab = null" @dragover.prevent @drop.prevent="dropTab(tab.id)" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
-          <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
+          <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id, $event)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
           <button :aria-label="t('remote.closeTab', { title: tab.title })" :disabled="busy" @click="closeTab(tab)">×</button>
         </div>
         <button class="workspace-tab-add" :disabled="busy || launching" :title="t('remote.newTab')" :aria-label="t('remote.newTab')" @click="addTerminal()">+</button>

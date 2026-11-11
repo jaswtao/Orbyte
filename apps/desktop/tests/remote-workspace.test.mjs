@@ -475,15 +475,19 @@ test('selecting a remote terminal tab moves focus to a pane in that tab', async 
     { id: 'first', root: { type: 'terminal', terminalConfigId: 'pane-first' } },
     { id: 'second', root: { type: 'terminal', terminalConfigId: 'pane-second' } },
   ] } })
+  class Element {}
+  const tabButton = new Element()
   const context = {
     nextTick, connectMissing: async () => {}, record, focused: ref('pane-first'), asLayout: (layout) => layout, leaves: (root) => [root], busy: ref(false),
-    persist: async (layout) => { record.value.layout = layout }, fail: (reason) => { throw reason },
+    persist: async (layout) => { record.value.layout = layout }, fail: (reason) => { throw reason }, HTMLElement: Element, connectionTrigger: null, tabButton,
   }
   vm.createContext(context)
   vm.runInContext(js, context)
-  vm.runInContext("selectTab('second')", context)
+  vm.runInContext("selectTab('second', { currentTarget: tabButton })", context)
   assert.equal(record.value.layout.activeTabId, 'second')
   assert.equal(context.focused.value, 'pane-second')
+  assert.equal(context.connectionTrigger.id, 'pane-second')
+  assert.equal(context.connectionTrigger.element, tabButton)
   context.busy.value = true
   vm.runInContext("selectTab('first')", context)
   assert.equal(record.value.layout.activeTabId, 'second')
@@ -930,6 +934,75 @@ test('authentication prompts from different connections queue without replacing 
   context.challenge.value = null
   context.nextPrompts()
   assert.equal(context.challenge.value.challengeId, 'host-b')
+})
+
+test('connected remote terminal gains focus without interrupting dialogs or input', async () => {
+  const source = await readSource('../src/components/remote/RemoteWorkspace.vue')
+  const scope = effectScope()
+  const focused = ref('a'), dialogOpen = ref(false), calls = []
+  const entry = reactive({ status: { state: 'starting' }, host: { contains: () => false }, client: { focus: () => calls.push('a') } })
+  class Element { constructor(tagName = 'BODY') { this.tagName = tagName; this.isContentEditable = false } }
+  const document = { body: new Element() }
+  document.activeElement = document.body
+  const props = reactive({ active: true, shortcutsBlocked: false })
+  const context = vm.createContext({
+    watch, nextTick, focused, dialogOpen, document, HTMLElement: Element,
+    props, connectionTrigger: null,
+    registry: { byConfig: reactive(new Map([['a', entry]])) },
+    activeTab: ref({ root: [{ type: 'terminal', terminalConfigId: 'a' }] }), leaves: (root) => root,
+  })
+  scope.run(() => vm.runInContext(compileSlice(source, 'let pendingTerminalFocus:', 'watch(rename,'), context))
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  dialogOpen.value = true
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a'])
+  dialogOpen.value = false
+  await nextTick(); await nextTick()
+  assert.deepEqual(calls, ['a', 'a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  document.activeElement = new Element('INPUT')
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a', 'a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  document.activeElement = new Element('BUTTON')
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a', 'a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  document.activeElement = document.body
+  props.shortcutsBlocked = true
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a', 'a'])
+  props.shortcutsBlocked = false
+  await nextTick(); await nextTick()
+  assert.deepEqual(calls, ['a', 'a', 'a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  const tabButton = new Element('BUTTON')
+  document.activeElement = tabButton
+  context.connectionTrigger = { id: 'a', element: tabButton }
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a', 'a', 'a', 'a'])
+  entry.status = { state: 'starting' }
+  await nextTick()
+  context.connectionTrigger = { id: 'a', element: tabButton }
+  context.clearConnectionTrigger({ target: new Element('BUTTON') })
+  document.activeElement = tabButton
+  entry.status = { state: 'running' }
+  await nextTick()
+  assert.deepEqual(calls, ['a', 'a', 'a', 'a'])
+  scope.stop()
 })
 
 
