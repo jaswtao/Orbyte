@@ -793,6 +793,13 @@ test('login remembers a password only when selected and permits retry after a st
   context.savePassword.value = true
   await vm.runInContext('submitSecret()', context)
   assert.deepEqual(calls[3], ['three', 'passphrase', false])
+  credential.value = { batchId: 'four', authType: 'privateKey' }
+  await vm.runInContext('submitSecret()', context)
+  assert.deepEqual(calls[4], ['four', '', false])
+  credential.value = { batchId: 'five', authType: 'password' }
+  await vm.runInContext('submitSecret()', context)
+  assert.equal(calls.length, 5)
+  assert.equal(credential.value.batchId, 'five')
 })
 
 test('SFTP status events work before and after the connection command returns', async (t) => {

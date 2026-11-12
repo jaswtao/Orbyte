@@ -444,7 +444,7 @@ export const en = {
   'remote.applyAll': 'Use this choice for the rest of this transfer',
   'remote.credentialTitle': 'Sign in',
   'remote.passwordPrompt': 'Password for {endpoint}',
-  'remote.passphrasePrompt': 'Passphrase for the private key',
+  'remote.passphrasePrompt': 'Enter the private key passphrase, or leave blank if it has none',
   'remote.secret': 'Secret',
   'remote.challengeTitle': 'Verify host key',
   'remote.challengeBody': 'First time seeing this key for {host}:{port}.',

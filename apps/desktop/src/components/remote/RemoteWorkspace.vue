@@ -468,7 +468,7 @@ async function resolveConflict(choice: 'overwrite' | 'skip' | 'cancel') {
 }
 async function submitSecret() {
   const pending = credential.value
-  if (!pending || submittingSecret.value || !secret.value) return
+  if (!pending || submittingSecret.value || (pending.authType === 'password' && !secret.value)) return
   const value = secret.value
   secret.value = ''
   submittingSecret.value = true
@@ -975,7 +975,7 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       <NCheckbox v-if="credential?.authType === 'password'" v-model:checked="savePassword" :disabled="submittingSecret">{{ t('remote.savePassword') }}</NCheckbox>
       <div class="dialog-actions">
         <NButton @click="cancelSecret">{{ t('common.cancel') }}</NButton>
-        <NButton type="primary" :disabled="!secret || submittingSecret" :loading="submittingSecret" @click="submitSecret">{{ t('common.confirm') }}</NButton>
+        <NButton type="primary" :disabled="submittingSecret || (credential?.authType === 'password' && !secret)" :loading="submittingSecret" @click="submitSecret">{{ t('common.confirm') }}</NButton>
       </div>
     </NModal>
     <NModal :show="active && !!challenge" preset="card" :title="t('remote.challengeTitle')" class="form-modal" :mask-closable="false" @update:show="(show) => { if (!show) void answer('cancel') }">

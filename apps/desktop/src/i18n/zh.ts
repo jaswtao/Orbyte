@@ -446,7 +446,7 @@ export const zh: Record<MessageKey, string> = {
   'remote.applyAll': '本次传输其余冲突都按此处理',
   'remote.credentialTitle': '登录',
   'remote.passwordPrompt': '请输入 {endpoint} 的密码',
-  'remote.passphrasePrompt': '请输入私钥口令',
+  'remote.passphrasePrompt': '请输入私钥口令；私钥没有口令时请留空',
   'remote.secret': '密码或口令',
   'remote.challengeTitle': '核对主机密钥',
   'remote.challengeBody': '第一次见到 {host}:{port} 的这把密钥。',
