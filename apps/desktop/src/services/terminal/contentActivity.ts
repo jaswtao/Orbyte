@@ -108,7 +108,7 @@ export class ContentActivity {
 
   /** Yield between rows so history comparison shares the terminal parsing budget. */
   *scan(buffer: Pick<IBuffer, 'length' | 'getLine' | 'type'>): Generator<void, boolean> {
-    const parts: string[] = []
+    const lines: string[] = []
     this.prompts = this.prompts.filter((prompt) => !prompt.marker.isDisposed)
     const prompts = new Map(this.prompts.map((prompt) => [prompt.marker.line, prompt]))
     for (let index = 0; index < buffer.length; index++) {
@@ -116,7 +116,8 @@ export class ContentActivity {
       let text = ''
       while (true) {
         const nextWrapped = buffer.getLine(index + 1)?.isWrapped === true
-        text += buffer.getLine(index)?.translateToString(!nextWrapped) ?? ''
+        // Use trimRight=true even on wrapped rows so shrunken alternate buffers do not pad old columns into the joined line.
+        text += buffer.getLine(index)?.translateToString(true) ?? ''
         if (index % 32 === 31) yield
         if (!nextWrapped) break
         index++
@@ -128,7 +129,38 @@ export class ContentActivity {
         text = prompt.prefix + (prompt.end === null ? '' : text.slice(prompt.end))
         if (!text) continue
       }
-      parts.push(text + '\n')
+      lines.push(text)
+    }
+    const parts: string[] = []
+    let trimBlankAfterStatus = false
+    const emitStatus = (status: string) => {
+      // Collapse blank padding rows directly adjacent to the status bar so warning/footer redraws do not shift line counts.
+      while (parts.length > 0 && parts[parts.length - 1] === '\n') parts.pop()
+      parts.push(status + '\n')
+      trimBlankAfterStatus = true
+    }
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]
+      if (isStatusWarningLine(line)) continue
+      const single = normalizeStatusBar(line)
+      if (single !== null) {
+        emitStatus(single)
+        continue
+      }
+      if (i + 1 < lines.length) {
+        const next = lines[i + 1]
+        if (next && !isStatusWarningLine(next) && normalizeStatusBar(next) === null) {
+          const pair = normalizeStatusBar(joinWrappedStatusLines(line, next))
+          if (pair !== null) {
+            emitStatus(pair)
+            i++
+            continue
+          }
+        }
+      }
+      if (line === '' && trimBlankAfterStatus) continue
+      trimBlankAfterStatus = false
+      parts.push(line + '\n')
     }
     // 还原软换行，忽略终端为视口预留的空行，避免尺寸调整产生提示。
     const current = parts.join('').replace(/\n+$/, '')
@@ -141,6 +173,28 @@ export class ContentActivity {
     this.previous = current
     return changed
   }
+}
+
+const STATUS_WARNING_RE = /^\s*(?:⚠\uFE0F?\s*)?\d+ warnings?\s*·\s*f2 to view\s*$/iu
+const STATUS_BAR_RE =
+  /^((?:.*\S\s+·\s+)?|\s*)Context\s+\d+(?:\.\d+)?% used\s*·\s*5h\s+\d+(?:\.\d+)?% left\s*·\s*weekly\s+\d+(?:\.\d+)?% left\s*$/iu
+
+function isStatusWarningLine(text: string): boolean {
+  return STATUS_WARNING_RE.test(text)
+}
+
+/** Normalize complete CLI status formats without filtering warning or quota prose. */
+function normalizeStatusBar(text: string): string | null {
+  if (!STATUS_BAR_RE.test(text)) return null
+  return text.replace(STATUS_BAR_RE, '$1Context % used · 5h % left · weekly % left')
+}
+
+function joinWrappedStatusLines(first: string, second: string): string {
+  const left = first.trimEnd()
+  const right = second.trimStart()
+  if (left.endsWith('·') || right.startsWith('·')) return `${left} ${right}`
+  if (/(?:% used|% left)$/i.test(left) || /^(?:Context|5h|weekly)\b/i.test(right)) return `${left} · ${right}`
+  return `${left} ${right}`
 }
 
 /** Character budget for in-place refreshes. A status line changing a number stays within it. */

@@ -34,6 +34,65 @@ function contentFixture(t, integrated = false) {
 const osc = (kind) => `\x1b]133;${kind}\x07`
 const prompt = (path = 'C:\\Orbyte') => `${osc('A')}PS ${path}> ${osc('B')}`
 
+for (const alternate of [false, true]) {
+  test(`status warning and quota refreshes preserve content activity (${alternate ? 'alternate' : 'normal'})`, async (t) => {
+    const f = contentFixture(t)
+    f.term.resize(160, 12)
+    if (alternate) await f.write('\x1b[?1049h')
+    const paint = async (context, quota, warning = '', body = 'Ready', model = 'GPT-6.1-Sol medium') => {
+      const status = `${model} · C:\\Orbyte · Context ${context}% used · 5h ${quota}% left · weekly ${quota}% left`
+      await f.write(`\x1b[2J\x1b[H${body}\r\n\r\n\x1b[36m${status}\x1b[0m${warning ? '\r\n' + warning : ''}`)
+      return f.changed()
+    }
+    assert.equal(await paint(0, 82), true)
+    f.detector.markRead()
+    for (const [context, quota, warning] of [
+      [1, 81, '    ⚠ 1 warning · f2 to view'],
+      [12.5, 81.3, '    ⚠ 1 warning · f2 to view'],
+      [50, 3, '    ⚠️ 12 warnings · f2 to view'],
+      [99, 100, ''],
+      [100, 0, '    2 warnings · f2 to view'],
+    ]) {
+      assert.equal(await paint(context, quota, warning), false)
+      assert.equal(f.detector.unread, false)
+    }
+    f.term.resize(40, 20)
+    if (!alternate) {
+      assert.equal(f.changed(), false, 'Normal buffer resize keeps wrapped status content')
+      assert.equal(f.detector.unread, false)
+    }
+    assert.equal(await paint(0, 82), false, 'Wrapped status lines retain the same normalized content')
+    assert.equal(f.detector.unread, false)
+    // Warning placed above the status bar or between status and footer should not change line counts.
+    await f.write(`\x1b[2J\x1b[HReady\r\n    ⚠ 1 warning · f2 to view\r\n\x1b[36mGPT-6.1-Sol medium · C:\\Orbyte · Context 1.5% used · 5h 79.5% left · weekly 79.5% left\x1b[0m\r\n\r\nesc to interrupt`)
+    assert.equal(f.changed(), true)
+    f.detector.markRead()
+    await f.write(`\x1b[2J\x1b[HReady\r\n\r\n\x1b[36mGPT-6.1-Sol medium · C:\\Orbyte · Context 2% used · 5h 79% left · weekly 79% left\x1b[0m\r\n    2 warnings · f2 to view\r\nesc to interrupt`)
+    assert.equal(f.changed(), false)
+    assert.equal(f.detector.unread, false)
+    // Explicit line-broken status bars should also normalize quota updates.
+    await f.write(`\x1b[2J\x1b[HReady\r\n\r\n\x1b[36mGPT-6.1-Sol medium · C:\\Orbyte · Context 3.5% used\r\n5h 78.5% left · weekly 78.5% left\x1b[0m\r\nesc to interrupt`)
+    assert.equal(f.changed(), false)
+    assert.equal(f.detector.unread, false)
+    assert.equal(await paint(1, 81, '⚠ 1 warning · f2 to view', 'New reply'), true)
+    assert.equal(f.detector.unread, true)
+    await paint(2, 80, '', 'New reply')
+    assert.equal(f.detector.unread, true, 'Status refreshes must preserve unread replies')
+    f.detector.markRead()
+    assert.equal(await paint(3, 79, '', 'New reply', 'Other model'), true, 'Model changes remain content changes')
+  })
+}
+
+test('warning, quota, and approval prose remain content changes', async (t) => {
+  const f = contentFixture(t)
+  for (const text of ['warning: build failed', 'Balance is $12; quota 50%', 'Context 50% used', 'Approve? (y/N)']) {
+    await f.write(`\r\n${text}`)
+    assert.equal(f.changed(), true)
+    assert.equal(f.detector.unread, true)
+    f.detector.markRead()
+  }
+})
+
 test('集成提示符首次出现、分段到达及原位重绘不触发未读', async (t) => {
   const f = contentFixture(t, true)
   for (const chunk of [osc('A'), 'PS C:\\', 'Orbyte> ', osc('B')]) {
