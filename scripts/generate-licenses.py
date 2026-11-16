@@ -45,10 +45,15 @@ def collect():
                  if (match := re.match(r"(\S+) v(\S+)", line))}
     records = {}
     for package in packages.values():
-        if not package["source"] or (package["name"], package["version"]) not in reachable:
-            continue
         directory = Path(package["manifest_path"]).parent
+        vendored = directory.is_relative_to(ROOT / "vendor")
+        if (not package["source"] and not vendored) or (package["name"], package["version"]) not in reachable:
+            continue
         source = f"https://crates.io/crates/{package['name']}/{package['version']}"
+        if vendored:
+            # Workspace packages share the release version; retain the exact patched source link.
+            version = next(p["version"] for p in packages.values() if p["name"] == "orbyte-desktop")
+            source = f"https://github.com/jaswtao/Orbyte/tree/v{version}/{directory.relative_to(ROOT).as_posix()}"
         records[("cargo", package["name"], package["version"])] = {
             "ecosystem": "cargo", "name": package["name"], "version": package["version"],
             "license": package["license"], "source": source, "directory": directory,

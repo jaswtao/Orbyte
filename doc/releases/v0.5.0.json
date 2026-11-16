@@ -1,0 +1,34 @@
+{
+  "version": "0.5.0",
+  "date": "2026-11-16",
+  "en": {
+    "features": [
+      "Refresh the sidebar with compact icon toolbars, filter chips and branch details beside project names.",
+      "Use a hideable toolbar in the remote files pane and sort remote listings by name, size or modification time.",
+      "Drag remote terminal tabs to reorder them, and use clearer file tree icons and spacing."
+    ],
+    "fixes": [
+      "Reduce SSH terminal input latency and focus connected remote terminals without stealing input.",
+      "Allow SSH private keys with an empty passphrase.",
+      "Keep the input-method anchor stable during terminal redraws while composing.",
+      "Avoid false unread indicators from alternate-screen status refreshes, CLI warnings and quota updates.",
+      "Suppress native context menus throughout the application.",
+      "Update bundled SQLite to 3.54.1 to address RUSTSEC-2026-0459 while retaining SQLx 0.8 compatibility."
+    ]
+  },
+  "zh": {
+    "features": [
+      "侧边栏采用紧凑图标工具栏与筛选标签，分支信息显示在项目名称旁。",
+      "远程文件面板支持隐藏工具栏，并可按名称、大小或修改时间排序。",
+      "远程终端标签支持拖动排序，文件树图标与间距更加清晰。"
+    ],
+    "fixes": [
+      "降低 SSH 终端输入延迟，连接后聚焦远程终端并避免抢占输入。",
+      "允许 SSH 私钥使用空密码短语。",
+      "输入法组合输入期间，终端重绘时保持候选框位置稳定。",
+      "避免备用屏幕状态刷新、CLI 警告和配额更新触发错误的未读提示。",
+      "在整个应用中禁用原生右键菜单。",
+      "将内置 SQLite 更新至 3.54.1，修复 RUSTSEC-2026-0459，并保持 SQLx 0.8 兼容性。"
+    ]
+  }
+}

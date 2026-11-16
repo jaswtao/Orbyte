@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-11-16
+
+- Refresh the sidebar with compact icon toolbars, filter chips and branch details beside project names.
+- Use a hideable toolbar in the remote files pane and sort remote listings by name, size or modification time.
+- Drag remote terminal tabs to reorder them, and use clearer file tree icons and spacing.
+- Reduce SSH terminal input latency and focus connected remote terminals without stealing input.
+- Allow SSH private keys with an empty passphrase.
+- Keep the input-method anchor stable during terminal redraws while composing.
+- Avoid false unread indicators from alternate-screen status refreshes, CLI warnings and quota updates.
+- Suppress native context menus throughout the application.
+- Update bundled SQLite to 3.54.1 to address [RUSTSEC-2026-0459](https://rustsec.org/advisories/RUSTSEC-2026-0459). A local SQLx SQLite driver patch changes only its SQLite dependency requirement; see [patch provenance](https://github.com/jaswtao/Orbyte/blob/v0.5.0/vendor/sqlx-sqlite/README.orbyte.md).
+- Native installation and desktop acceptance remain incomplete; see the [release notes](doc/releases/v0.5.0.md) for verification limits and known limitations.
+
 ## 0.4.0 — 2026-11-02
 
 - Add SSH connections, host-key confirmation, remote terminals and SFTP browsing, upload and download.

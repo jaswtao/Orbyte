@@ -22408,13 +22408,13 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-cargo: libsqlite3-sys 0.30.1
+cargo: libsqlite3-sys 0.39.1
 License: MIT
-Source: https://crates.io/crates/libsqlite3-sys/0.30.1
+Source: https://crates.io/crates/libsqlite3-sys/0.39.1
 
 
 --- LICENSE ---
-Copyright (c) 2014-2021 The rusqlite developers
+Copyright (c) 2014 The rusqlite developers
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39985,7 +39985,7 @@ DEALINGS IN THE SOFTWARE.
 ========================================================================
 cargo: sqlx-sqlite 0.8.6
 License: MIT OR Apache-2.0
-Source: https://crates.io/crates/sqlx-sqlite/0.8.6
+Source: https://github.com/jaswtao/Orbyte/tree/v0.5.0/vendor/sqlx-sqlite
 
 
 --- LICENSE-APACHE ---

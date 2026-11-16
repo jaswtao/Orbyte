@@ -12,7 +12,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["jaswtao"]
 rust-version = "1.90"
@@ -48,3 +48,7 @@ windows-sys = { version = "0.61", features = [
 ] }
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }
+
+# Keep SQLx 0.8 APIs while using a patched SQLite release (RUSTSEC-2026-0459).
+[patch.crates-io]
+sqlx-sqlite = { path = "vendor/sqlx-sqlite" }
