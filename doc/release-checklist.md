@@ -72,3 +72,20 @@ cargo test -p orbyte-terminal --test windows_pty consecutive_git_difftool_window
 - [ ] 保活实测：暂停 normal 容器后约 90 秒进入失效；`keepalive.rs` 单元测试不能替代。
 - [ ] 只读目录或其他无法安全替换的远程目标：保留原文件、该项失败并报告结果。
 - [ ] 安装版主机指纹确认、取消过期、断线保留屏幕与手动重连、WebView 重载恢复任务、退出确认与 3 秒预算。
+
+## 2026-11-16 v0.5.1 automated acceptance
+
+Source tested: `4185c1b` (the release tag adds this acceptance record only).
+Windows x64; Rust 1.95.0 and minimum Rust 1.90.0; isolated Alpine 3.20.10,
+OpenSSH_9.7p1, OpenSSL 3.3.7 normal/weak/keyboard containers.
+
+- [x] `pwsh scripts/release-check.ps1 -Gitleaks <gitleaks.exe> -SshProbe`: release metadata, 17 packaging/summary/audit tests, source secret scan, Rust/npm dependency audits, workspace Rust tests, 389 frontend tests, frontend type checking/build, 408 third-party license records and 8 real SSH/SFTP probes passed.
+- [x] `cargo +1.90.0 check --workspace --all-targets --locked` passed.
+- [x] Full Git history scan passed before the documentation-only acceptance commit.
+- [x] SQLite 3.54.1 runtime check and all 39 storage/migration tests passed. The SQLx driver source matches published 0.8.6 byte-for-byte; only its SQLite dependency requirement changes. The new shortcut repair migration preserves historical migration checksums.
+- [x] SSH probes: password; Ed25519/RSA/encrypted Ed25519; host-key algorithm preference; keyboard-interactive refusal; weak-algorithm refusal; PTY resize; SFTP lstat/rename/symlink; upload/download/overwrite/skip/cancel with empty, nested and Unicode/space paths.
+- [ ] Tagged CI and final installer/checksum verification: inspect the matching GitHub Actions run and release assets.
+- [ ] Clean install/upgrade, desktop interactions, 1 GiB transfer/resource sampling and keepalive timing remain unexecuted. Existing ignored native/credential/performance tests are not counted as acceptance. See the release notes for these verification limits.
+
+The v0.5.0 candidate was not published. v0.5.1 includes the SQLite security
+update and its shortcut migration compatibility fix.
