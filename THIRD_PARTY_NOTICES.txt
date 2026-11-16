@@ -39985,7 +39985,7 @@ DEALINGS IN THE SOFTWARE.
 ========================================================================
 cargo: sqlx-sqlite 0.8.6
 License: MIT OR Apache-2.0
-Source: https://github.com/jaswtao/Orbyte/tree/v0.5.0/vendor/sqlx-sqlite
+Source: https://github.com/jaswtao/Orbyte/tree/v0.5.1/vendor/sqlx-sqlite
 
 
 --- LICENSE-APACHE ---

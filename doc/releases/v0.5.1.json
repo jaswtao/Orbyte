@@ -1,5 +1,5 @@
 {
-  "version": "0.5.0",
+  "version": "0.5.1",
   "date": "2026-11-16",
   "en": {
     "features": [
@@ -13,7 +13,8 @@
       "Keep the input-method anchor stable during terminal redraws while composing.",
       "Avoid false unread indicators from alternate-screen status refreshes, CLI warnings and quota updates.",
       "Suppress native context menus throughout the application.",
-      "Update bundled SQLite to 3.54.1 to address RUSTSEC-2026-0459 while retaining SQLx 0.8 compatibility."
+      "Update bundled SQLite to 3.54.1 to address RUSTSEC-2026-0459 while retaining SQLx 0.8 compatibility.",
+      "Preserve custom remote shortcuts when upgrading older databases with the updated SQLite engine."
     ]
   },
   "zh": {
@@ -28,7 +29,8 @@
       "输入法组合输入期间，终端重绘时保持候选框位置稳定。",
       "避免备用屏幕状态刷新、CLI 警告和配额更新触发错误的未读提示。",
       "在整个应用中禁用原生右键菜单。",
-      "将内置 SQLite 更新至 3.54.1，修复 RUSTSEC-2026-0459，并保持 SQLx 0.8 兼容性。"
+      "将内置 SQLite 更新至 3.54.1，修复 RUSTSEC-2026-0459，并保持 SQLx 0.8 兼容性。",
+      "使用新版 SQLite 升级旧数据库时，保留自定义远程快捷键。"
     ]
   }
 }

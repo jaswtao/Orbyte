@@ -707,7 +707,11 @@ async fn sidebar_view_shortcut_migration_drops_only_the_old_remote_arrow_default
         row.push_bind(*setting).push_bind(before.to_string());
     });
     query.build().execute(&db.pool).await.unwrap();
-    let sql = include_str!("../migrations/0011_sidebar_view_shortcuts.sql").replace("t_app_setting", "shortcut_cases");
+    let sql = concat!(
+        include_str!("../migrations/0011_sidebar_view_shortcuts.sql"),
+        "\n",
+        include_str!("../migrations/0013_restore_shortcut_arrays.sql"),
+    ).replace("t_app_setting", "shortcut_cases");
     sqlx::raw_sql(&sql).execute(&db.pool).await.unwrap();
     let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
         .fetch_all(&db.pool).await.unwrap();
@@ -854,4 +858,31 @@ async fn invalid_settings_and_stale_active_project() {
         db.get_settings().await.unwrap()["active_project_id"],
         json!(id)
     );
+}
+
+#[tokio::test]
+async fn shortcut_array_repair_is_scoped_and_idempotent() {
+    let db = memory().await;
+    sqlx::raw_sql("CREATE TEMP TABLE shortcut_cases (key TEXT, value_json TEXT);")
+        .execute(&db.pool).await.unwrap();
+    let binding = json!({"code":"KeyN","ctrlKey":true,"altKey":false,"shiftKey":true,"metaKey":false});
+    let bindings = json!([binding]);
+    let values = vec![
+        ("shortcuts", json!({"remotePrevious":bindings.to_string(),"remoteNext":"[]"}), json!({"remotePrevious":bindings,"remoteNext":[]})),
+        ("shortcuts", json!({"remotePrevious":bindings,"newTerminal":bindings}), json!({"remotePrevious":bindings,"newTerminal":bindings})),
+        ("shortcuts", json!({"remotePrevious":"invalid","remoteNext":"{}"}), json!({"remotePrevious":"invalid","remoteNext":"{}"})),
+        ("other", json!({"remotePrevious":bindings.to_string()}), json!({"remotePrevious":bindings.to_string()})),
+    ];
+    let mut query = sqlx::QueryBuilder::<sqlx::Sqlite>::new("INSERT INTO shortcut_cases(key, value_json) ");
+    query.push_values(&values, |mut row, (setting, before, _)| {
+        row.push_bind(*setting).push_bind(before.to_string());
+    });
+    query.build().execute(&db.pool).await.unwrap();
+    let sql = include_str!("../migrations/0013_restore_shortcut_arrays.sql").replace("t_app_setting", "shortcut_cases");
+    sqlx::raw_sql(&format!("{sql}\n{sql}")).execute(&db.pool).await.unwrap();
+    let results: Vec<String> = sqlx::query_scalar("SELECT value_json FROM shortcut_cases ORDER BY rowid")
+        .fetch_all(&db.pool).await.unwrap();
+    for (result, (_, _, expected)) in results.iter().zip(&values) {
+        assert_eq!(&serde_json::from_str::<Value>(result).unwrap(), expected);
+    }
 }
