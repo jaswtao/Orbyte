@@ -35,6 +35,46 @@ const osc = (kind) => `\x1b]133;${kind}\x07`
 const prompt = (path = 'C:\\Orbyte') => `${osc('A')}PS ${path}> ${osc('B')}`
 
 for (const alternate of [false, true]) {
+  test(`Codex warnings beside shortcut hints do not set unread (${alternate ? 'alternate' : 'normal'})`, async (t) => {
+    const f = contentFixture(t)
+    f.term.resize(160, 24)
+    if (alternate) await f.write('\x1b[?1049h')
+    const paint = async (warning, body = '› Ask Codex to do anything', quota = 96, footer = '← for agents · ? for shortcuts') => {
+      const status = `GPT-6.2-Sol medium · C:\\Orbyte · Context 0% used · 5h ${quota}% left · weekly 90% left`
+      await f.write(`\x1b[2J\x1b[H>_ OpenAI Codex (v0.170.0)\x1b[21;1H${body}\x1b[23;3H${status}\x1b[24;3H${footer}${warning ? `\x1b[${161 - warning.length}G${warning}` : ''}`)
+      return f.changed()
+    }
+
+    assert.equal(await paint(''), true)
+    f.detector.markRead()
+    assert.equal(await paint('⚠ 1 warning · f2 to view', undefined, 95), false)
+    assert.equal(await paint('⚠️ 12 warnings · f2 to view'), false)
+    assert.equal(await paint('2 warnings · f2 to view'), false)
+    if (!alternate) {
+      // Resize to 68 cols so column 136 wraps directly before the warning glyph without keeping padding spaces.
+      assert.equal(await paint('⚠ 1 warning · f2 to view'), false)
+      f.term.resize(68, 24)
+      assert.equal(f.changed(), false)
+      assert.equal(f.detector.unread, false)
+      f.term.resize(160, 24)
+    }
+    assert.equal(await paint(''), false)
+    assert.equal(f.detector.unread, false)
+
+    for (const footer of ['? for shortcuts', 'esc to interrupt']) {
+      assert.equal(await paint('', undefined, 96, footer), true)
+      f.detector.markRead()
+      assert.equal(await paint('⚠ 1 warning · f2 to view', undefined, 95, footer), false)
+      assert.equal(await paint('2 warnings · f2 to view', undefined, 95, footer), false)
+      assert.equal(await paint('', undefined, 96, footer), false)
+      assert.equal(f.detector.unread, false)
+    }
+
+    assert.equal(await paint('⚠ 1 warning · f2 to view', 'New reply'), true)
+    assert.equal(await paint('', 'New reply'), false)
+    assert.equal(f.detector.unread, true)
+  })
+
   test(`status warning and quota refreshes preserve content activity (${alternate ? 'alternate' : 'normal'})`, async (t) => {
     const f = contentFixture(t)
     f.term.resize(160, 12)

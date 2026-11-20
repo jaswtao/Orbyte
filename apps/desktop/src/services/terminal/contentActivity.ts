@@ -140,8 +140,8 @@ export class ContentActivity {
       trimBlankAfterStatus = true
     }
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-      if (isStatusWarningLine(line)) continue
+      if (STATUS_WARNING_RE.test(lines[i])) continue
+      const line = lines[i].replace(INLINE_STATUS_WARNING_RE, '')
       const single = normalizeStatusBar(line)
       if (single !== null) {
         emitStatus(single)
@@ -149,7 +149,7 @@ export class ContentActivity {
       }
       if (i + 1 < lines.length) {
         const next = lines[i + 1]
-        if (next && !isStatusWarningLine(next) && normalizeStatusBar(next) === null) {
+        if (next && !STATUS_WARNING_RE.test(next) && normalizeStatusBar(next) === null) {
           const pair = normalizeStatusBar(joinWrappedStatusLines(line, next))
           if (pair !== null) {
             emitStatus(pair)
@@ -176,12 +176,10 @@ export class ContentActivity {
 }
 
 const STATUS_WARNING_RE = /^\s*(?:⚠\uFE0F?\s*)?\d+ warnings?\s*·\s*f2 to view\s*$/iu
+// The Codex footer can place the warning count to the right of any shortcut hint.
+const INLINE_STATUS_WARNING_RE = /(?:\s{2,}(?:⚠\uFE0F?\s*)?|\s*⚠\uFE0F?\s*)\d+ warnings?\s*·\s*f2 to view\s*$/iu
 const STATUS_BAR_RE =
   /^((?:.*\S\s+·\s+)?|\s*)Context\s+\d+(?:\.\d+)?% used\s*·\s*5h\s+\d+(?:\.\d+)?% left\s*·\s*weekly\s+\d+(?:\.\d+)?% left\s*$/iu
-
-function isStatusWarningLine(text: string): boolean {
-  return STATUS_WARNING_RE.test(text)
-}
 
 /** Normalize complete CLI status formats without filtering warning or quota prose. */
 function normalizeStatusBar(text: string): string | null {
