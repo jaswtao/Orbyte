@@ -32,12 +32,16 @@ export function setRatio(node: LayoutNode, path: number[], ratio: number): Layou
   if (!path.length) return { ...node, ratio: Math.max(0.1, Math.min(0.9, ratio)) }
   return { ...node, children: node.children.map((child, i) => i === path[0] ? setRatio(child, path.slice(1), ratio) : child) as [LayoutNode, LayoutNode] }
 }
-export function moveTab(layout: Layout, id: string, before: string): Layout {
-  if (id === before) return layout
-  const tab = layout.tabs.find((t) => t.id === id)
-  if (!tab || !layout.tabs.some((t) => t.id === before)) return layout
-  const tabs = layout.tabs.filter((t) => t.id !== id)
-  tabs.splice(tabs.findIndex((t) => t.id === before), 0, tab)
+export function moveTab(layout: Layout, id: string, targetId: string, side: 'before' | 'after' = 'before'): Layout {
+  if (id === targetId) return layout
+  const source = layout.tabs.findIndex((tab) => tab.id === id)
+  const target = layout.tabs.findIndex((tab) => tab.id === targetId)
+  if (source < 0 || target < 0) return layout
+  const insertion = target + (side === 'after' ? 1 : 0) - (source < target ? 1 : 0)
+  if (insertion === source) return layout
+  const tabs = [...layout.tabs]
+  const [tab] = tabs.splice(source, 1)
+  tabs.splice(insertion, 0, tab)
   return { ...layout, tabs }
 }
 export function renameEditorPaths(layout: Layout, from: string, to: string): Layout {

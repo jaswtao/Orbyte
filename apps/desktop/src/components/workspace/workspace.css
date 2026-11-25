@@ -16,9 +16,10 @@
 }
 
 .workspace-tabs {
+  --workspace-tab-gap: 4px;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--workspace-tab-gap);
   min-width: 0;
   max-width: 100%;
   overflow-x: auto;
@@ -28,6 +29,7 @@
 }
 
 .workspace-tab {
+  position: relative;
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -42,6 +44,34 @@
   border-color: var(--border);
   color: var(--text);
   box-shadow: 0 1px 3px #00000008;
+}
+
+.workspace-tab-dragging {
+  opacity: 0.55;
+}
+
+.workspace-tab-drop-before::after,
+.workspace-tab-drop-after::after {
+  position: absolute;
+  z-index: 1;
+  inset-block: 1px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+  content: '';
+}
+
+.workspace-tab-drop-before::after {
+  inset-inline-start: calc(-2.5px - var(--workspace-tab-gap) / 2);
+}
+
+.workspace-tab-drop-before:first-child::after {
+  inset-inline-start: -1px;
+}
+
+.workspace-tab-drop-after::after {
+  inset-inline-end: calc(-2.5px - var(--workspace-tab-gap) / 2);
 }
 
 .workspace-tab button, .pane-heading button {

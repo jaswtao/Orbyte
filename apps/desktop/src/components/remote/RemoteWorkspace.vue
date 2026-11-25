@@ -13,6 +13,7 @@ import { INITIAL_SIZE } from '../../services/terminal/terminalClient'
 import type { AppearanceMode } from '../../services/appearance'
 import type { Settings } from '../../services/projectApi'
 import { leaves, setRatio, splitLeaf, type Layout } from '../../services/workspace/layout'
+import { useTabDrag } from '../workspace/useTabDrag'
 import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
 import { batchCancelId, endpointLabel, failedRoots, formatBytes, joinRemote, parentPath, partitionSessions, remoteCdCommand, remotePaneNeedsCloseConfirm, terminalPaneNames, transferPercent, sortRemoteEntries, type FileSortColumn, type FileSortDirection } from '../../services/remote/workspace'
 import { isSftpReady, markSftpReady } from '../../services/remote/status'
@@ -77,7 +78,6 @@ let browseId = ''
 let browseGeneration = 0
 let reloadToken = 0
 let ratioTimer = 0
-let draggingTab: string | null = null
 const dialogOpen = computed(() => choosing.value || manager.value || !!credential.value || !!challenge.value || !!closing.value || !!rename.value || folderOpen.value || !!conflictTransfer.value)
 const registry = new TerminalRegistry(() => props.appearance, () => props.settings, () => props.shortcutsBlocked || dialogOpen.value)
 const terminalDirectory = computed(() => focused.value ? registry.byConfig.get(focused.value)?.shell.cwd ?? null : null)
@@ -94,6 +94,9 @@ const credentialEndpoint = computed(() => {
   return item ? endpointLabel(item.username, item.host, item.port) : ''
 })
 const layout = computed(() => record.value ? asLayout(record.value.layout) : null)
+const { startTabDrag, endTabDrag, overTabBar, leaveTabBar, dropTab, tabDragClasses } = useTabDrag(
+  () => layout.value, () => props.active && !!record.value && !busy.value, (next) => { void persist(next).catch(fail) },
+)
 const activeTab = computed(() => layout.value?.tabs.find((tab) => tab.id === layout.value?.activeTabId) ?? null)
 const names = computed(() => terminalPaneNames(record.value?.terminals ?? [], layout.value?.tabs ?? []))
 const hint = (id: string) => shortcutHint(id, props.settings.shortcuts)
@@ -513,24 +516,6 @@ function selectTab(id: string, event?: MouseEvent) {
   void persist(next).catch(fail)
   void nextTick(() => { void connectMissing().catch(fail) })
 }
-function startTabDrag(event: DragEvent, id: string) {
-  if (busy.value) { event.preventDefault(); return }
-  draggingTab = id
-  event.dataTransfer?.setData('text/plain', id)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
-}
-function dropTab(targetId: string) {
-  const sourceId = draggingTab
-  draggingTab = null
-  if (!record.value || busy.value || !sourceId || sourceId === targetId) return
-  const current = asLayout(record.value.layout)
-  const sourceIndex = current.tabs.findIndex((tab) => tab.id === sourceId)
-  const targetIndex = current.tabs.findIndex((tab) => tab.id === targetId)
-  if (sourceIndex < 0 || targetIndex < 0) return
-  const tabs = [...current.tabs]
-  tabs.splice(targetIndex, 0, tabs.splice(sourceIndex, 1)[0])
-  void persist({ ...current, tabs }).catch(fail)
-}
 function renameTab(id: string) {
   if (!props.active || props.shortcutsBlocked || dialogOpen.value || busy.value) return false
   const tab = layout.value?.tabs.find((item) => item.id === id)
@@ -852,8 +837,8 @@ defineExpose({ connectMissing, focusTerminal, renameActiveTab })
       </button>
     </div>
     <Teleport v-if="active" to="#remote-titlebar-tabs">
-      <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
-        <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" :draggable="!busy" @dragstart="startTabDrag($event, tab.id)" @dragend="draggingTab = null" @dragover.prevent @drop.prevent="dropTab(tab.id)" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
+      <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')" @dragenter="overTabBar" @dragover="overTabBar" @dragleave="leaveTabBar" @drop="dropTab">
+        <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="[{ active: tab.id === layout.activeTabId }, tabDragClasses(tab.id)]" :data-tab-id="tab.id" :draggable="!busy" @dragstart="startTabDrag($event, tab.id)" @dragend="endTabDrag" @mousedown.middle.prevent @auxclick.middle.prevent.stop="closeTab(tab)">
           <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id, $event)" @dblclick="renameTab(tab.id)" @contextmenu="renameFromPointer($event, tab.id)">{{ tab.title }}</button>
           <button :aria-label="t('remote.closeTab', { title: tab.title })" :disabled="busy" @click="closeTab(tab)">×</button>
         </div>

@@ -9,7 +9,8 @@ import { INITIAL_SIZE } from '../../services/terminal/terminalClient'
 import { withTimeout } from '../../services/terminal/recovery'
 import type { TerminalRegistry, TerminalEntry } from '../../services/terminal/registry'
 import { workspaceApi } from '../../services/workspaceApi'
-import { emptyLayout, leaves, moveTab, removeFromLayout, setRatio, splitLeaf, type Direction, type Layout, type WorkspaceTab } from '../../services/workspace/layout'
+import { emptyLayout, leaves, removeFromLayout, setRatio, splitLeaf, type Direction, type Layout, type WorkspaceTab } from '../../services/workspace/layout'
+import { useTabDrag } from './useTabDrag'
 import { matchShortcut, shortcutHint } from '../../services/workspace/shortcuts'
 import { activity, type Activity } from '../../services/workspace/activity'
 import { notify } from '../../services/notify'
@@ -63,7 +64,9 @@ const confirmSaving = ref(false)
 let disposed = false
 let ratioTimer: ReturnType<typeof setTimeout> | undefined
 let saves: Promise<void> = Promise.resolve()
-let draggingTab: string | null = null
+const { startTabDrag, endTabDrag, overTabBar, leaveTabBar, dropTab, tabDragClasses } = useTabDrag(
+  () => layout.value, () => props.active && ready.value && !busy.value, (next) => { void perform(() => commit(next)) },
+)
 
 function error(reason: unknown) { emit('error', String(reason)) }
 function terminalWarning(entry: TerminalEntry, message: string) {
@@ -362,11 +365,6 @@ function ratio(tabId: string, path: number[], value: number) {
   clearTimeout(ratioTimer)
   ratioTimer = setTimeout(() => { void save(layout.value).catch(error) }, 500)
 }
-function dropTab(before: string) {
-  const id = draggingTab
-  draggingTab = null
-  if (id) void perform(() => commit(moveTab(layout.value, id, before)))
-}
 async function confirmAction(saveFiles = false) {
   const pending = confirmation.value
   if (!pending || confirmSaving.value) return
@@ -511,8 +509,8 @@ onBeforeUnmount(() => {
       <NButton :disabled="busy || !activeTab || !focused" :title="hint('splitVertical')" @click="create('vertical')">{{ t('workspace.splitVertical') }}</NButton>
     </div>
     <Teleport v-if="active" :to="tabsTarget">
-    <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')">
-      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="{ active: tab.id === layout.activeTabId }" :draggable="!busy" @mousedown="middleTabDown" @auxclick="middleTabClick($event, tab)" @dragstart="draggingTab = tab.id" @dragend="draggingTab = null" @dragover.prevent @drop.prevent="dropTab(tab.id)" @contextmenu.prevent.stop="openTabMenu($event, tab)">
+    <div class="workspace-tabs" role="tablist" :aria-label="t('workspace.tabs')" @dragenter="overTabBar" @dragover="overTabBar" @dragleave="leaveTabBar" @drop="dropTab">
+      <div v-for="(tab, index) in layout.tabs" :key="tab.id" class="workspace-tab" :class="[{ active: tab.id === layout.activeTabId }, tabDragClasses(tab.id)]" :data-tab-id="tab.id" :draggable="ready && !busy" @mousedown="middleTabDown" @auxclick="middleTabClick($event, tab)" @dragstart="startTabDrag($event, tab.id)" @dragend="endTabDrag" @contextmenu.prevent.stop="openTabMenu($event, tab)">
         <button role="tab" :aria-selected="tab.id === layout.activeTabId" :title="index < 9 ? hint(`tab${index + 1}`) : undefined" @click="selectTab(tab.id)" @dblclick="rename = { id: tab.id, title: tab.title }"><span v-if="tabActivity(tab)" class="activity-dot" :class="tabActivity(tab)" :title="tabActivity(tab) === 'failed' ? t('workspace.activityFailed') : t('workspace.activityUnread')" />{{ tab.title }}{{ leaves(tab.root).some((leaf) => leaf.type === 'editor' && editors.entries.get(leaf.id)?.document.dirty) ? ' ●' : '' }}</button>
         <button :disabled="busy" :aria-label="t('workspace.closeTabButton', { title: tab.title })" @click="closeTab(tab)">×</button>
       </div>

@@ -143,25 +143,72 @@ test('SSH connection drag starts from the name and reorders below the target', a
 
 test('remote terminal tabs can be reordered in both directions and persist the selection', async () => {
   const source = await readFile(new URL('../src/components/remote/RemoteWorkspace.vue', import.meta.url), 'utf8')
-  const script = 'let draggingTab = null\n' + source.slice(source.indexOf('function startTabDrag('), source.indexOf('function renameTab('))
+  const dragSource = await readFile(new URL('../src/components/workspace/useTabDrag.ts', import.meta.url), 'utf8')
+  const { moveTab } = await loadService('workspace/layout')
+  const script = dragSource.replace(/^import .*$/gm, '').replace('export function', 'function')
+    + source.slice(source.indexOf('const layout = computed'), source.indexOf('\n)', source.indexOf('= useTabDrag(')) + 2)
   const record = ref({ layout: { activeTabId: 'two', tabs: [{ id: 'one' }, { id: 'two' }, { id: 'three' }] } })
+  const busy = ref(false)
   const saved = []
-  const context = vm.createContext({ record, busy: ref(false), asLayout: (value) => value, fail: assert.fail,
+  const context = vm.createContext({ computed, ref, watch, record, busy, props: { active: true }, moveTab, asLayout: (value) => value, fail: assert.fail,
     persist: async (layout) => { record.value.layout = layout; saved.push(layout) } })
   vm.runInContext(ts.transpileModule(script, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText, context)
-  const event = { dataTransfer: { setData() {} }, preventDefault: assert.fail }
-  context.startTabDrag(event, 'one')
-  context.dropTab('three')
+  const drag = vm.runInContext('({ startTabDrag, overTabBar, leaveTabBar, dropTab, tabDragClasses, endTabDrag })', context)
+  const child = {}
+  const add = { matches: (selector) => selector === '.workspace-tab-add', getBoundingClientRect: () => ({ left: 132 }) }
+  const bar = {
+    contains: (target) => target === child,
+    getBoundingClientRect: () => ({ left: -6, right: 180, top: -5, bottom: 37 }),
+    querySelectorAll: () => record.value.layout.tabs.map(({ id }, index) => ({
+      dataset: { tabId: id }, nextElementSibling: index === 2 ? add : null,
+      getBoundingClientRect: () => ({ left: index * 44, right: index * 44 + 40, width: 40, top: 0, bottom: 32 }),
+    })),
+  }
+  const event = (clientX) => ({
+    currentTarget: bar, clientX, clientY: 16, dataTransfer: { setData() {} },
+    preventDefault() { this.prevented = true },
+  })
+  const classes = (id) => Object.entries(drag.tabDragClasses(id)).filter(([, active]) => active).map(([name]) => name)
+  drag.startTabDrag(event(10), 'one')
+  drag.overTabBar(event(130))
+  assert.deepEqual(classes('three'), ['workspace-tab-drop-after'])
+  assert.equal(saved.length, 0)
+  drag.dropTab(event(130))
   assert.deepEqual(Array.from(record.value.layout.tabs, (tab) => tab.id), ['two', 'three', 'one'])
   assert.equal(record.value.layout.activeTabId, 'two')
-  context.startTabDrag(event, 'one')
-  context.dropTab('two')
+  assert.deepEqual(classes('three'), [])
+  drag.startTabDrag(event(100), 'one')
+  drag.overTabBar(event(10))
+  assert.deepEqual(classes('two'), ['workspace-tab-drop-before'])
+  drag.leaveTabBar({ currentTarget: bar, relatedTarget: child })
+  assert.deepEqual(classes('two'), ['workspace-tab-drop-before'])
+  drag.leaveTabBar({ currentTarget: bar, relatedTarget: null })
+  assert.deepEqual(classes('two'), [])
+  drag.overTabBar(event(10))
+  drag.dropTab(event(10))
   assert.deepEqual(Array.from(record.value.layout.tabs, (tab) => tab.id), ['one', 'two', 'three'])
-  context.startTabDrag(event, 'two')
-  context.dropTab('two')
+  drag.startTabDrag(event(55), 'two')
+  drag.overTabBar(event(86))
+  assert.deepEqual(classes('three'), [])
+  drag.overTabBar(event(140))
+  assert.deepEqual(classes('three'), [])
+  drag.dropTab(event(55))
+  drag.startTabDrag(event(55), 'two')
+  drag.overTabBar(event(42))
+  assert.deepEqual(classes('two'), ['workspace-tab-dragging'])
+  drag.overTabBar(event(120))
+  assert.deepEqual(classes('three'), ['workspace-tab-drop-after'])
+  drag.endTabDrag()
+  assert.deepEqual(classes('three'), [])
+  assert.deepEqual(classes('two'), [])
+  drag.startTabDrag(event(55), 'two')
+  drag.overTabBar(event(120))
+  busy.value = true
+  assert.deepEqual(classes('three'), [])
+  drag.dropTab(event(120))
   assert.equal(saved.length, 2)
   assert.match(source, /:draggable="!busy" @dragstart="startTabDrag\(\$event, tab\.id\)"/)
-  assert.match(source, /@drop\.prevent="dropTab\(tab\.id\)"/)
+  assert.match(source, /@dragenter="overTabBar" @dragover="overTabBar" @dragleave="leaveTabBar" @drop="dropTab"/)
 })
 
 test('remote terminal tabs rename persistently, validate names and preserve edits after failure', async () => {
