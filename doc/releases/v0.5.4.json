@@ -1,5 +1,5 @@
 {
-  "version": "0.5.3",
+  "version": "0.5.4",
   "date": "2026-11-25",
   "en": {
     "features": [
@@ -7,7 +7,8 @@
     ],
     "fixes": [
       "Preserve standalone Escape presses in Windows terminals.",
-      "Avoid false unread indicators from inline Codex footer warnings."
+      "Avoid false unread indicators from inline Codex footer warnings.",
+      "Update cookie, libz-sys and url to their patched releases."
     ]
   },
   "zh": {
@@ -16,7 +17,8 @@
     ],
     "fixes": [
       "修复 Windows 终端中单独按 Escape 键可能无效的问题。",
-      "避免 Codex 页脚的行内警告误触发终端未读提示。"
+      "避免 Codex 页脚的行内警告误触发终端未读提示。",
+      "将 cookie、libz-sys 和 url 更新至已修复版本。"
     ]
   }
 }

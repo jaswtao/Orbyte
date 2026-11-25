@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-## 0.5.3 — 2026-11-25
+## 0.5.4 — 2026-11-25
 
 - Show the insertion position while dragging tabs in local and remote workspaces.
 - Preserve standalone Escape presses in Windows terminals.
 - Avoid false unread indicators from inline Codex footer warnings.
-- See the [release notes](doc/releases/v0.5.3.md) for installation and verification details.
+- Update `cookie`, `libz-sys` and `url` to the versions listed as patched by RustSec.
+- See the [release notes](doc/releases/v0.5.4.md) for installation and verification details.
 
 ## 0.5.1 — 2026-11-16
 

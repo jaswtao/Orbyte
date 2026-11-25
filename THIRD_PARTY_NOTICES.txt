@@ -4670,9 +4670,9 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-cargo: cookie 0.18.2
+cargo: cookie 0.18.3
 License: MIT OR Apache-2.0
-Source: https://crates.io/crates/cookie/0.18.2
+Source: https://crates.io/crates/cookie/0.18.3
 
 
 --- LICENSE-APACHE ---
@@ -14580,9 +14580,9 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ========================================================================
-cargo: form_urlencoded 1.2.2
+cargo: form_urlencoded 1.2.3
 License: MIT OR Apache-2.0
-Source: https://crates.io/crates/form_urlencoded/1.2.2
+Source: https://crates.io/crates/form_urlencoded/1.2.3
 
 
 --- LICENSE-APACHE ---
@@ -22672,9 +22672,9 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-cargo: libz-sys 1.1.31
+cargo: libz-sys 1.1.33
 License: MIT OR Apache-2.0
-Source: https://crates.io/crates/libz-sys/1.1.31
+Source: https://crates.io/crates/libz-sys/1.1.33
 
 
 --- LICENSE-APACHE ---
@@ -39985,7 +39985,7 @@ DEALINGS IN THE SOFTWARE.
 ========================================================================
 cargo: sqlx-sqlite 0.8.6
 License: MIT OR Apache-2.0
-Source: https://github.com/jaswtao/Orbyte/tree/v0.5.3/vendor/sqlx-sqlite
+Source: https://github.com/jaswtao/Orbyte/tree/v0.5.4/vendor/sqlx-sqlite
 
 
 --- LICENSE-APACHE ---
@@ -48781,9 +48781,9 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ========================================================================
-cargo: url 2.5.8
+cargo: url 2.5.9
 License: MIT OR Apache-2.0
-Source: https://crates.io/crates/url/2.5.8
+Source: https://crates.io/crates/url/2.5.9
 
 
 --- LICENSE-APACHE ---

@@ -571,9 +571,9 @@ checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "cookie"
-version = "0.18.2"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a373e3602691c3cdea496d2f0ee5935151e6168fe87739483c463db1b2f2f87"
+checksum = "d55f2d6c30eeec7d5c6f98bd4395d4abb1895629eab97ee6522d340623615f8a"
 dependencies = [
  "time",
  "version_check",
@@ -1256,9 +1256,9 @@ checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
 name = "form_urlencoded"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
+checksum = "afa489199eaffb1211795df1c6236ce1ad0d41a6fa45250add73e3b02420f06e"
 dependencies = [
  "percent-encoding",
 ]
@@ -2393,9 +2393,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.31"
+version = "1.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff20308ecabd635a2dc1dd5834a86c462cca20efba1d5d3ddab1f8aea3455cb2"
+checksum = "fee3f59f4321dab0c78d828942e7aa09d0bd8ad6e78a501977e6bf3d02938045"
 dependencies = [
  "cc",
  "libc",
@@ -2951,7 +2951,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orbyte-core"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -2959,7 +2959,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-desktop"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "arboard",
  "clipboard-win",
@@ -2989,7 +2989,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-files"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "dunce",
  "encoding_rs",
@@ -3005,7 +3005,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-git"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "orbyte-platform",
  "serde",
@@ -3014,7 +3014,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-platform"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "dunce",
  "log",
@@ -3026,7 +3026,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-ssh"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "base64 0.22.1",
  "dunce",
@@ -3044,7 +3044,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-storage"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "log",
  "orbyte-core",
@@ -3057,7 +3057,7 @@ dependencies = [
 
 [[package]]
 name = "orbyte-terminal"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "log",
  "orbyte-platform",
@@ -5348,9 +5348,9 @@ checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "url"
-version = "2.5.8"
+version = "2.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff67a8a4397373c3ef660812acab3268222035010ab8680ec4215f38ba3d0eed"
+checksum = "f00cd2407bb42c0ef17be88d4cf020f5cceffd121665bac9b8b9493a369b3b1a"
 dependencies = [
  "form_urlencoded",
  "idna",
