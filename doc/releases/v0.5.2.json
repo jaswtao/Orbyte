@@ -1,0 +1,22 @@
+{
+  "version": "0.5.2",
+  "date": "2026-11-25",
+  "en": {
+    "features": [
+      "Show the insertion position while dragging tabs in local and remote workspaces."
+    ],
+    "fixes": [
+      "Preserve standalone Escape presses in Windows terminals.",
+      "Avoid false unread indicators from inline Codex footer warnings."
+    ]
+  },
+  "zh": {
+    "features": [
+      "拖动本地或远程工作区标签时，显示标签将插入的位置。"
+    ],
+    "fixes": [
+      "修复 Windows 终端中单独按 Escape 键可能无效的问题。",
+      "避免 Codex 页脚的行内警告误触发终端未读提示。"
+    ]
+  }
+}

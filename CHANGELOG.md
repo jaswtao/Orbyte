@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.5.2 — 2026-11-25
+
+- Show the insertion position while dragging tabs in local and remote workspaces.
+- Preserve standalone Escape presses in Windows terminals.
+- Avoid false unread indicators from inline Codex footer warnings.
+- See the [release notes](doc/releases/v0.5.2.md) for installation and verification details.
+
 ## 0.5.1 — 2026-11-16
 
 - Refresh the sidebar with compact icon toolbars, filter chips and branch details beside project names.

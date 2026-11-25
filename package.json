@@ -6,7 +6,7 @@
     "build": "pnpm run licenses:generate && pnpm --filter orbyte-desktop tauri build -- --locked",
     "licenses:generate": "python scripts/generate-licenses.py"
   },
-  "version": "0.5.1",
+  "version": "0.5.2",
   "license": "MIT",
   "author": "jaswtao",
   "repository": {
