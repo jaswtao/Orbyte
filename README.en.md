@@ -1,6 +1,6 @@
 # Orbyte
 
-[简体中文](README.md) · [Download for Windows](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/Orbyte_0.5.1_x64-setup.exe) · [Quick start](doc/getting-started.en.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
+[简体中文](README.md) · [Download for Windows](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/Orbyte_0.5.4_x64-setup.exe) · [Quick start](doc/getting-started.en.md) · [Releases](https://github.com/jaswtao/Orbyte/releases) · [Contributing](CONTRIBUTING.md)
 
 **Keep your projects, terminals and AI coding CLIs in one Windows workspace.**
 
@@ -17,16 +17,16 @@ Chinese and English interfaces. Built with Tauri 2, Vue 3, Rust and CodeMirror; 
 
 ## Status and installation
 
-The current public release, **v0.5.1, is available for Windows x64**. Using the installer does not require Rust, Node.js or build tools.
+The current public release, **v0.5.4, is available for Windows x64**. Using the installer does not require Rust, Node.js or build tools.
 
-1. Download [Orbyte_0.5.1_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/Orbyte_0.5.1_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/SHA256SUMS.txt).
+1. Download [Orbyte_0.5.4_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/Orbyte_0.5.4_x64-setup.exe) and [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/SHA256SUMS.txt).
 2. Run the command below and compare the hash with the installer's entry in the checksum file before installing.
 3. Open Orbyte, add a local project directory and select **New terminal**. Follow the [quick start](doc/getting-started.en.md) for a first walkthrough.
 
 The installer is unsigned and Windows may display a trust warning.
 
 ```powershell
-Get-FileHash .\Orbyte_0.5.1_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.5.4_x64-setup.exe -Algorithm SHA256
 ```
 
 PowerShell and CMD are supported. WSL requires an installed distribution. Git, Codex and Claude Code are optional tools discovered from your environment; Orbyte does not include those CLIs.

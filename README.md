@@ -1,6 +1,6 @@
 # Orbyte
 
-[English](README.en.md) · [下载 Windows 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/Orbyte_0.5.1_x64-setup.exe) · [快速上手](doc/getting-started.md) · [发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
+[English](README.en.md) · [下载 Windows 安装包](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/Orbyte_0.5.4_x64-setup.exe) · [快速上手](doc/getting-started.md) · [发行说明](https://github.com/jaswtao/Orbyte/releases) · [参与贡献](CONTRIBUTING.md)
 
 **将多个项目、终端和 AI 编码 CLI 集中到一个 Windows 窗口，减少来回切换。**
 
@@ -17,14 +17,14 @@ Orbyte 是一个开源的本地开发工作台。按项目组织终端和文件�
 
 ## 版本与下载
 
-当前公开版本 **v0.5.1 已提供下载，仅支持 Windows x64**。普通用户使用安装包即可，无需安装 Rust、Node.js 或构建工具。
+当前公开版本 **v0.5.4 已提供下载，仅支持 Windows x64**。普通用户使用安装包即可，无需安装 Rust、Node.js 或构建工具。
 
-1. 下载 [Orbyte_0.5.1_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/Orbyte_0.5.1_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.5.1/SHA256SUMS.txt)。
+1. 下载 [Orbyte_0.5.4_x64-setup.exe](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/Orbyte_0.5.4_x64-setup.exe) 和 [SHA256SUMS.txt](https://github.com/jaswtao/Orbyte/releases/download/v0.5.4/SHA256SUMS.txt)。
 2. 执行下方命令，将输出与校验文件中同名安装包的 SHA-256 比较，一致后安装。
 3. 打开 Orbyte，添加本地项目目录，点击「新建终端」。完整步骤见[快速上手](doc/getting-started.md)。
 
 ```powershell
-Get-FileHash .\Orbyte_0.5.1_x64-setup.exe -Algorithm SHA256
+Get-FileHash .\Orbyte_0.5.4_x64-setup.exe -Algorithm SHA256
 ```
 
 安装包暂未签名，Windows 可能显示信任提示。Git、WSL、Codex、Claude Code 需自行安装；Orbyte 不捆绑这些 CLI。
@@ -79,7 +79,7 @@ pnpm build
 
 构建会生成第三方声明并随安装包放入 licenses/。开发请使用 pnpm dev，以加载独立开发标识，避免与安装版共用数据。
 
-安装包生成在 `target/release/bundle/nsis/Orbyte_0.5.1_x64-setup.exe`。本地构建的安装包尚未签名；安装时按 Windows 提示确认。NSIS 安装程序在缺少 WebView2 Runtime 时提供运行时安装。
+安装包生成在 `target/release/bundle/nsis/Orbyte_0.5.4_x64-setup.exe`。本地构建的安装包尚未签名；安装时按 Windows 提示确认。NSIS 安装程序在缺少 WebView2 Runtime 时提供运行时安装。
 
 ## 使用说明
 

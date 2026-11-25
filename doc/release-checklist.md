@@ -89,3 +89,14 @@ OpenSSH_9.7p1, OpenSSL 3.3.7 normal/weak/keyboard containers.
 
 The v0.5.0 candidate was not published. v0.5.1 includes the SQLite security
 update and its shortcut migration compatibility fix.
+
+## 2026-11-25 v0.5.4 release acceptance
+
+Source tested: `2f93ce0`, tagged `v0.5.4`.
+
+- [x] [Tagged CI and Windows packaging](https://github.com/jaswtao/Orbyte/actions/runs/45588546459) and [main CI](https://github.com/jaswtao/Orbyte/actions/runs/45588545789) passed. Local checks passed 203 Rust tests, 394 frontend tests, the Rust 1.90 compatibility check, 8 isolated OpenSSH/SFTP probes, and license verification for 408 dependencies.
+- [x] [Clean Windows 2022 runner](https://github.com/jaswtao/Orbyte/actions/runs/45588692333) verified installation, first launch and database initialization, single-instance behavior, normal exit, and silent uninstall with database retention.
+- [x] All seven release assets were downloaded. The six SHA-256 entries, installer version, tagged source contents, license provenance and MPL archive were verified. The [release](https://github.com/jaswtao/Orbyte/releases/tag/v0.5.4) is public and marked Latest.
+- [ ] In-place upgrade, the full manual desktop interaction matrix, 1 GiB transfer/resource sampling, and keepalive timing remain unexecuted for this release.
+
+The v0.5.2 and v0.5.3 candidate tags were unpublished. v0.5.4 includes the regenerated license notices and the patched Rust dependencies.
