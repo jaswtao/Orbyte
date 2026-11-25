@@ -375,6 +375,27 @@ fn unicode_punctuation_reaches_raw_console_without_modifiers() {
 }
 
 #[test]
+fn escape_reaches_raw_console_as_a_distinct_unmodified_key() {
+    let text = probe_console_input(
+        console_input_probe(0x98, 4, false),
+        &["\x1b", "x", "\x1b", "\x1b"],
+    );
+    let actual: Vec<_> = text.lines().filter_map(|line| line.find("key:").map(|index| &line[index..])).collect();
+    assert_eq!(
+        actual,
+        ["key:001B:0:vk=27", "key:0078:0:vk=88", "key:001B:0:vk=27", "key:001B:0:vk=27"],
+        "{text}"
+    );
+}
+
+#[test]
+fn escape_reaches_vt_console_as_a_single_byte_per_press() {
+    let text = probe_console_input(console_input_probe(0x298, 3, true), &["\x1b", "\x1b", "x"]);
+    let actual: Vec<_> = text.lines().filter_map(|line| line.find("byte:").map(|index| &line[index..])).collect();
+    assert_eq!(actual, ["byte:1B", "byte:1B", "byte:78"], "{text}");
+}
+
+#[test]
 fn native_clipboard_shortcut_reaches_raw_console_as_ctrl_v() {
     let text = probe_console_input(console_input_probe(0x98, 1, false), &["\x16"]);
     let key = text.lines().find_map(|line| line.find("key:0016:").map(|index| &line[index..]))
@@ -453,8 +474,6 @@ public class FloodInputProbe {
     let after = collector.frames.lock().unwrap().len();
     let health = manager.get(&id).unwrap().info().output;
     manager.write(&id, b"\x1b".to_vec()).unwrap();
-    // ConPTY interprets adjacent ESC + key bytes as an Alt-modified key.
-    std::thread::sleep(Duration::from_millis(500));
     manager.write(&id, b"\x03".to_vec()).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
     while !manager.get(&id).unwrap().is_exited() && Instant::now() < deadline {

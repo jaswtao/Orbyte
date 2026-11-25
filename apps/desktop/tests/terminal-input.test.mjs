@@ -317,6 +317,23 @@ test('快速粘贴时只有一个写入在途，后续输入合并且顺序不�
   await flush()
 })
 
+test('有写入在途时单独发送 Esc，并保持相邻输入的顺序', async () => {
+  const queue = new InputQueue()
+  const sent = []
+  let complete
+  const firstWrite = new Promise((resolve) => { complete = resolve })
+  queue.setSender(async (data) => {
+    sent.push(data)
+    if (sent.length === 1) await firstWrite
+  })
+  for (const data of ['first', 'a', 'b', '\x1b', 'c', '\x1b', '\x1b', '\x1b[A', '\x1bx']) queue.push(data)
+  assert.deepEqual(sent, ['first'])
+
+  complete()
+  await flush()
+  assert.deepEqual(sent, ['first', 'ab', '\x1b', 'c', '\x1b', '\x1b', '\x1b[A\x1bx'])
+})
+
 test('切换发送方时丢弃旧会话待发送输入', async () => {
   const queue = new InputQueue()
   const sent = []

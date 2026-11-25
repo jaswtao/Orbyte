@@ -1,10 +1,14 @@
-//! Windows ConPTY 输入兼容：避免弯引号被合成为仅在 Alt 松开时携带字符的事件。
+//! Encode Windows console keys that ConPTY can misinterpret as VT input.
 //! Author: jaswtao · Date: 2026-10-15
 
 use std::borrow::Cow;
 use std::fmt::Write;
 
 pub(crate) fn encode_input(data: &[u8]) -> Cow<'_, [u8]> {
+    if data == b"\x1b" {
+        // Explicit VK_ESCAPE down/up keeps consecutive Esc presses from becoming Alt+Esc.
+        return Cow::Borrowed(b"\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_");
+    }
     let Ok(text) = std::str::from_utf8(data) else {
         return Cow::Borrowed(data);
     };
@@ -40,6 +44,17 @@ mod tests {
             "\x1b[0;0;8216;1;0;1_\x1b[0;0;8216;0;0;1_丙",
             "\x1b[0;0;8217;1;0;1_\x1b[0;0;8217;0;0;1_\"丁\"",
         ).as_bytes());
+    }
+
+    #[test]
+    fn standalone_escape_uses_explicit_key_events_and_sequences_are_unchanged() {
+        assert!(matches!(
+            encode_input(b"\x1b"),
+            Cow::Borrowed(b"\x1b[27;1;27;1;0;1_\x1b[27;1;27;0;0;1_")
+        ));
+        for data in [b"\x1b[A".as_slice(), b"\x1bx", b"\x1b\x1b"] {
+            assert!(matches!(encode_input(data), Cow::Borrowed(value) if value == data));
+        }
     }
 
     #[test]

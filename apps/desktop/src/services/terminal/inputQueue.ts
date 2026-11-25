@@ -30,7 +30,9 @@ export class InputQueue {
   push(data: string): void {
     if (!data || this.paused) return
     const last = this.pending.length - 1
-    if (typeof this.pending[last] === 'string') this.pending[last] += data
+    const previous = this.pending[last]
+    // Keep standalone Escape recognizable to the Windows PTY encoder.
+    if (typeof previous === 'string' && previous !== '\x1b' && data !== '\x1b') this.pending[last] = previous + data
     else this.pending.push(data)
     this.pump()
   }

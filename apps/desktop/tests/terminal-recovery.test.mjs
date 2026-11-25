@@ -739,7 +739,7 @@ test('output resubscription preserves queued input and keeps writes serialized',
   assert.deepEqual(inputs, [['session', 'first']])
   release()
   await flush()
-  assert.deepEqual(inputs, [['session', 'first'], ['session', '\x03\x1b']])
+  assert.deepEqual(inputs, [['session', 'first'], ['session', '\x03'], ['session', '\x1b']])
 })
 
 test('output reconnect forwards interrupts while waiting for a subscription and after failure', async (t) => {
